@@ -13,7 +13,18 @@ _tasks:
   - '@@ _copier_python @@'
   - '@@ _copier_conf.src_path @@/tasks/materialise_license.py'
   - '@@ SPDX_ID @@'
+- command:
+  - '@@ _copier_python @@'
+  - '@@ _copier_conf.src_path @@/tasks/write_adrs.py'
+  - '@@ _copier_conf.src_path @@/tasks/ADR.md.template'
+  - '@@ ADRS @@'
+  when: '@@ ADRS not in ('''', ''[]'', None) @@'
 
+ADRS:
+  default: '[]'
+  help: JSON array of ADRs, each {title, decision, rationale, alternatives, consequences, confirmation}.
+    Composed, not chosen. One file is written per entry
+  type: str
 CODEOWNER:
   help: Owner or team for CODEOWNERS, e.g. @me or @org/team
   type: str

@@ -6,7 +6,7 @@ the question set.
 | | |
 | --- | --- |
 | Engine | Copier 9.18, driven in-process |
-| Layers | 13 under `templates/` — one directory per capability |
+| Layers | 17 under `templates/` — one directory per capability |
 | Question set | `templates/_interview/` — generated from the layers |
 | Shapes | `presets/*.yml` |
 | Agent entry point | `skills/project-setup/SKILL.md` |
@@ -53,7 +53,8 @@ Answer sources compose, later winning: `--preset`, then `--data-file`, then `--s
 1. **place** — each selected layer is rendered by Copier. `.jinja` files are rendered; every
    other file is copied byte-for-byte.
 2. **tasks** — Copier's own `_tasks`: `git init`, materialise `LICENSE` from the bundled SPDX
-   texts, and let `bun`/`cargo`/`uv` own their manifests.
+   texts, write one file per ADR in the manifest, and let `bun`/`cargo`/`uv` own their
+   manifests. Every task is idempotent and degrades to a warning when its tool is absent.
 3. **prune** — directories left empty because their contents were excluded are removed.
 4. **generate** — the `.d/` fragments each layer dropped are folded into shared destinations:
 
@@ -73,7 +74,10 @@ Step 4 is why layers can overlap without any layer owning a shared file. The CI 
 
 | Always applied | Opt-in |
 | --- | --- |
-| `base` `governance` `hooks` `just` `ci` `forge` `steering` | `release` `worktrunk` `lang-go` `lang-python` `lang-ts` `lang-rust` |
+| `base` `governance` `hooks` `just` `ci` `forge` `steering` | `release` `worktrunk` `api` `i18n` `a11y` `infra-aws-cdk` `lang-go` `lang-python` `lang-ts` `lang-rust` |
+
+58 distinct questions across all layers, but only the selected layers' questions are asked, and
+only four are ever required: `PROJECT_NAME`, `DESCRIPTION`, `CODEOWNER`, `SECURITY_CONTACT`.
 
 `FORGE_PLATFORM` is a single answer that swaps the entire CI surface: choose `gitlab` and every
 `.github/` file from every layer is excluded, the `.gitlab/ci` fragments are used instead, and
@@ -83,12 +87,13 @@ Step 4 is why layers can overlap without any layer owning a shared file. The CI 
 
 | | |
 | --- | --- |
-| 11 layers + 6 generators | **3.6 s** |
-| 6 layers + 3 generators | **2.2 s** |
+| 14 layers + 6 generators + tasks | **4.9 s CPU** |
 | Re-apply | byte-identical, 0 changes |
 | Unresolved tokens | 0 |
 | Empty directories | 0 |
-| Tests | 36 |
+| Tests | 51 |
+
+CPU time rather than wall clock, because wall clock tracks machine load.
 
 ## Regenerating the templates
 

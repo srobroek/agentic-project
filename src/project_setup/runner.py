@@ -10,6 +10,7 @@ import contextlib
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -21,22 +22,30 @@ from .catalog import Catalog, selected_layers
 
 
 @contextlib.contextmanager
-def stdout_to_stderr() -> Iterator[None]:
-    """Point fd 1 at fd 2 for the duration.
+def capture_fds() -> Iterator[Path]:
+    """Capture everything written to fds 1 and 2, including from subprocesses.
 
-    Copier's tasks are subprocesses that inherit the real file descriptor, so
-    contextlib.redirect_stdout cannot reach them. Moving the descriptor keeps
-    machine-readable output on stdout while task chatter stays visible on stderr.
+    Copier runs tasks as subprocesses that inherit the real file descriptors, so
+    contextlib.redirect_stdout cannot see them. Without this, a failing task reports
+    only "returned non-zero exit status 1" and the reason is lost -- which is the
+    difference between an agent that can fix the problem and one that cannot.
     """
     sys.stdout.flush()
-    saved = os.dup(1)
+    sys.stderr.flush()
+    saved_out, saved_err = os.dup(1), os.dup(2)
+    tmp = Path(tempfile.mkstemp(prefix="project-setup-", suffix=".log")[1])
+    sink = os.open(tmp, os.O_WRONLY)
     try:
-        os.dup2(2, 1)
-        yield
+        os.dup2(sink, 1)
+        os.dup2(sink, 2)
+        yield tmp
     finally:
         sys.stdout.flush()
-        os.dup2(saved, 1)
-        os.close(saved)
+        sys.stderr.flush()
+        os.dup2(saved_out, 1)
+        os.dup2(saved_err, 2)
+        for fd in (sink, saved_out, saved_err):
+            os.close(fd)
 
 
 # The generators rewrite shared destinations from the `.d/` fragments each layer
@@ -88,7 +97,6 @@ def place_layers(
     pretend: bool = False,
     run_tasks: bool = True,
     quiet: bool = True,
-    capture_stdout: bool = False,
 ) -> RunResult:
     layers = selected_layers(catalog, data)
     result = RunResult(dest=dest, layers=layers, pretend=pretend)
@@ -96,9 +104,9 @@ def place_layers(
     for name in layers:
         layer = catalog.layers[name]
         started = time.perf_counter()
-        guard = stdout_to_stderr() if capture_stdout else contextlib.nullcontext()
-        try:
-            with guard:
+        error = ""
+        with capture_fds() as log:
+            try:
                 copier.run_copy(
                     str(layer.path),
                     dest,
@@ -106,21 +114,24 @@ def place_layers(
                     defaults=True,
                     overwrite=True,
                     pretend=pretend,
-                    quiet=quiet,
+                    quiet=True,
                     # Templates are bundled in this repo, so tasks are ours to trust.
                     unsafe=run_tasks,
                     skip_tasks=not run_tasks,
                 )
-                result.placed.append(StepResult(name, True, seconds=time.perf_counter() - started))
-        except Exception as exc:  # noqa: BLE001 - surfaced verbatim to the caller
-            result.placed.append(
-                StepResult(
-                    name,
-                    False,
-                    detail=f"{type(exc).__name__}: {exc}",
-                    seconds=time.perf_counter() - started,
-                )
-            )
+            except Exception as exc:  # noqa: BLE001 - surfaced verbatim to the caller
+                error = f"{type(exc).__name__}: {exc}"
+        output = log.read_text().strip()
+        log.unlink(missing_ok=True)
+        if not quiet and output:
+            print("\n".join(f"  {line}" for line in output.splitlines()))
+        # The task's own message is the useful part; Copier's TaskError only says
+        # that the exit status was non-zero.
+        detail = "\n".join(part for part in (output, error) if part)
+        result.placed.append(
+            StepResult(name, not error, detail=detail, seconds=time.perf_counter() - started)
+        )
+        if error:
             break
     return result
 

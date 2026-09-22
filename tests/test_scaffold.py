@@ -165,6 +165,75 @@ def test_derived_python_version_needs_no_answer(tmp_path: Path):
     assert 'target-version = "py313"' in (tmp_path / "ruff.toml").read_text()
 
 
+def test_api_contract_is_rendered_with_its_licence_url(tmp_path: Path):
+    result = scaffold(
+        tmp_path, "api-service", extra={"ORG": "example-org", "API_SERVER_URL": "https://api.x"}
+    )
+    assert result.ok
+    contract = (tmp_path / "openapi.yaml").read_text()
+    assert "https://api.x" in contract
+    assert "spdx.org/licenses/Apache-2.0.html" in contract
+    assert "@@" not in contract
+
+
+def test_api_layer_adds_its_job_to_the_ci_caller(tmp_path: Path):
+    scaffold(tmp_path, "api-service", extra={"ORG": "o", "API_SERVER_URL": "https://a"})
+    assert "lint-api" in (tmp_path / ".github/workflows/ci.yml").read_text()
+
+
+def test_i18n_project_lands_at_the_configured_path(tmp_path: Path):
+    """A rendered path segment that is empty silently drops the file, so this is tested."""
+    import json
+
+    scaffold(
+        tmp_path,
+        "web-app",
+        extra={"INLANG_MESSAGE_FORMAT_MODULE_URL": "https://cdn.example/plugin.js"},
+    )
+    settings = tmp_path / "project.inlang/settings.json"
+    assert settings.is_file()
+    assert json.loads(settings.read_text())["baseLocale"] == "en"
+
+
+def test_i18n_project_dir_can_nest(tmp_path: Path):
+    scaffold(
+        tmp_path,
+        "web-app",
+        extra={
+            "INLANG_MESSAGE_FORMAT_MODULE_URL": "https://cdn.example/plugin.js",
+            "I18N_PROJECT_DIR": "apps/web/project.inlang",
+        },
+    )
+    assert (tmp_path / "apps/web/project.inlang/settings.json").is_file()
+
+
+def test_a11y_suite_is_an_isolated_package(tmp_path: Path):
+    """It must work when the repository has no root package.json."""
+    import json
+
+    scaffold(
+        tmp_path,
+        "web-app",
+        extra={"INLANG_MESSAGE_FORMAT_MODULE_URL": "https://cdn.example/plugin.js"},
+    )
+    pkg = tmp_path / ".a11y/package.json"
+    assert pkg.is_file()
+    json.loads(pkg.read_text())
+    assert (tmp_path / ".a11y/playwright.config.ts").is_file()
+    assert (tmp_path / ".a11y/tests/a11y.pw.ts").is_file()
+    assert not (tmp_path / "package.json").exists()
+
+
+def test_cdk_layer_ships_its_generator_not_a_generated_stack(tmp_path: Path):
+    scaffold(
+        tmp_path,
+        "web-app",
+        extra={"INLANG_MESSAGE_FORMAT_MODULE_URL": "https://cdn.example/plugin.js"},
+    )
+    assert (tmp_path / "scripts/init_aws_cdk.py").is_file()
+    assert (tmp_path / ".just.d/aws-cdk.just").is_file()
+
+
 def test_hand_written_work_survives_a_later_layer(tmp_path: Path):
     """The documented stage-2 path: same answers, one extra layer selected."""
     result = scaffold(tmp_path, "go-service")
@@ -217,3 +286,82 @@ def test_changing_a_merged_answer_is_refused_not_silently_applied(tmp_path: Path
     recovered = scaffold(tmp_path, "go-service", extra={"COMMIT_SCOPES": "totally,different"})
     assert recovered.ok, [s.detail for s in recovered.generated if not s.ok]
     assert "totally,different" in (tmp_path / ".pre-commit-config.yaml").read_text()
+
+
+# --------------------------------------------------------------------------- tasks
+#
+# These run with tasks enabled, which is how a real apply works. They stay offline:
+# git_init, materialise_license and write_adrs touch nothing but the filesystem.
+
+ADRS = """[
+  {"title": "Use Copier", "decision": "Render layered templates.",
+   "rationale": "Determinism belongs in the engine.", "consequences": "No update path."},
+  {"title": "Pin tool versions", "decision": "Pin and let Renovate bump.",
+   "rationale": "Reproducible offline.", "consequences": "Versions lag."}
+]"""
+
+
+def scaffold_with_tasks(dest: Path, preset: str, extra: dict | None = None) -> object:
+    catalog = load_catalog(TEMPLATES)
+    data = {**(yaml.safe_load((PRESETS / f"{preset}.yml").read_text()) or {}), **IDENTITY}
+    data.update(extra or {})
+    result = place_layers(catalog, dest, data, run_tasks=True, quiet=True)
+    prune_empty_dirs(dest)
+    if result.ok:
+        run_generators(dest, result, data=data)
+    return result
+
+
+def test_licence_is_materialised_and_the_pool_removed(tmp_path: Path):
+    result = scaffold_with_tasks(tmp_path, "minimal", extra={"SPDX_ID": "MPL-2.0"})
+    assert result.ok, [s.detail for s in result.placed if not s.ok]
+    assert "Mozilla Public License" in (tmp_path / "LICENSE").read_text()
+    assert not (tmp_path / "licenses").exists(), "unused licence texts were left behind"
+
+
+def test_git_is_initialised_once(tmp_path: Path):
+    assert scaffold_with_tasks(tmp_path, "minimal").ok
+    assert (tmp_path / ".git").is_dir()
+    head = (tmp_path / ".git/HEAD").read_bytes()
+    assert scaffold_with_tasks(tmp_path, "minimal").ok
+    assert (tmp_path / ".git/HEAD").read_bytes() == head
+
+
+def test_one_file_is_written_per_adr(tmp_path: Path):
+    assert scaffold_with_tasks(tmp_path, "minimal", extra={"ADRS": ADRS}).ok
+    names = sorted(p.name for p in (tmp_path / "docs/adr").glob("*.md"))
+    assert names == ["0001-use-copier.md", "0002-pin-tool-versions.md"]
+    body = (tmp_path / "docs/adr/0001-use-copier.md").read_text()
+    assert "# Use Copier" in body
+    assert "Status: accepted" in body
+    assert "None recorded." in body  # alternatives defaulted
+    assert "@@" not in body
+
+
+def test_reapplying_adrs_writes_nothing_new(tmp_path: Path):
+    scaffold_with_tasks(tmp_path, "minimal", extra={"ADRS": ADRS})
+    before = sorted(p.name for p in (tmp_path / "docs/adr").glob("*.md"))
+    scaffold_with_tasks(tmp_path, "minimal", extra={"ADRS": ADRS})
+    assert sorted(p.name for p in (tmp_path / "docs/adr").glob("*.md")) == before
+
+
+def test_a_new_adr_continues_the_numbering(tmp_path: Path):
+    scaffold_with_tasks(tmp_path, "minimal", extra={"ADRS": ADRS})
+    more = (
+        ADRS[:-2]
+        + """,
+  {"title": "Adopt mise", "decision": "Pin toolchains with mise.",
+   "rationale": "One manager across languages.", "consequences": "Contributors need mise."}
+]"""
+    )
+    scaffold_with_tasks(tmp_path, "minimal", extra={"ADRS": more})
+    assert (tmp_path / "docs/adr/0003-adopt-mise.md").is_file()
+
+
+def test_an_adr_without_a_decision_is_refused(tmp_path: Path):
+    result = scaffold_with_tasks(
+        tmp_path, "minimal", extra={"ADRS": '[{"title": "No decision recorded"}]'}
+    )
+    assert not result.ok
+    detail = " ".join(s.detail for s in result.placed)
+    assert "missing" in detail and "decision" in detail

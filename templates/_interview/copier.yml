@@ -34,6 +34,86 @@ WANT_LANG_RUST:
   type: bool
   default: false
   help: Include the lang-rust layer?
+WANT_API:
+  type: bool
+  default: false
+  help: Include the api layer?
+WANT_I18N:
+  type: bool
+  default: false
+  help: Include the i18n layer?
+WANT_A11Y:
+  type: bool
+  default: false
+  help: Include the a11y layer?
+WANT_INFRA_AWS_CDK:
+  type: bool
+  default: false
+  help: Include the infra-aws-cdk layer?
+A11Y_PREPARE_COMMANDS:
+  type: str
+  help: Dependency and fixture setup before Playwright starts, indented four spaces
+  default: ''
+  when: '@@ WANT_A11Y @@'
+A11Y_SURFACES_JSON:
+  type: str
+  help: JSON array of {name, baseURL, routes}. '[]' records axe scanning as a gap
+  default: '[]'
+  when: '@@ WANT_A11Y @@'
+A11Y_WEB_SERVERS_JSON:
+  type: str
+  help: JSON array of Playwright {command, url, cwd} objects
+  default: '[]'
+  when: '@@ WANT_A11Y @@'
+ADRS:
+  type: str
+  help: JSON array of ADRs, each {title, decision, rationale, alternatives, consequences, confirmation}.
+    Composed, not chosen. One file is written per entry
+  default: '[]'
+API_BASELINE_REF:
+  type: str
+  help: Git ref the contract diff compares against
+  default: origin/@@ DEFAULT_BRANCH @@
+  when: '@@ WANT_API @@'
+API_DESCRIPTION:
+  type: str
+  default: '@@ DESCRIPTION @@'
+  when: '@@ WANT_API @@'
+API_FAIL_SEVERITY:
+  type: str
+  help: vacuum lint severity that fails the gate
+  choices:
+  - error
+  - warn
+  - info
+  default: warn
+  when: '@@ WANT_API @@'
+API_SERVER_URL:
+  type: str
+  help: Production endpoint. An unresolved value is a blocking gap, not a placeholder
+  when: '@@ WANT_API @@'
+  default: ''
+API_TITLE:
+  type: str
+  default: '@@ PROJECT_NAME @@'
+  when: '@@ WANT_API @@'
+API_VERSION:
+  type: str
+  default: 0.1.0
+  when: '@@ WANT_API @@'
+AWS_CDK_DEST_SHELL:
+  type: str
+  help: Repo-relative CDK destination, shell-quoted
+  default: infrastructure
+  when: '@@ WANT_INFRA_AWS_CDK @@'
+AXE_PLAYWRIGHT_VERSION:
+  type: str
+  default: 4.11.0
+  when: '@@ WANT_A11Y @@'
+BASE_LOCALE:
+  type: str
+  default: en
+  when: '@@ WANT_I18N @@'
 BIOME_VERSION:
   type: str
   default: 2.4.1
@@ -41,7 +121,7 @@ BIOME_VERSION:
 BUN_VERSION:
   type: str
   default: 1.3.2
-  when: '@@ WANT_LANG_TS @@'
+  when: '@@ WANT_A11Y or WANT_LANG_TS @@'
 CARGO_DENY_VERSION:
   type: str
   default: 0.19.1
@@ -115,6 +195,28 @@ HOOK_EXCLUDE_PATTERNS:
   type: str
   help: Paths excluded from hooks, joined with \|. Empty drops the block
   default: ''
+I18N_CHECK_COMMANDS:
+  type: str
+  help: Recurring completeness commands, one per deployable, indented four spaces
+  default: ''
+  when: '@@ WANT_I18N @@'
+I18N_PREPARE_COMMANDS:
+  type: str
+  help: Catalog preparation commands, indented four spaces
+  default: ''
+  when: '@@ WANT_I18N @@'
+I18N_PROJECT_DIR:
+  type: str
+  help: Where the Inlang project lives, relative to the repo root. For a nested deployable use apps/web/project.inlang
+  default: project.inlang
+  validator: '{% if not (I18N_PROJECT_DIR | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}I18N_PROJECT_DIR
+    must match ^[A-Za-z0-9._/-]+${% endif %}'
+  when: '@@ WANT_I18N @@'
+INLANG_MESSAGE_FORMAT_MODULE_URL:
+  type: str
+  help: Exact module URL from the user. There is no safe default to recommend
+  when: '@@ WANT_I18N @@'
+  default: ''
 INSTALL_COMMANDS:
   type: str
   default: mise install && just setup
@@ -125,6 +227,11 @@ IS_MONOREPO:
 JOB_TIMEOUT_MINUTES:
   type: str
   default: '15'
+LOCALES_JSON:
+  type: str
+  help: JSON array of shipped locales, including the base locale
+  default: '["en"]'
+  when: '@@ WANT_I18N @@'
 MAX_FILE_KB:
   type: str
   default: '512'
@@ -137,6 +244,15 @@ NODE_VERSION:
   type: str
   default: '24'
   when: '@@ WANT_LANG_TS @@'
+ORG:
+  type: str
+  help: Organisation or owner, used for the API contact and CODEOWNERS
+  when: '@@ WANT_API @@'
+  default: ''
+PLAYWRIGHT_VERSION:
+  type: str
+  default: 1.56.0
+  when: '@@ WANT_A11Y @@'
 PROJECT_NAME:
   type: str
   help: Repository name, lowercase with dashes
@@ -156,6 +272,11 @@ PY_SRC_LAYOUT:
   help: src/ layout? (false for a flat layout)
   default: true
   when: '@@ WANT_LANG_PYTHON @@'
+REPO_URL:
+  type: str
+  help: Remote URL. Empty drops the blocks that reference it
+  default: ''
+  when: '@@ WANT_API @@'
 RUN_NATIVE_INIT:
   type: bool
   default: false

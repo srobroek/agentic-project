@@ -86,6 +86,13 @@ and these are the reason to involve a model at all:
 | `HOOK_EXCLUDE_PATTERNS` | paths that genuinely must be excluded |
 | `MONOREPO_MEMBERS` | a JSON array of `{name, path, capabilities}`, one per member. This drives per-member CI jobs, so a wrong path produces a job that tests nothing |
 | `DEV_COMMAND` | only if the project actually serves something; empty drops the worktree dev-server block |
+| `ADRS` | a JSON array of decisions, each needing `title`, `decision`, `rationale`, `consequences`. One file is written per entry. An ADR without a decision and its rationale is refused |
+| `A11Y_SURFACES_JSON` | `{name, baseURL, routes}` per surface. `[]` records axe scanning as a gap rather than pretending to scan |
+| `LOCALES_JSON`, `I18N_PROJECT_DIR` | shipped locales, and where the Inlang project sits relative to the deployable |
+
+MUST supply a JSON-bearing answer as a **string**, in a data file or a quoted `--set`. The CLI
+keeps it verbatim because these are declared `str`; a bare YAML list would render as a Python
+repr and land in the file as invalid JSON.
 
 `FORGE_PLATFORM` is worth calling out: it is a single answer that swaps the entire CI surface.
 Ask it once, early. Only `github` and `gitlab` are supported; any other forge is an explicit

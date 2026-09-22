@@ -50,6 +50,28 @@ MUST derive a value instead of asking for it when it is a pure function of anoth
 MUST pass a generator its required arguments via `GENERATORS` in `runner.py`. `gen_caller.py`
 takes `--default-branch`; a caller listening on the wrong branch never runs and reports nothing.
 
+MUST NOT let a templated path segment render empty. Copier drops the file silently, with no
+error. Carry the whole sub-path in one token instead -- `I18N_PROJECT_DIR` defaults to
+`project.inlang` and expands `apps/web/project.inlang` into nested directories, because Copier
+expands `/` inside a rendered segment.
+
+MUST use `TASK_ASSETS` for a template a task needs to read. `governance/ADR.md.template` is
+instantiated once per manifest entry, which Copier cannot loop, so `write_adrs.py` owns the loop
+and reads the template from the layer's excluded `tasks/` directory.
+
+MUST keep a multi-instance task idempotent by identity, not by filename. `write_adrs.py` matches
+on the title slug: the sequence number differs every run, so comparing filenames would write a
+duplicate of every ADR each time.
+
+MUST respect a question's declared type when parsing `--set`. A question declared `str` keeps
+its raw text. The answers that carry JSON -- `ADRS`, `MONOREPO_MEMBERS`, `LOCALES_JSON`, the
+`A11Y_*_JSON` pair -- would otherwise be parsed into Python objects and render as a Python repr
+with single quotes, landing in the file as invalid JSON.
+
+MUST capture fds 1 and 2 around `copier.run_copy`, not `sys.stdout`. Tasks are subprocesses
+that inherit the real descriptors. Without the fd-level capture a failing task reports only
+"returned non-zero exit status 1" and its actual message is lost.
+
 ## Adding a layer
 
 1. Add the asset directory to `LAYERS` in `tools/port_assets.py`.

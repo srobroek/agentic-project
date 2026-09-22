@@ -45,6 +45,10 @@ LAYERS: dict[str, str] = {
     "lang-python": "lang/python",
     "lang-ts": "lang/ts",
     "lang-rust": "lang/rust",
+    "api": "api",
+    "i18n": "i18n",
+    "a11y": "a11y",
+    "infra-aws-cdk": "infrastructure/aws-cdk",
 }
 
 # Layers whose asset tree does not map 1:1 onto destination paths. Longest prefix
@@ -57,6 +61,24 @@ REMAP: dict[str, list[tuple[str, str]]] = {
     ],
     "steering": [
         ("steering-tree/", "docs/agents/"),
+    ],
+    # The Inlang project lives beside the deployable it translates, so the
+    # destination is templated. Empty I18N_DEPLOYABLE puts it at the root.
+    "i18n": [
+        ("ts/paraglide/project.inlang/", "@@ I18N_PROJECT_DIR @@/"),
+        ("ts/paraglide/scripts/", "scripts/"),
+        ("ts/paraglide/", ""),
+    ],
+    # The a11y suite is an isolated package under .a11y/ so it works when the
+    # repository has no root package. Three files are also renamed.
+    "a11y": [
+        ("ts/playwright/playwright.a11y.config.ts.template", ".a11y/playwright.config.ts.template"),
+        ("ts/playwright/tests/a11y/a11y.pw.ts.template", ".a11y/tests/a11y.pw.ts.template"),
+        ("ts/playwright/package.json.template", ".a11y/package.json.template"),
+        ("ts/playwright/.just.d/", ".just.d/"),
+        ("ts/playwright/.gitlab/", ".gitlab/"),
+        ("ts/playwright/.mise/", ".mise/"),
+        ("ts/playwright/.gitignore.d/", ".gitignore.d/"),
     ],
 }
 
@@ -157,6 +179,95 @@ TOKEN_POLICY: dict[str, dict] = {
         "default": "",
         "help": "Dev server command. Empty drops the worktree dev-server block",
     },
+    "ORG": {
+        "type": "str",
+        "required": True,
+        "help": "Organisation or owner, used for the API contact and CODEOWNERS",
+    },
+    "REPO_URL": {
+        "type": "str",
+        "default": "",
+        "help": "Remote URL. Empty drops the blocks that reference it",
+    },
+    "API_TITLE": {"type": "str", "derive": "@@ PROJECT_NAME @@"},
+    "API_VERSION": {"type": "str", "default": "0.1.0"},
+    "API_DESCRIPTION": {"type": "str", "derive": "@@ DESCRIPTION @@"},
+    "API_SERVER_URL": {
+        "type": "str",
+        "required": True,
+        "help": "Production endpoint. An unresolved value is a blocking gap, not a placeholder",
+    },
+    "API_FAIL_SEVERITY": {
+        "type": "str",
+        "choices": ["error", "warn", "info"],
+        "default": "warn",
+        "help": "vacuum lint severity that fails the gate",
+    },
+    "API_BASELINE_REF": {
+        "type": "str",
+        "derive": "origin/@@ DEFAULT_BRANCH @@",
+        "help": "Git ref the contract diff compares against",
+    },
+    "BASE_LOCALE": {"type": "str", "default": "en"},
+    "LOCALES_JSON": {
+        "type": "str",
+        "default": '["en"]',
+        "help": "JSON array of shipped locales, including the base locale",
+    },
+    "INLANG_MESSAGE_FORMAT_MODULE_URL": {
+        "type": "str",
+        "required": True,
+        "help": "Exact module URL from the user. There is no safe default to recommend",
+    },
+    "I18N_PROJECT_DIR": {
+        "type": "str",
+        "default": "project.inlang",
+        "help": (
+            "Where the Inlang project lives, relative to the repo root. "
+            "For a nested deployable use apps/web/project.inlang"
+        ),
+        "validator": "^[A-Za-z0-9._/-]+$",
+    },
+    "I18N_PREPARE_COMMANDS": {
+        "type": "str",
+        "default": "",
+        "help": "Catalog preparation commands, indented four spaces",
+    },
+    "I18N_CHECK_COMMANDS": {
+        "type": "str",
+        "default": "",
+        "help": "Recurring completeness commands, one per deployable, indented four spaces",
+    },
+    "AWS_CDK_DEST_SHELL": {
+        "type": "str",
+        "default": "infrastructure",
+        "help": "Repo-relative CDK destination, shell-quoted",
+    },
+    "A11Y_SURFACES_JSON": {
+        "type": "str",
+        "default": "[]",
+        "help": "JSON array of {name, baseURL, routes}. '[]' records axe scanning as a gap",
+    },
+    "A11Y_WEB_SERVERS_JSON": {
+        "type": "str",
+        "default": "[]",
+        "help": "JSON array of Playwright {command, url, cwd} objects",
+    },
+    "A11Y_PREPARE_COMMANDS": {
+        "type": "str",
+        "default": "",
+        "help": "Dependency and fixture setup before Playwright starts, indented four spaces",
+    },
+    "PLAYWRIGHT_VERSION": {"type": "str", "default": "1.56.0"},
+    "AXE_PLAYWRIGHT_VERSION": {"type": "str", "default": "4.11.0"},
+    "ADRS": {
+        "type": "str",
+        "default": "[]",
+        "help": (
+            "JSON array of ADRs, each {title, decision, rationale, alternatives, "
+            "consequences, confirmation}. Composed, not chosen. One file is written per entry"
+        ),
+    },
     "MONOREPO_MEMBERS": {
         "type": "str",
         "default": "[]",
@@ -222,7 +333,16 @@ TASKS: dict[str, list[dict]] = {
                 "@@ _copier_conf.src_path @@/tasks/materialise_license.py",
                 "@@ SPDX_ID @@",
             ]
-        }
+        },
+        {
+            "command": [
+                "@@ _copier_python @@",
+                "@@ _copier_conf.src_path @@/tasks/write_adrs.py",
+                "@@ _copier_conf.src_path @@/tasks/ADR.md.template",
+                "@@ ADRS @@",
+            ],
+            "when": "@@ ADRS not in ('', '[]', None) @@",
+        },
     ],
     "lang-rust": [
         {
@@ -255,18 +375,28 @@ NATIVE_INIT_LAYERS = {"lang-rust", "lang-ts"}
 # _task command or a `when:` condition. Declared explicitly so Copier never
 # renders against an undefined variable.
 EXTRA_TOKENS: dict[str, list[str]] = {
-    "governance": ["SPDX_ID"],
+    "governance": ["SPDX_ID", "ADRS"],
     "lang-ts": ["PROJECT_NAME"],
+    # Referenced only by a destination path, so the body scanner cannot find it.
+    "i18n": ["I18N_PROJECT_DIR"],
 }
 
 # Task scripts live in tools/tasks/ and are copied into each layer that needs them,
 # so re-porting cannot lose them. They are excluded from the rendered output.
+# Assets a task needs to read, copied into <layer>/tasks/ and excluded from output.
+# ADR.md.template is instantiated once per manifest entry, which Copier cannot loop.
+TASK_ASSETS: dict[str, list[str]] = {
+    "governance": ["ADR.md.template"],
+}
+
 TASK_SCRIPTS: dict[str, list[str]] = {
     "base": ["git_init.py"],
-    "governance": ["materialise_license.py"],
+    "governance": ["materialise_license.py", "write_adrs.py"],
     "lang-rust": ["native_init.py"],
     "lang-ts": ["native_init.py"],
 }
+
+ASSETS_ROOT: list[Path] = []
 
 TOKEN_RE = re.compile(r"@@([A-Z0-9_]+)@@")
 OPT_BEGIN = re.compile(r"^(\s*)#\s*OPTIONAL BEGIN\s+(.+?)(?:\s+--\s+.*)?$")
@@ -421,15 +551,21 @@ def port_layer(src: Path, dst: Path, layer: str) -> tuple[int, int, set[str], se
 def install_tasks(layer: str, dst: Path) -> None:
     """Copy this layer's task scripts into <layer>/tasks/ (excluded from output)."""
     names = TASK_SCRIPTS.get(layer)
-    if not names:
+    assets = TASK_ASSETS.get(layer, [])
+    if not names and not assets:
         return
     source_dir = Path(__file__).parent / "tasks"
     target_dir = dst / "tasks"
     target_dir.mkdir(exist_ok=True)
-    for name in names:
+    for name in names or []:
         src = source_dir / name
         if not src.is_file():
             raise SystemExit(f"FATAL {layer}: task script missing: {src}")
+        shutil.copy2(src, target_dir / name)
+    for name in assets:
+        src = ASSETS_ROOT[0] / LAYERS[layer] / name
+        if not src.is_file():
+            raise SystemExit(f"FATAL {layer}: task asset missing: {src}")
         shutil.copy2(src, target_dir / name)
 
 
@@ -513,6 +649,8 @@ def main() -> int:
     assets, out = Path(sys.argv[1]).expanduser(), Path(sys.argv[2])
     if not assets.is_dir():
         raise SystemExit(f"FATAL: assets root not found: {assets}")
+    ASSETS_ROOT.clear()
+    ASSETS_ROOT.append(assets)
 
     rows = []
     declared: dict[str, dict[str, dict]] = {}

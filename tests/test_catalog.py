@@ -96,11 +96,34 @@ def test_selecting_a_layer_adds_its_questions(catalog):
     assert "GO_VERSION" in with_go - without
 
 
+# Answers that genuinely cannot be preset, beyond the four identity ones. Each is
+# documented in the preset itself; the test exists so an undocumented gap cannot creep in.
+DOCUMENTED_GAPS: dict[str, set[str]] = {
+    "api-service": {"ORG", "API_SERVER_URL"},
+    "web-app": {"INLANG_MESSAGE_FORMAT_MODULE_URL"},
+}
+
+
 @pytest.mark.parametrize("preset", sorted(p.stem for p in PRESETS.glob("*.yml")))
-def test_every_preset_needs_only_the_four_identity_answers(preset, catalog):
-    """A preset must define a complete shape: nothing missing but identity."""
+def test_a_preset_leaves_only_identity_and_documented_gaps(preset, catalog):
+    """A preset must define a complete shape. Anything it cannot answer is declared."""
     import yaml
 
     data = yaml.safe_load((PRESETS / f"{preset}.yml").read_text()) or {}
     errors = [p for p in validate_data(catalog, {**data, **IDENTITY}) if p.level == "error"]
-    assert errors == [], f"{preset}: {[str(e) for e in errors]}"
+    gaps = {p.key for p in errors}
+    assert gaps <= DOCUMENTED_GAPS.get(preset, set()), (
+        f"{preset} has undeclared gaps: {sorted(gaps - DOCUMENTED_GAPS.get(preset, set()))}"
+    )
+
+
+def test_every_layer_is_reachable_from_some_preset(catalog):
+    """A layer no preset selects is a layer nobody will discover."""
+    import yaml
+
+    from project_setup.catalog import selected_layers
+
+    reached: set[str] = set()
+    for path in PRESETS.glob("*.yml"):
+        reached |= set(selected_layers(catalog, yaml.safe_load(path.read_text()) or {}))
+    assert set(catalog.layers) - reached == set()

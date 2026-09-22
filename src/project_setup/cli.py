@@ -32,7 +32,7 @@ DEFAULT_PRESETS = REPO_ROOT / "presets"
 # --------------------------------------------------------------- data loading
 
 
-def load_data(args: argparse.Namespace) -> dict:
+def load_data(args: argparse.Namespace, catalog: Catalog | None = None) -> dict:
     """Build the answer set from a preset, a data file, and --set overrides.
 
     Later sources win, so an agent can copy a preset and override the few keys it
@@ -47,21 +47,30 @@ def load_data(args: argparse.Namespace) -> dict:
         if not path.is_file():
             raise SystemExit(f"data file not found: {path}")
         data.update(yaml.safe_load(path.read_text()) or {})
+    declared = {}
+    if catalog is not None:
+        for layer in catalog.layers.values():
+            declared.update({q.name: q.type for q in layer.questions.values()})
     for pair in getattr(args, "set", None) or []:
         if "=" not in pair:
             raise SystemExit(f"--set expects KEY=VALUE, got {pair!r}")
         key, _, raw = pair.partition("=")
-        data[key.strip()] = parse_scalar(raw)
+        key = key.strip()
+        data[key] = parse_scalar(raw, declared.get(key))
     # Copier records provenance keys in the answers file; they are not questions.
     return {k: v for k, v in data.items() if not k.startswith("_")}
 
 
-def parse_scalar(raw: str) -> object:
-    """Parse a --set value as YAML, falling back to the literal string.
+def parse_scalar(raw: str, declared_type: str | None = None) -> object:
+    """Parse a --set value, respecting the question's declared type.
 
-    Values like `@me` or `security@example.com` are not valid bare YAML scalars,
-    and a CLI override should never fail on that.
+    A question declared `str` keeps its raw text. That matters for the answers that
+    carry JSON -- ADRS, MONOREPO_MEMBERS, LOCALES_JSON, the A11Y_*_JSON pair. YAML
+    would happily turn those into Python objects, which then render as a Python repr
+    with single quotes and land in the file as invalid JSON.
     """
+    if declared_type == "str":
+        return raw
     try:
         parsed = yaml.safe_load(raw)
     except yaml.YAMLError:
@@ -148,7 +157,7 @@ def cmd_presets(args: argparse.Namespace, catalog: Catalog) -> int:
 
 
 def cmd_validate(args: argparse.Namespace, catalog: Catalog) -> int:
-    data = load_data(args)
+    data = load_data(args, catalog)
     problems = validate_data(catalog, data)
     layers = selected_layers(catalog, data)
     errors = [p for p in problems if p.level == "error"]
@@ -185,7 +194,7 @@ def cmd_interview(args: argparse.Namespace, catalog: Catalog) -> int:
     """Hand the questions to Copier's own prompt engine. No LLM involved."""
     dest = Path(args.dest)
     dest.mkdir(parents=True, exist_ok=True)
-    preset = load_data(args) if (args.preset or args.data_file or args.set) else None
+    preset = load_data(args, catalog) if (args.preset or args.data_file or args.set) else None
     copier.run_copy(
         str(catalog.interview_path),
         dest,
@@ -247,7 +256,7 @@ def _report(result, *, json_out: bool, verb: str) -> int:
 
 
 def cmd_plan(args: argparse.Namespace, catalog: Catalog) -> int:
-    data = load_data(args)
+    data = load_data(args, catalog)
     problems = [p for p in validate_data(catalog, data) if p.level == "error"]
     if problems:
         for p in problems:
@@ -261,13 +270,12 @@ def cmd_plan(args: argparse.Namespace, catalog: Catalog) -> int:
         pretend=True,
         run_tasks=False,
         quiet=args.json,
-        capture_stdout=args.json,
     )
     return _report(result, json_out=args.json, verb="would place")
 
 
 def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
-    data = load_data(args)
+    data = load_data(args, catalog)
     problems = [p for p in validate_data(catalog, data) if p.level == "error"]
     if problems:
         for p in problems:
@@ -281,8 +289,7 @@ def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
         dest,
         data,
         run_tasks=not args.no_tasks,
-        quiet=True,
-        capture_stdout=args.json,
+        quiet=args.json,
     )
     if result.ok:
         prune_empty_dirs(dest)
