@@ -1,5 +1,5 @@
 ---
-name: scaffold-layers-no-handcopy
+name: project-setup-no-handcopy
 description: When scaffolding a repository or adding project tooling that a scaffold layer owns.
 ---
 

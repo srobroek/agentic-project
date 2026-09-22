@@ -1,12 +1,12 @@
 ---
-name: scaffold-layers
+name: project-setup
 description: Scaffolds a repository from layered Copier templates. Use when setting up a new project, or adding a capability layer to an existing one. The templates own the questions; you only choose layers and supply answers.
 ---
 
-# Scaffold Layers
+# Project Setup
 
 TRIGGER
-+ the `/scaffold-layers` command ran
++ the `/project-setup` command ran
 + "set up a project", "scaffold this repo", "add CI/hooks/a language layer"
 + a new repository with no tooling, or an existing one missing a layer
 - changing one tool's config in a repo already set up → that tool's own skill

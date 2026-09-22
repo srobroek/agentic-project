@@ -2,7 +2,7 @@
 description: Scaffold a repository from layered Copier templates, or add a layer to an existing one.
 ---
 
-Load `skill://scaffold-layers` and follow it.
+Load `skill://project-setup` and follow it.
 
 Before anything else, decide whether you are needed at all. If this is a greenfield
 repository and a preset fits, give the user the single command and stop:

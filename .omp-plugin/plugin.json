@@ -1,5 +1,5 @@
 {
-  "name": "scaffold-layers",
+  "name": "project-setup",
   "version": "0.1.0",
   "description": "Deterministic, layered repository scaffolding over Copier templates. Seventeen composable layers, presets, and a JSON contract an agent can drive.",
   "author": "srobroek",

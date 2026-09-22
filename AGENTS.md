@@ -96,7 +96,7 @@ which `.omp-plugin/plugin.json` may remap. A rule with no frontmatter `descripti
 no bucket, and a frontmatter `name` that disagrees with its filename is not the identity OMP
 uses.
 
-MUST keep every capability name prefixed with `scaffold-layers`. OMP deduplicates names across
+MUST keep every capability name prefixed with `project-setup`. OMP deduplicates names across
 all configured sources and keeps the first match, so a shared name silently hides one plugin.
 `project-setup` is already claimed by the older installed plugin.
 

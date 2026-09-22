@@ -9,8 +9,8 @@ the question set.
 | Layers | 17 under `templates/` — one directory per capability |
 | Question set | `templates/_interview/` — generated from the layers |
 | Shapes | `presets/*.yml` |
-| Agent entry point | `skills/scaffold-layers/SKILL.md` |
-| OMP plugin | `@srobroek/scaffold-layers` |
+| Agent entry point | `skills/project-setup/SKILL.md` |
+| OMP plugin | `@srobroek/project-setup` |
 
 ## Why layers instead of one big template
 
@@ -107,11 +107,11 @@ just omp-link          # omp plugin link . && omp plugin doctor
 
 | Capability | Path | Addressed as |
 | --- | --- | --- |
-| Skill | `skills/scaffold-layers/SKILL.md` | `skill://scaffold-layers` |
-| Command | `commands/scaffold-layers.md` | `/scaffold-layers` |
-| Rule | `rules/scaffold-layers-no-handcopy.md` | `rule://scaffold-layers-no-handcopy` |
+| Skill | `skills/project-setup/SKILL.md` | `skill://project-setup` |
+| Command | `commands/project-setup.md` | `/project-setup` |
+| Rule | `rules/project-setup-no-handcopy.md` | `rule://project-setup-no-handcopy` |
 
-The plugin is named `scaffold-layers` rather than `project-setup` because OMP deduplicates
+The plugin is named `project-setup` rather than `project-setup` because OMP deduplicates
 capability names across all sources and keeps the first match. The older
 `project-setup@srobroek-omp` plugin still claims that name; once it is retired this can take it.
 

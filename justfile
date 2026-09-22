@@ -41,5 +41,5 @@ omp-link:
 
 # Prove the capabilities are addressable (needs a responsive machine).
 omp-verify:
-    omp -p 'read skill://scaffold-layers and reply with its name only'
-    omp -p 'read rule://scaffold-layers-no-handcopy and reply with its first MUST line'
+    omp -p 'read skill://project-setup and reply with its name only'
+    omp -p 'read rule://project-setup-no-handcopy and reply with its first MUST line'
