@@ -1,0 +1,14 @@
+# Go service: golangci-lint, govulncheck, no vendoring.
+WANT_LANG_GO: true
+SPDX_ID: Apache-2.0
+DEFAULT_BRANCH: main
+JOB_TIMEOUT_MINUTES: "15"
+MAX_FILE_KB: "512"
+COMMIT_SCOPES: "api,ci,deps"
+HOOK_EXCLUDE_PATTERNS: ""
+GO_VERSION: "1.26"
+GOLANGCI_LINT_VERSION: "2.7.1"
+GOVULNCHECK_VERSION: "1.1.4"
+GO_VENDOR: false
+INSTALL_COMMANDS: mise install && go mod download
+USAGE_EXAMPLE: just run

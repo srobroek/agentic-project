@@ -1,0 +1,9 @@
+# Governance, hooks, just and the base files. No language layer.
+# Useful for a docs repo, a config repo, or as a starting point to add a layer later.
+SPDX_ID: Apache-2.0
+DEFAULT_BRANCH: main
+MAX_FILE_KB: "512"
+COMMIT_SCOPES: ""
+HOOK_EXCLUDE_PATTERNS: ""
+INSTALL_COMMANDS: mise install
+USAGE_EXAMPLE: just --list

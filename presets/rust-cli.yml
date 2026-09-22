@@ -1,0 +1,18 @@
+# Rust binary crate: nextest, deny, machete, llvm-cov.
+# A binary crate commits Cargo.lock, so RUST_LIBRARY is false.
+WANT_LANG_RUST: true
+RUST_LIBRARY: false
+SPDX_ID: Apache-2.0
+DEFAULT_BRANCH: main
+JOB_TIMEOUT_MINUTES: "20"
+MAX_FILE_KB: "512"
+COMMIT_SCOPES: "cli,ci,deps"
+HOOK_EXCLUDE_PATTERNS: ""
+RUST_VERSION: "1.93.0"
+CARGO_NEXTEST_VERSION: "0.9.104"
+CARGO_DENY_VERSION: "0.19.1"
+CARGO_MACHETE_VERSION: "0.9.1"
+CARGO_LLVM_COV_VERSION: "0.6.20"
+INSTALL_COMMANDS: mise install && cargo fetch
+USAGE_EXAMPLE: just run -- --help
+RUN_NATIVE_INIT: true
