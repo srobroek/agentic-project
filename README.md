@@ -9,7 +9,8 @@ the question set.
 | Layers | 17 under `templates/` — one directory per capability |
 | Question set | `templates/_interview/` — generated from the layers |
 | Shapes | `presets/*.yml` |
-| Agent entry point | `skills/project-setup/SKILL.md` |
+| Agent entry point | `skills/scaffold-layers/SKILL.md` |
+| OMP plugin | `@srobroek/scaffold-layers` |
 
 ## Why layers instead of one big template
 
@@ -91,9 +92,28 @@ only four are ever required: `PROJECT_NAME`, `DESCRIPTION`, `CODEOWNER`, `SECURI
 | Re-apply | byte-identical, 0 changes |
 | Unresolved tokens | 0 |
 | Empty directories | 0 |
-| Tests | 51 |
+| Tests | 51 unit + 10 presets end to end |
 
 CPU time rather than wall clock, because wall clock tracks machine load.
+
+## Using it from OMP
+
+This repository is also an OMP plugin. It ships a skill, a slash command and a rule; the CLI
+is the Python package in the same tree.
+
+```sh
+just omp-link          # omp plugin link . && omp plugin doctor
+```
+
+| Capability | Path | Addressed as |
+| --- | --- | --- |
+| Skill | `skills/scaffold-layers/SKILL.md` | `skill://scaffold-layers` |
+| Command | `commands/scaffold-layers.md` | `/scaffold-layers` |
+| Rule | `rules/scaffold-layers-no-handcopy.md` | `rule://scaffold-layers-no-handcopy` |
+
+The plugin is named `scaffold-layers` rather than `project-setup` because OMP deduplicates
+capability names across all sources and keeps the first match. The older
+`project-setup@srobroek-omp` plugin still claims that name; once it is retired this can take it.
 
 ## Regenerating the templates
 

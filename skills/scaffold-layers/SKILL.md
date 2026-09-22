@@ -1,15 +1,17 @@
 ---
-name: project-setup
+name: scaffold-layers
 description: Scaffolds a repository from layered Copier templates. Use when setting up a new project, or adding a capability layer to an existing one. The templates own the questions; you only choose layers and supply answers.
 ---
 
-# Project Setup
+# Scaffold Layers
 
 TRIGGER
++ the `/scaffold-layers` command ran
 + "set up a project", "scaffold this repo", "add CI/hooks/a language layer"
 + a new repository with no tooling, or an existing one missing a layer
 - changing one tool's config in a repo already set up → that tool's own skill
 - authoring a new layer → `references/authoring.md`
+- an existing repo already set up, one tool to change → that tool's own skill
 
 ## First, decide whether you are needed at all
 
@@ -31,6 +33,26 @@ project-setup apply --preset ts-service --dest . \
   --set PROJECT_NAME=my-app --set DESCRIPTION="..." \
   --set CODEOWNER=@me --set SECURITY_CONTACT=security@example.com
 ```
+
+## Preflight
+
+The plugin ships the templates; the CLI is a Python package in the same repository.
+If `project-setup` is not on PATH, install it before doing anything else:
+
+```sh
+command -v project-setup && project-setup catalog >/dev/null && echo ready
+```
+
+If that fails, install it from this plugin's own directory. A linked plugin points at a
+working tree; a marketplace install is a copy, and either works:
+
+```sh
+PLUGIN=$(dirname $(dirname $(realpath "$0" 2>/dev/null || echo .)))   # or ask the user
+uv tool install --editable "$PLUGIN" || (cd "$PLUGIN" && uv pip install -e .)
+```
+
+MUST NOT proceed by hand when the CLI is missing. Copying template files yourself is the
+failure mode this plugin exists to remove.
 
 ## Never ask a question the templates do not declare
 

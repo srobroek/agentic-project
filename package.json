@@ -1,0 +1,12 @@
+{
+  "name": "@srobroek/scaffold-layers",
+  "version": "0.1.0",
+  "description": "Deterministic, layered repository scaffolding over Copier templates",
+  "license": "Apache-2.0",
+  "omp": {},
+  "keywords": [
+    "omp-plugin",
+    "scaffolding",
+    "copier"
+  ]
+}

@@ -88,9 +88,22 @@ Tasks live in `tools/tasks/` and are copied into the layers listed in `TASK_SCRI
 excluded from the rendered output. A task must be idempotent and must degrade to a warning
 when its tool is absent — a scaffold must never hard-fail because `cargo` is missing.
 
+## OMP packaging
+
+OMP recognises an extension package by the `omp` key in `package.json`; the key may be empty.
+Capabilities are located by path and cannot be redirected, except `skills` and `commands`
+which `.omp-plugin/plugin.json` may remap. A rule with no frontmatter `description` lands in
+no bucket, and a frontmatter `name` that disagrees with its filename is not the identity OMP
+uses.
+
+MUST keep every capability name prefixed with `scaffold-layers`. OMP deduplicates names across
+all configured sources and keeps the first match, so a shared name silently hides one plugin.
+`project-setup` is already claimed by the older installed plugin.
+
 ## Verifying a change
 
     just port ../omp-plugins/project-setup/skills/project-setup/assets
     just catalog
-    project-setup apply --preset polyglot-service --dest /tmp/check --set ...
-    # then apply again: the tree must be byte-identical
+    just e2e            # every preset: validate, plan, apply, re-apply, assertions
+    just omp-link       # link and health-check the plugin
+    just omp-verify     # read the skill and rule back through OMP

@@ -29,3 +29,17 @@ check:
 
 test:
     pytest -v
+
+# Full end-to-end check: drive the real CLI over every preset.
+e2e:
+    .venv/bin/python tools/e2e.py
+
+# Link this directory into OMP for local development.
+omp-link:
+    omp plugin link .
+    omp plugin doctor
+
+# Prove the capabilities are addressable (needs a responsive machine).
+omp-verify:
+    omp -p 'read skill://scaffold-layers and reply with its name only'
+    omp -p 'read rule://scaffold-layers-no-handcopy and reply with its first MUST line'
