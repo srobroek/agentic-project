@@ -17,3 +17,7 @@ BIOME_VERSION: "2.4.1"
 INSTALL_COMMANDS: mise install && go mod download && bun install
 USAGE_EXAMPLE: just dev
 RUN_NATIVE_INIT: false
+FORGE_PLATFORM: github
+SETUP_COMMAND: just setup
+WANT_RELEASE: true
+WANT_WORKTRUNK: true

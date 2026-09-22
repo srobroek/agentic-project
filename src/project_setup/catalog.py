@@ -12,7 +12,15 @@ from pathlib import Path
 import yaml
 
 # Layers applied to every project. Everything else is opt-in via WANT_<LAYER>.
-ALWAYS_ON: tuple[str, ...] = ("base", "governance", "hooks", "just")
+ALWAYS_ON: tuple[str, ...] = (
+    "base",
+    "governance",
+    "hooks",
+    "just",
+    "ci",
+    "forge",
+    "steering",
+)
 
 INTERVIEW = "_interview"
 ANSWERS_FILE = ".project-setup-answers.yml"

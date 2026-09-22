@@ -36,9 +36,28 @@ LAYERS: dict[str, str] = {
     "governance": "governance",
     "hooks": "hooks",
     "just": "just",
+    "ci": "ci",
+    "forge": "forge",
+    "release": "release",
+    "steering": "steering",
+    "worktrunk": "worktrunk",
     "lang-go": "lang/go",
+    "lang-python": "lang/python",
     "lang-ts": "lang/ts",
     "lang-rust": "lang/rust",
+}
+
+# Layers whose asset tree does not map 1:1 onto destination paths. Longest prefix
+# wins, so an exact-file rule can override a directory rule.
+REMAP: dict[str, list[tuple[str, str]]] = {
+    "forge": [
+        ("gitlab/.gitlab-ci.yml", ".gitlab-ci.yml"),
+        ("github/", ".github/"),
+        ("gitlab/", ".gitlab/"),
+    ],
+    "steering": [
+        ("steering-tree/", "docs/agents/"),
+    ],
 }
 
 # Assets that must not be ported 1:1 because they are instantiated per-item
@@ -114,6 +133,38 @@ TOKEN_POLICY: dict[str, dict] = {
     "CARGO_DENY_VERSION": {"type": "str", "default": "0.19.1"},
     "CARGO_MACHETE_VERSION": {"type": "str", "default": "0.9.1"},
     "CARGO_LLVM_COV_VERSION": {"type": "str", "default": "0.6.20"},
+    "PYTHON_VERSION": {"type": "str", "default": "3.13"},
+    # Derived rather than asked: 3.13 -> 313. Copier renders the default as Jinja.
+    "PYTHON_VERSION_NODOT": {
+        "type": "str",
+        "derive": "@@ PYTHON_VERSION | replace('.', '') @@",
+        "help": "Derived from PYTHON_VERSION; override only if you must",
+    },
+    "FORGE_PLATFORM": {
+        "type": "str",
+        "choices": ["github", "gitlab"],
+        "default": "github",
+        "help": "Only github and gitlab are supported; other forges are an explicit gap",
+    },
+    "FORGE_HOSTNAME": {
+        "type": "str",
+        "default": "",
+        "help": "Self-hosted forge host. Empty means the platform's public host",
+    },
+    "SETUP_COMMAND": {"type": "str", "default": "just setup"},
+    "DEV_COMMAND": {
+        "type": "str",
+        "default": "",
+        "help": "Dev server command. Empty drops the worktree dev-server block",
+    },
+    "MONOREPO_MEMBERS": {
+        "type": "str",
+        "default": "[]",
+        "help": (
+            "JSON array of monorepo members, each {name, path, capabilities}. "
+            "Composed, not chosen. '[]' is the single-root case"
+        ),
+    },
 }
 
 # Booleans a layer needs for its OPTIONAL blocks (not tokens, so declared here).
@@ -124,6 +175,20 @@ EXTRA_VARS: dict[str, dict[str, dict]] = {
             "type": "bool",
             "default": True,
             "help": "Library crate? (a binary crate commits Cargo.lock)",
+        }
+    },
+    "lang-python": {
+        "PY_SRC_LAYOUT": {
+            "type": "bool",
+            "default": True,
+            "help": "src/ layout? (false for a flat layout)",
+        }
+    },
+    "ci": {
+        "IS_MONOREPO": {
+            "type": "bool",
+            "default": False,
+            "help": "Monorepo? Writes .ci/members.json, which drives per-member CI jobs",
         }
     },
 }
@@ -237,7 +302,9 @@ def question_block(name: str, spec: dict) -> dict:
         q["help"] = spec["help"]
     if "choices" in spec:
         q["choices"] = spec["choices"]
-    if not spec.get("required"):
+    if spec.get("derive"):
+        q["default"] = spec["derive"]
+    elif not spec.get("required"):
         q["default"] = spec.get("default", "")
     if "validator" in spec:
         q["validator"] = (
@@ -247,7 +314,24 @@ def question_block(name: str, spec: dict) -> dict:
     return q
 
 
-def write_copier_yml(dst: Path, layer: str, tokens: set[str]) -> dict[str, dict]:
+FORGE_EXCLUDE = """{% if FORGE_PLATFORM != 'github' %}
+/.github/
+{% endif %}
+{% if FORGE_PLATFORM != 'gitlab' %}
+/.gitlab/
+/.gitlab-ci.yml
+{% endif %}
+"""
+
+MONOREPO_EXCLUDE = """{% if not IS_MONOREPO %}
+/.ci/members.json
+{% endif %}
+"""
+
+
+def write_copier_yml(
+    dst: Path, layer: str, tokens: set[str], destinations: set[str] | None = None
+) -> dict[str, dict]:
     cfg: dict = {
         "_envops": {
             "variable_start_string": "@@",
@@ -256,6 +340,13 @@ def write_copier_yml(dst: Path, layer: str, tokens: set[str]) -> dict[str, dict]
         },
         "_exclude": ["copier.yml", "tasks", "*.rej", "*.orig"],
     }
+    dests = destinations or set()
+    touches_forge = any(d.startswith((".github/", ".gitlab/", ".gitlab-ci")) for d in dests)
+    if touches_forge:
+        cfg["_exclude"].append(FORGE_EXCLUDE)
+        tokens = tokens | {"FORGE_PLATFORM"}
+    if any(d == ".ci/members.json" for d in dests):
+        cfg["_exclude"].append(MONOREPO_EXCLUDE)
     if layer in TASKS:
         cfg["_tasks"] = TASKS[layer]
 
@@ -284,24 +375,37 @@ def write_copier_yml(dst: Path, layer: str, tokens: set[str]) -> dict[str, dict]
     return questions
 
 
-def port_layer(src: Path, dst: Path, layer: str) -> tuple[int, int, set[str]]:
+def remap(layer: str, rel: str) -> str:
+    """Apply the layer's destination rules; longest matching prefix wins."""
+    rules = sorted(REMAP.get(layer, []), key=lambda r: len(r[0]), reverse=True)
+    for prefix, replacement in rules:
+        if rel == prefix or rel.startswith(prefix):
+            return replacement + rel[len(prefix) :]
+    return rel
+
+
+def port_layer(src: Path, dst: Path, layer: str) -> tuple[int, int, set[str], set[str]]:
     rendered = verbatim = 0
     tokens: set[str] = set()
+    destinations: set[str] = set()
     skip = SKIP_ASSETS.get(layer, set())
 
     for f in sorted(p for p in src.rglob("*") if p.is_file()):
         rel = f.relative_to(src)
         if rel.name in skip:
             continue
+        mapped = Path(remap(layer, rel.as_posix()))
         if rel.name.endswith(".template"):
-            target = dst / rel.with_name(rel.name[: -len(".template")] + ".jinja")
+            destinations.add(mapped.with_name(mapped.name[: -len(".template")]).as_posix())
+            target = dst / mapped.with_name(mapped.name[: -len(".template")] + ".jinja")
             target.parent.mkdir(parents=True, exist_ok=True)
             text = f.read_text()
             tokens |= set(TOKEN_RE.findall(text))
             target.write_text(convert_optional_blocks(text, f"{layer}/{rel}"))
             rendered += 1
         else:
-            target = dst / rel
+            destinations.add(mapped.as_posix())
+            target = dst / mapped
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(f, target)
             raw = f.read_bytes().decode("utf-8", "replace")
@@ -311,7 +415,7 @@ def port_layer(src: Path, dst: Path, layer: str) -> tuple[int, int, set[str]]:
                     f"suffix; it would never be substituted."
                 )
             verbatim += 1
-    return rendered, verbatim, tokens
+    return rendered, verbatim, tokens, destinations
 
 
 def install_tasks(layer: str, dst: Path) -> None:
@@ -329,8 +433,8 @@ def install_tasks(layer: str, dst: Path) -> None:
         shutil.copy2(src, target_dir / name)
 
 
-ALWAYS_ON = ["base", "governance", "hooks", "just"]
-ANSWERS_FILE = ".project-setup-answers.yml"
+# Single-sourced from the package so the port and the CLI cannot disagree.
+from project_setup.catalog import ALWAYS_ON, ANSWERS_FILE  # noqa: E402
 
 
 def want_var(layer: str) -> str:
@@ -420,9 +524,9 @@ def main() -> int:
         if dst.exists():
             shutil.rmtree(dst)
         dst.mkdir(parents=True)
-        rendered, verbatim, tokens = port_layer(src, dst, layer)
+        rendered, verbatim, tokens, destinations = port_layer(src, dst, layer)
         install_tasks(layer, dst)
-        questions = write_copier_yml(dst, layer, tokens)
+        questions = write_copier_yml(dst, layer, tokens, destinations)
         declared[layer] = questions
         rows.append((layer, rendered, verbatim, len(questions)))
 

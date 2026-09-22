@@ -4,6 +4,7 @@
 Runs in the destination directory. Does nothing if a repo already exists, so a
 brownfield apply never touches history.
 """
+
 from __future__ import annotations
 
 import subprocess

@@ -8,6 +8,21 @@ _exclude:
 - tasks
 - '*.rej'
 - '*.orig'
+- '{% if FORGE_PLATFORM != ''github'' %}
+
+  /.github/
+
+  {% endif %}
+
+  {% if FORGE_PLATFORM != ''gitlab'' %}
+
+  /.gitlab/
+
+  /.gitlab-ci.yml
+
+  {% endif %}
+
+  '
 _tasks:
 - command:
   - '@@ _copier_python @@'
@@ -27,6 +42,13 @@ CARGO_MACHETE_VERSION:
   type: str
 CARGO_NEXTEST_VERSION:
   default: 0.9.104
+  type: str
+FORGE_PLATFORM:
+  choices:
+  - github
+  - gitlab
+  default: github
+  help: Only github and gitlab are supported; other forges are an explicit gap
   type: str
 JOB_TIMEOUT_MINUTES:
   default: '15'

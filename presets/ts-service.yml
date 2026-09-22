@@ -13,3 +13,7 @@ INSTALL_COMMANDS: mise install && bun install
 USAGE_EXAMPLE: just dev
 # Let bun own package.json rather than templating it.
 RUN_NATIVE_INIT: true
+FORGE_PLATFORM: github
+SETUP_COMMAND: just setup
+WANT_RELEASE: true
+WANT_WORKTRUNK: true

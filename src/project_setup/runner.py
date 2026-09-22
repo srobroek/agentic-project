@@ -43,12 +43,15 @@ def stdout_to_stderr() -> Iterator[None]:
 # dropped. They must run once, after every layer is placed -- not as per-layer
 # Copier tasks, which would fire before later layers had contributed anything.
 # Order matters: gen_caller reads members.json, gen_steering reads the whole tree.
-GENERATORS: tuple[str, ...] = (
-    "scripts/fold_gitignore.py",
-    "scripts/merge_hooks.py",
-    "scripts/gen_justfile.py",
-    "scripts/gen_caller.py",
-    "scripts/gen_steering.py",
+# Some generators need more than the destination. gen_caller writes an `on: push`
+# branch list, so a wrong branch means a workflow that never runs and reports nothing.
+GENERATORS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("scripts/fold_gitignore.py", ()),
+    ("scripts/merge_hooks.py", ()),
+    ("scripts/gen_justfile.py", ()),
+    ("scripts/gen_caller.py", ("--default-branch", "{DEFAULT_BRANCH}")),
+    ("scripts/gen_steering.py", ()),
+    ("scripts/install_agents_index.py", ()),
 )
 
 
@@ -122,15 +125,39 @@ def place_layers(
     return result
 
 
-def run_generators(dest: Path, result: RunResult, *, quiet: bool = True) -> RunResult:
+def prune_empty_dirs(dest: Path) -> list[str]:
+    """Remove directories left empty because their contents were excluded.
+
+    Copier creates a directory before deciding that every file inside it is
+    excluded, so a forge the project does not use still leaves an empty `.gitlab/`
+    behind. Deepest-first so nested shells collapse in one pass.
+    """
+    removed: list[str] = []
+    for path in sorted(
+        (p for p in dest.rglob("*") if p.is_dir()),
+        key=lambda p: len(p.parts),
+        reverse=True,
+    ):
+        if ".git" in path.parts or any(path.iterdir()):
+            continue
+        path.rmdir()
+        removed.append(str(path.relative_to(dest)))
+    return removed
+
+
+def run_generators(
+    dest: Path, result: RunResult, *, data: dict | None = None, quiet: bool = True
+) -> RunResult:
     """Run each generator that the placed layers actually installed."""
-    for rel in GENERATORS:
+    answers = data or {}
+    for rel, extra in GENERATORS:
         script = dest / rel
         if not script.is_file():
             continue
+        args = [a.format(**answers) if "{" in a else a for a in extra]
         started = time.perf_counter()
         proc = subprocess.run(
-            [sys.executable, str(script), str(dest)],
+            [sys.executable, str(script), str(dest), *args],
             capture_output=True,
             text=True,
             check=False,

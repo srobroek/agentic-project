@@ -6,7 +6,7 @@ the question set.
 | | |
 | --- | --- |
 | Engine | Copier 9.18, driven in-process |
-| Layers | `templates/<layer>/` — one directory per capability |
+| Layers | 13 under `templates/` — one directory per capability |
 | Question set | `templates/_interview/` — generated from the layers |
 | Shapes | `presets/*.yml` |
 | Agent entry point | `skills/project-setup/SKILL.md` |
@@ -54,18 +54,41 @@ Answer sources compose, later winning: `--preset`, then `--data-file`, then `--s
    other file is copied byte-for-byte.
 2. **tasks** — Copier's own `_tasks`: `git init`, materialise `LICENSE` from the bundled SPDX
    texts, and let `bun`/`cargo`/`uv` own their manifests.
-3. **generate** — the `.d/` fragments each layer dropped are folded into the shared
-   destinations (`.gitignore`, `.pre-commit-config.yaml`, the justfile import block).
+3. **prune** — directories left empty because their contents were excluded are removed.
+4. **generate** — the `.d/` fragments each layer dropped are folded into shared destinations:
 
-Step 3 is why layers can overlap without any layer owning a shared file.
+| Fragments | Generator | Destination |
+| --- | --- | --- |
+| `.gitignore.d/` | `fold_gitignore.py` | `.gitignore` managed block |
+| `.pre-commit.d/` | `merge_hooks.py` | `.pre-commit-config.yaml` |
+| `.just.d/` | `gen_justfile.py` | `justfile` import block |
+| `.github/quality.d/`, `security.d/` | `gen_caller.py` | `.github/workflows/ci.yml` |
+| the whole tree | `gen_steering.py` | `docs/agents/` |
+| `docs/agents/AGENTS.body.md` | `install_agents_index.py` | `AGENTS.md`, `CLAUDE.md` |
+
+Step 4 is why layers can overlap without any layer owning a shared file. The CI caller is
+*derived from the tree*: add a language layer and the workflow graph gains its jobs.
+
+## Layers
+
+| Always applied | Opt-in |
+| --- | --- |
+| `base` `governance` `hooks` `just` `ci` `forge` `steering` | `release` `worktrunk` `lang-go` `lang-python` `lang-ts` `lang-rust` |
+
+`FORGE_PLATFORM` is a single answer that swaps the entire CI surface: choose `gitlab` and every
+`.github/` file from every layer is excluded, the `.gitlab/ci` fragments are used instead, and
+`gen_caller.py` reports there is no caller to write.
 
 ## Measured
 
 | | |
 | --- | --- |
-| Place 6 layers + generate | **2.2 s** |
+| 11 layers + 6 generators | **3.6 s** |
+| 6 layers + 3 generators | **2.2 s** |
 | Re-apply | byte-identical, 0 changes |
 | Unresolved tokens | 0 |
+| Empty directories | 0 |
+| Tests | 36 |
 
 ## Regenerating the templates
 

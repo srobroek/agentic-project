@@ -12,3 +12,7 @@ GOVULNCHECK_VERSION: "1.1.4"
 GO_VENDOR: false
 INSTALL_COMMANDS: mise install && go mod download
 USAGE_EXAMPLE: just run
+FORGE_PLATFORM: github
+SETUP_COMMAND: just setup
+WANT_RELEASE: true
+WANT_WORKTRUNK: true

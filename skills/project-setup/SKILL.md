@@ -84,6 +84,12 @@ and these are the reason to involve a model at all:
 | `INSTALL_COMMANDS`, `USAGE_EXAMPLE` | derived from the accepted stack |
 | `COMMIT_SCOPES` | the project's real module names |
 | `HOOK_EXCLUDE_PATTERNS` | paths that genuinely must be excluded |
+| `MONOREPO_MEMBERS` | a JSON array of `{name, path, capabilities}`, one per member. This drives per-member CI jobs, so a wrong path produces a job that tests nothing |
+| `DEV_COMMAND` | only if the project actually serves something; empty drops the worktree dev-server block |
+
+`FORGE_PLATFORM` is worth calling out: it is a single answer that swaps the entire CI surface.
+Ask it once, early. Only `github` and `gitlab` are supported; any other forge is an explicit
+gap, not something to improvise.
 
 Read a composed value back to the user before applying. Never invent a value that looks
 plausible; leave it unset and name the gap.

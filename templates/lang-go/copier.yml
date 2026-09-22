@@ -8,7 +8,29 @@ _exclude:
 - tasks
 - '*.rej'
 - '*.orig'
+- '{% if FORGE_PLATFORM != ''github'' %}
 
+  /.github/
+
+  {% endif %}
+
+  {% if FORGE_PLATFORM != ''gitlab'' %}
+
+  /.gitlab/
+
+  /.gitlab-ci.yml
+
+  {% endif %}
+
+  '
+
+FORGE_PLATFORM:
+  choices:
+  - github
+  - gitlab
+  default: github
+  help: Only github and gitlab are supported; other forges are an explicit gap
+  type: str
 GOLANGCI_LINT_VERSION:
   default: 2.7.1
   type: str

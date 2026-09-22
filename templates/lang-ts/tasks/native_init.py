@@ -9,6 +9,7 @@ Templating a lockfile is a mistake; the native tool should generate it. Each bra
 is a no-op when the manifest already exists, and degrades to a warning when the
 tool is absent, so a scaffold never hard-fails on a missing toolchain.
 """
+
 from __future__ import annotations
 
 import shutil

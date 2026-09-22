@@ -22,7 +22,7 @@ from .catalog import (
     validate_data,
     want_var,
 )
-from .runner import place_layers, run_generators
+from .runner import place_layers, prune_empty_dirs, run_generators
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TEMPLATES = REPO_ROOT / "templates"
@@ -285,7 +285,8 @@ def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
         capture_stdout=args.json,
     )
     if result.ok:
-        run_generators(dest, result, quiet=True)
+        prune_empty_dirs(dest)
+        run_generators(dest, result, data=data, quiet=True)
     if result.ok:
         (dest / ANSWERS_FILE).write_text(
             "# Written by project-setup apply. Re-run with --data-file to reproduce.\n"

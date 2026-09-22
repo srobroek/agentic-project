@@ -10,10 +10,22 @@ _message_after_copy: 'Answers recorded in .project-setup-answers.yml.
 
   Run `project-setup apply --data-file .project-setup-answers.yml` to scaffold.'
 
+WANT_RELEASE:
+  type: bool
+  default: false
+  help: Include the release layer?
+WANT_WORKTRUNK:
+  type: bool
+  default: false
+  help: Include the worktrunk layer?
 WANT_LANG_GO:
   type: bool
   default: false
   help: Include the lang-go layer?
+WANT_LANG_PYTHON:
+  type: bool
+  default: false
+  help: Include the lang-python layer?
 WANT_LANG_TS:
   type: bool
   default: false
@@ -65,6 +77,23 @@ DEFAULT_BRANCH:
 DESCRIPTION:
   type: str
   help: One-line purpose
+DEV_COMMAND:
+  type: str
+  help: Dev server command. Empty drops the worktree dev-server block
+  default: ''
+  when: '@@ WANT_WORKTRUNK @@'
+FORGE_HOSTNAME:
+  type: str
+  help: Self-hosted forge host. Empty means the platform's public host
+  default: ''
+  when: '@@ WANT_WORKTRUNK @@'
+FORGE_PLATFORM:
+  type: str
+  help: Only github and gitlab are supported; other forges are an explicit gap
+  choices:
+  - github
+  - gitlab
+  default: github
 GOLANGCI_LINT_VERSION:
   type: str
   default: 2.7.1
@@ -89,13 +118,21 @@ HOOK_EXCLUDE_PATTERNS:
 INSTALL_COMMANDS:
   type: str
   default: mise install && just setup
+IS_MONOREPO:
+  type: bool
+  help: Monorepo? Writes .ci/members.json, which drives per-member CI jobs
+  default: false
 JOB_TIMEOUT_MINUTES:
   type: str
   default: '15'
-  when: '@@ WANT_LANG_GO or WANT_LANG_RUST or WANT_LANG_TS @@'
 MAX_FILE_KB:
   type: str
   default: '512'
+MONOREPO_MEMBERS:
+  type: str
+  help: JSON array of monorepo members, each {name, path, capabilities}. Composed, not chosen. '[]' is
+    the single-root case
+  default: '[]'
 NODE_VERSION:
   type: str
   default: '24'
@@ -105,6 +142,20 @@ PROJECT_NAME:
   help: Repository name, lowercase with dashes
   validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z][a-z0-9-]+$'')) %}PROJECT_NAME must
     match ^[a-z][a-z0-9-]+${% endif %}'
+PYTHON_VERSION:
+  type: str
+  default: '3.13'
+  when: '@@ WANT_LANG_PYTHON @@'
+PYTHON_VERSION_NODOT:
+  type: str
+  help: Derived from PYTHON_VERSION; override only if you must
+  default: '@@ PYTHON_VERSION | replace(''.'', '''') @@'
+  when: '@@ WANT_LANG_PYTHON @@'
+PY_SRC_LAYOUT:
+  type: bool
+  help: src/ layout? (false for a flat layout)
+  default: true
+  when: '@@ WANT_LANG_PYTHON @@'
 RUN_NATIVE_INIT:
   type: bool
   default: false
@@ -122,6 +173,10 @@ RUST_VERSION:
 SECURITY_CONTACT:
   type: str
   help: Private security channel, or the forge advisory URL
+SETUP_COMMAND:
+  type: str
+  default: just setup
+  when: '@@ WANT_WORKTRUNK @@'
 SPDX_ID:
   type: str
   help: Licence. Materialised into LICENSE by a post-copy task

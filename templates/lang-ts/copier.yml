@@ -8,6 +8,21 @@ _exclude:
 - tasks
 - '*.rej'
 - '*.orig'
+- '{% if FORGE_PLATFORM != ''github'' %}
+
+  /.github/
+
+  {% endif %}
+
+  {% if FORGE_PLATFORM != ''gitlab'' %}
+
+  /.gitlab/
+
+  /.gitlab-ci.yml
+
+  {% endif %}
+
+  '
 _tasks:
 - command:
   - '@@ _copier_python @@'
@@ -21,6 +36,13 @@ BIOME_VERSION:
   type: str
 BUN_VERSION:
   default: 1.3.2
+  type: str
+FORGE_PLATFORM:
+  choices:
+  - github
+  - gitlab
+  default: github
+  help: Only github and gitlab are supported; other forges are an explicit gap
   type: str
 JOB_TIMEOUT_MINUTES:
   default: '15'

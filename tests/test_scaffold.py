@@ -12,7 +12,7 @@ import pytest
 import yaml
 
 from project_setup.catalog import load_catalog
-from project_setup.runner import place_layers, run_generators
+from project_setup.runner import place_layers, prune_empty_dirs, run_generators
 
 TEMPLATES = Path(__file__).resolve().parents[1] / "templates"
 PRESETS = Path(__file__).resolve().parents[1] / "presets"
@@ -39,7 +39,9 @@ def scaffold(dest: Path, preset: str, extra: dict | None = None) -> object:
     data.update(extra or {})
     result = place_layers(catalog, dest, data, run_tasks=False, quiet=True)
     assert result.ok, [s.detail for s in result.placed if not s.ok]
-    run_generators(dest, result)
+    # Mirror the apply pipeline exactly, prune step included.
+    prune_empty_dirs(dest)
+    run_generators(dest, result, data=data)
     return result
 
 
@@ -100,6 +102,67 @@ def test_justfile_interpolation_survives_in_fragments(scaffolded: Path):
     source = TEMPLATES / "lang-rust/.just.d/rust.just"
     if not source.is_file():
         pytest.skip("rust layer not selected in this preset")
+
+
+def test_ci_caller_is_derived_from_the_placed_layers(scaffolded: Path):
+    """gen_caller.py builds the workflow graph from the tree, not from a template."""
+    caller = scaffolded / ".github/workflows/ci.yml"
+    body = caller.read_text()
+    for job in ("changes", "quality", "security", "gate"):
+        assert f"{job}:" in body, job
+    # polyglot-service selects go and ts, so both language jobs must appear
+    assert "lint-go" in body and "lint-ts" in body
+
+
+def test_steering_tree_is_remapped_and_indexed(scaffolded: Path):
+    assert (scaffolded / "docs/agents/index.md").is_file()
+    assert (scaffolded / "docs/agents/AGENTS.body.md").is_file()
+    assert (scaffolded / "AGENTS.md").is_file()
+    assert (scaffolded / "CLAUDE.md").is_symlink()
+
+
+def test_forge_templates_are_remapped_to_dot_github(scaffolded: Path):
+    assert (scaffolded / ".github/PULL_REQUEST_TEMPLATE.md").is_file()
+    assert (scaffolded / ".github/ISSUE_TEMPLATE/bug_report.md").is_file()
+
+
+def test_choosing_gitlab_swaps_the_whole_ci_surface(tmp_path: Path):
+    result = scaffold(tmp_path, "gitlab-service")
+    assert result.ok, [s.detail for s in result.generated if not s.ok]
+    assert not (tmp_path / ".github").exists(), "GitHub content leaked into a GitLab project"
+    assert (tmp_path / ".gitlab-ci.yml").is_file()
+    assert (tmp_path / ".gitlab/ci/go.yml").is_file()
+    assert (tmp_path / ".gitlab/issue_templates/bug.md").is_file()
+
+
+def test_no_empty_directories_are_left_behind(tmp_path: Path):
+    assert scaffold(tmp_path, "gitlab-service").ok
+    empties = [
+        str(p.relative_to(tmp_path))
+        for p in tmp_path.rglob("*")
+        if p.is_dir() and ".git" not in p.parts and not any(p.iterdir())
+    ]
+    assert empties == []
+
+
+def test_members_json_only_exists_for_a_monorepo(tmp_path: Path):
+    assert scaffold(tmp_path, "go-service").ok
+    assert not (tmp_path / ".ci/members.json").exists()
+
+
+def test_monorepo_members_reach_the_manifest(tmp_path: Path):
+    import json
+
+    assert scaffold(tmp_path, "monorepo").ok
+    manifest = json.loads((tmp_path / ".ci/members.json").read_text())
+    names = sorted(m["name"] for m in manifest["members"])
+    assert names == ["api", "web"]
+
+
+def test_derived_python_version_needs_no_answer(tmp_path: Path):
+    """PYTHON_VERSION_NODOT is computed from PYTHON_VERSION, not asked."""
+    assert scaffold(tmp_path, "py-lib").ok
+    assert 'target-version = "py313"' in (tmp_path / "ruff.toml").read_text()
 
 
 def test_hand_written_work_survives_a_later_layer(tmp_path: Path):

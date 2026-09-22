@@ -16,3 +16,7 @@ CARGO_LLVM_COV_VERSION: "0.6.20"
 INSTALL_COMMANDS: mise install && cargo fetch
 USAGE_EXAMPLE: just run -- --help
 RUN_NATIVE_INIT: true
+FORGE_PLATFORM: github
+SETUP_COMMAND: just setup
+WANT_RELEASE: true
+WANT_WORKTRUNK: true

@@ -28,6 +28,28 @@ expressions and justfile interpolation.
 MUST run generators after all layers, never as per-layer Copier tasks. A per-layer task fires
 before later layers have contributed their fragments.
 
+MUST keep `ALWAYS_ON` in `src/project_setup/catalog.py` as the only definition.
+`tools/port_assets.py` imports it; two copies would silently disagree about which layers are
+opt-in.
+
+MUST prune empty directories after placing. Copier creates a directory before deciding every
+file inside it is excluded, so a GitHub-only project would otherwise ship an empty `.gitlab/`.
+
+MUST declare a destination remap in `REMAP` rather than renaming assets. `forge/github/*` maps
+to `.github/*` and `steering/steering-tree/*` to `docs/agents/*`; longest matching prefix wins,
+so an exact-file rule can override a directory rule.
+
+MUST gate forge-specific files through `FORGE_EXCLUDE`, not by splitting layers. Any layer that
+writes under `.github/` or `.gitlab/` automatically gains the `FORGE_PLATFORM` question and the
+exclusion block. Selecting the forge then swaps the whole CI surface in one answer.
+
+MUST derive a value instead of asking for it when it is a pure function of another answer. Use
+`derive:` in `TOKEN_POLICY`, which emits a templated default -- `PYTHON_VERSION_NODOT` is
+`PYTHON_VERSION` with the dots removed.
+
+MUST pass a generator its required arguments via `GENERATORS` in `runner.py`. `gen_caller.py`
+takes `--default-branch`; a caller listening on the wrong branch never runs and reports nothing.
+
 ## Adding a layer
 
 1. Add the asset directory to `LAYERS` in `tools/port_assets.py`.

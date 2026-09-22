@@ -7,6 +7,7 @@ The layer ships every supported licence under licenses/. This selects one, write
 LICENSE, and removes the rest so the project carries exactly one licence. Offline:
 nothing is fetched.
 """
+
 from __future__ import annotations
 
 import shutil
