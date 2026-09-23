@@ -1,0 +1,5 @@
+# Python: uv, ruff, pytest, src/ layout.
+WANT_LANG_PYTHON: true
+PYTHON_VERSION: "3.13"
+UV_VERSION: "0.9.8"
+PY_SRC_LAYOUT: true

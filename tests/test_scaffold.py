@@ -12,17 +12,13 @@ import pytest
 import yaml
 
 from project_setup.catalog import load_catalog
+from project_setup.cli import load_preset
 from project_setup.runner import place_layers, prune_empty_dirs, run_generators
 
 TEMPLATES = Path(__file__).resolve().parents[1] / "templates"
 PRESETS = Path(__file__).resolve().parents[1] / "presets"
 
-IDENTITY = {
-    "PROJECT_NAME": "my-app",
-    "DESCRIPTION": "A thing",
-    "CODEOWNER": "@me",
-    "SECURITY_CONTACT": "security@example.com",
-}
+IDENTITY = {"PROJECT_NAME": "my-app", "DESCRIPTION": "A thing"}
 
 
 def fingerprint(root: Path) -> dict[str, str]:
@@ -35,7 +31,7 @@ def fingerprint(root: Path) -> dict[str, str]:
 
 def scaffold(dest: Path, preset: str, extra: dict | None = None) -> object:
     catalog = load_catalog(TEMPLATES)
-    data = {**(yaml.safe_load((PRESETS / f"{preset}.yml").read_text()) or {}), **IDENTITY}
+    data = {**load_preset(preset, PRESETS)[0], **IDENTITY}
     data.update(extra or {})
     result = place_layers(catalog, dest, data, run_tasks=False, quiet=True)
     assert result.ok, [s.detail for s in result.placed if not s.ok]
@@ -56,7 +52,9 @@ def test_no_unresolved_tokens(scaffolded: Path):
     offenders = [
         str(p.relative_to(scaffolded))
         for p in scaffolded.rglob("*")
-        if p.is_file() and ".git" not in p.parts and "@@" in p.read_text(errors="ignore")
+        if p.is_file()
+        and not {".git", "node_modules"} & set(p.parts)
+        and "@@" in p.read_text(errors="ignore")
     ]
     assert offenders == []
 
@@ -303,7 +301,7 @@ ADRS = """[
 
 def scaffold_with_tasks(dest: Path, preset: str, extra: dict | None = None) -> object:
     catalog = load_catalog(TEMPLATES)
-    data = {**(yaml.safe_load((PRESETS / f"{preset}.yml").read_text()) or {}), **IDENTITY}
+    data = {**load_preset(preset, PRESETS)[0], **IDENTITY}
     data.update(extra or {})
     result = place_layers(catalog, dest, data, run_tasks=True, quiet=True)
     prune_empty_dirs(dest)

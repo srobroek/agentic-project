@@ -26,14 +26,18 @@ ADRS:
     Composed, not chosen. One file is written per entry
   type: str
 CODEOWNER:
-  help: Owner or team for CODEOWNERS, e.g. @me or @org/team
+  default: '@TODO-owner'
+  help: Owner or team for CODEOWNERS, e.g. @me or @org/team. A placeholder is fine; replace before use.
+  placeholder: '@TODO-owner'
   type: str
 CODE_OF_CONDUCT_CONTACT:
   default: ''
   help: Reporting contact. Empty omits CODE_OF_CONDUCT.md
   type: str
 SECURITY_CONTACT:
-  help: Private security channel, or the forge advisory URL
+  default: security@example.com
+  help: Private security channel, or the forge advisory URL. A placeholder is fine; replace before use.
+  placeholder: security@example.com
   type: str
 SPDX_ID:
   choices:

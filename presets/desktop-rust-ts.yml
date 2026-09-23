@@ -1,0 +1,8 @@
+# A Rust core with a TypeScript front end: desktop app, or a service with a web UI.
+# Both language layers are placed; each keeps its own toolchain, CI jobs and fragments.
+_extends: [parts/policy, parts/forge-github, parts/lang-rust, parts/lang-ts, parts/delivery]
+RUST_LIBRARY: true
+JOB_TIMEOUT_MINUTES: "25"
+COMMIT_SCOPES: "core,ui,ci,deps"
+INSTALL_COMMANDS: mise install && cargo fetch && bun install
+USAGE_EXAMPLE: just dev

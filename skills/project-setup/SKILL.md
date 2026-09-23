@@ -96,13 +96,25 @@ the Brownfield section.
 
 ### Round 2 — the shape
 
-Present the presets that could plausibly fit, each with the layers it selects and the notable
-choices it fixes, plus the manual path. Do not present all ten if two are relevant.
+Present the stacks that could plausibly fit, each with the layers it selects, plus the manual
+path. Do not present all twelve if two are relevant.
 
 ```
-project-setup presets --json      # every shape and the answers it carries
+project-setup presets             # stacks, and the parts they are built from
+project-setup presets --show <s>  # what a stack resolves to, and which part set each answer
 project-setup catalog --json      # every layer and every question it declares
 ```
+
+**Presets compose.** A stack is only a composition of parts, so a shape with no stack of its
+own is still reachable — pass `--preset` more than once, later winning:
+
+```
+project-setup apply --preset parts/policy --preset parts/forge-github \
+  --preset parts/lang-rust --preset parts/lang-ts ...
+```
+
+MUST NOT tell the user a shape is unsupported because no stack is named for it. Compose the
+parts, and say which you combined.
 
 ### Round 3 — customise
 
@@ -146,6 +158,27 @@ MUST NOT re-ask anything the user has already told you, in this conversation or 
 `.project-setup-answers.yml` already in the repository. Read it back instead.
 
 MUST NOT ask for a tool version. They are pinned in the layers and Renovate bumps them.
+
+MUST NOT ask a question the catalog marks `derived`. Those are computed from other answers at
+render time; `derived_from` shows the expression, which is not a value to pass through.
+
+MUST NOT ask the user to decide something a task already decides. Native toolchain init is
+not a question: `cargo init`, `bun init` and `uv init` each skip when their manifest already
+exists and warn when the tool is absent, so the right thing happens per language without
+anybody choosing.
+
+### Two answers are required; everything else has a value
+
+Only `PROJECT_NAME` and `DESCRIPTION` have no default. Everything a user cannot reasonably
+know at setup time — a production URL, an owner, a security contact — carries an obvious
+placeholder instead of blocking the scaffold. `apply` lists them at the end.
+
+MUST offer to replace a placeholder, and MUST NOT refuse to scaffold because one is unset. A
+placeholder is a normal state for a new repository.
+
+MUST run `validate --json` to discover what is missing rather than reasoning about the
+catalog's `required` flags. It reports `MISSING_REQUIRED`, `INVALID_CHOICE`, `UNKNOWN_KEY` and
+`PLACEHOLDER_IN_USE` for the layers actually selected, which is the only thing that matters.
 
 ## Building the data file
 

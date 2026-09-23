@@ -21,12 +21,7 @@ from project_setup.catalog import (
 TEMPLATES = Path(__file__).resolve().parents[1] / "templates"
 PRESETS = Path(__file__).resolve().parents[1] / "presets"
 
-IDENTITY = {
-    "PROJECT_NAME": "my-app",
-    "DESCRIPTION": "A thing",
-    "CODEOWNER": "@me",
-    "SECURITY_CONTACT": "security@example.com",
-}
+IDENTITY = {"PROJECT_NAME": "my-app", "DESCRIPTION": "A thing"}
 
 
 @pytest.fixture(scope="module")
@@ -96,20 +91,17 @@ def test_selecting_a_layer_adds_its_questions(catalog):
     assert "GO_VERSION" in with_go - without
 
 
-# Answers that genuinely cannot be preset, beyond the four identity ones. Each is
-# documented in the preset itself; the test exists so an undocumented gap cannot creep in.
-DOCUMENTED_GAPS: dict[str, set[str]] = {
-    "api-service": {"ORG", "API_SERVER_URL"},
-    "web-app": {"INLANG_MESSAGE_FORMAT_MODULE_URL"},
-}
+# No preset should need anything beyond the two identity answers. Anything a user
+# cannot know at setup time is a placeholder, not a blocker, so this stays empty.
+DOCUMENTED_GAPS: dict[str, set[str]] = {}
 
 
 @pytest.mark.parametrize("preset", sorted(p.stem for p in PRESETS.glob("*.yml")))
 def test_a_preset_leaves_only_identity_and_documented_gaps(preset, catalog):
     """A preset must define a complete shape. Anything it cannot answer is declared."""
-    import yaml
+    from project_setup.cli import load_preset
 
-    data = yaml.safe_load((PRESETS / f"{preset}.yml").read_text()) or {}
+    data = load_preset(preset, PRESETS)[0]
     errors = [p for p in validate_data(catalog, {**data, **IDENTITY}) if p.level == "error"]
     gaps = {p.key for p in errors}
     assert gaps <= DOCUMENTED_GAPS.get(preset, set()), (
@@ -119,11 +111,85 @@ def test_a_preset_leaves_only_identity_and_documented_gaps(preset, catalog):
 
 def test_every_layer_is_reachable_from_some_preset(catalog):
     """A layer no preset selects is a layer nobody will discover."""
-    import yaml
-
     from project_setup.catalog import selected_layers
+    from project_setup.cli import load_preset
 
     reached: set[str] = set()
     for path in PRESETS.glob("*.yml"):
-        reached |= set(selected_layers(catalog, yaml.safe_load(path.read_text()) or {}))
+        reached |= set(selected_layers(catalog, load_preset(path.stem, PRESETS)[0]))
     assert set(catalog.layers) - reached == set()
+
+
+# ------------------------------------------------------- placeholders and composition
+
+
+def test_only_name_and_description_are_hard_required(catalog):
+    """Setup time is the wrong moment to demand a production URL.
+
+    Everything a user cannot know yet is a placeholder, so a scaffold is never
+    blocked. Widening this set is a deliberate decision, not an accident.
+    """
+    required = {
+        q.name for layer in catalog.layers.values() for q in layer.questions.values() if q.required
+    }
+    assert required == {"PROJECT_NAME", "DESCRIPTION"}
+
+
+def test_placeholders_are_reported_not_enforced(catalog):
+    problems = validate_data(catalog, {**IDENTITY, "WANT_API": True})
+    assert [p for p in problems if p.level == "error"] == []
+    holders = {p.key for p in problems if p.code == "PLACEHOLDER_IN_USE"}
+    assert {"API_SERVER_URL", "ORG"} <= holders
+
+
+def test_answering_a_placeholder_clears_its_warning(catalog):
+    data = {**IDENTITY, "WANT_API": True, "API_SERVER_URL": "https://real.example.com"}
+    holders = {p.key for p in validate_data(catalog, data) if p.code == "PLACEHOLDER_IN_USE"}
+    assert "API_SERVER_URL" not in holders
+
+
+def test_native_init_is_not_a_question(catalog):
+    """The task skips when a manifest exists and warns when the tool is absent, so
+    there is nothing for a user to decide."""
+    assert "RUN_NATIVE_INIT" not in catalog.all_question_names()
+
+
+def test_a_stack_is_only_a_composition_of_parts(catalog):
+    from project_setup.cli import load_preset
+
+    data, origin = load_preset("desktop-rust-ts", PRESETS)
+    assert data["WANT_LANG_RUST"] is True
+    assert data["WANT_LANG_TS"] is True
+    assert origin["WANT_LANG_RUST"] == "parts/lang-rust"
+    assert origin["WANT_LANG_TS"] == "parts/lang-ts"
+    assert origin["SPDX_ID"] == "parts/policy"
+
+
+def test_a_later_part_overrides_an_earlier_one(catalog):
+    from project_setup.cli import load_preset
+
+    data, origin = load_preset("gitlab-service", PRESETS)
+    assert data["FORGE_PLATFORM"] == "gitlab"
+    assert origin["FORGE_PLATFORM"] == "parts/forge-gitlab"
+
+
+def test_ad_hoc_composition_needs_no_stack(catalog):
+    """The case that had no preset: a Rust core with a TypeScript front end."""
+    from project_setup.catalog import selected_layers
+    from project_setup.cli import load_preset
+
+    data = {}
+    for part in ("parts/policy", "parts/forge-github", "parts/lang-rust", "parts/lang-ts"):
+        data.update(load_preset(part, PRESETS)[0])
+    layers = selected_layers(catalog, data)
+    assert {"lang-rust", "lang-ts"} <= set(layers)
+    assert [p for p in validate_data(catalog, {**data, **IDENTITY}) if p.level == "error"] == []
+
+
+def test_a_preset_cycle_is_refused(tmp_path):
+    from project_setup.cli import load_preset
+
+    (tmp_path / "a.yml").write_text("_extends: [b]\n")
+    (tmp_path / "b.yml").write_text("_extends: [a]\n")
+    with pytest.raises(SystemExit, match="cycle"):
+        load_preset("a", tmp_path)

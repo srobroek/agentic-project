@@ -1,0 +1,5 @@
+# TypeScript: bun, biome, oxlint.
+WANT_LANG_TS: true
+NODE_VERSION: "24"
+BUN_VERSION: "1.3.2"
+BIOME_VERSION: "2.4.1"

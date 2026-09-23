@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Port omp-plugins project-setup asset layers into Copier template layers.
 
-    python3 tools/port_assets.py <assets-root> <templates-dir>
+    python3 tools/port_assets.py [<assets-root>] [<templates-dir>]
+
+Defaults to the vendored assets/ and templates/ in this repository.
 
 The port is mechanical and re-runnable. Asset bodies are never rewritten except to
 turn `# OPTIONAL BEGIN/END` markers into Jinja conditionals:
@@ -112,12 +114,12 @@ TOKEN_POLICY: dict[str, dict] = {
     },
     "CODEOWNER": {
         "type": "str",
-        "required": True,
+        "placeholder": "@TODO-owner",
         "help": "Owner or team for CODEOWNERS, e.g. @me or @org/team",
     },
     "SECURITY_CONTACT": {
         "type": "str",
-        "required": True,
+        "placeholder": "security@example.com",
         "help": "Private security channel, or the forge advisory URL",
     },
     "CODE_OF_CONDUCT_CONTACT": {
@@ -181,8 +183,8 @@ TOKEN_POLICY: dict[str, dict] = {
     },
     "ORG": {
         "type": "str",
-        "required": True,
-        "help": "Organisation or owner, used for the API contact and CODEOWNERS",
+        "placeholder": "TODO-org",
+        "help": "Organisation or owner, used for the API contact",
     },
     "REPO_URL": {
         "type": "str",
@@ -194,8 +196,8 @@ TOKEN_POLICY: dict[str, dict] = {
     "API_DESCRIPTION": {"type": "str", "derive": "@@ DESCRIPTION @@"},
     "API_SERVER_URL": {
         "type": "str",
-        "required": True,
-        "help": "Production endpoint. An unresolved value is a blocking gap, not a placeholder",
+        "placeholder": "https://api.example.com",
+        "help": "Production endpoint. Unknown at setup time is normal",
     },
     "API_FAIL_SEVERITY": {
         "type": "str",
@@ -216,8 +218,8 @@ TOKEN_POLICY: dict[str, dict] = {
     },
     "INLANG_MESSAGE_FORMAT_MODULE_URL": {
         "type": "str",
-        "required": True,
-        "help": "Exact module URL from the user. There is no safe default to recommend",
+        "placeholder": "https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js",
+        "help": "Inlang message-format plugin module URL; pin the version you want",
     },
     "I18N_PROJECT_DIR": {
         "type": "str",
@@ -352,7 +354,6 @@ TASKS: dict[str, list[dict]] = {
                 "rust",
                 "@@ 'lib' if RUST_LIBRARY else 'bin' @@",
             ],
-            "when": "@@ RUN_NATIVE_INIT @@",
         }
     ],
     "lang-ts": [
@@ -363,13 +364,9 @@ TASKS: dict[str, list[dict]] = {
                 "ts",
                 "@@ PROJECT_NAME @@",
             ],
-            "when": "@@ RUN_NATIVE_INIT @@",
         }
     ],
 }
-
-# Layers whose tasks are gated on RUN_NATIVE_INIT need that variable declared.
-NATIVE_INIT_LAYERS = {"lang-rust", "lang-ts"}
 
 # Tokens a layer needs but that appear in no file body -- referenced only by a
 # _task command or a `when:` condition. Declared explicitly so Copier never
@@ -427,15 +424,38 @@ def convert_optional_blocks(text: str, where: str) -> str:
 
 
 def question_block(name: str, spec: dict) -> dict:
+    """Build one Copier question from a policy entry.
+
+    Exactly one source supplies the default, in this order:
+
+      required     no default, so Copier refuses to render until it is answered.
+                   Reserved for what genuinely cannot be guessed.
+      derive       a Jinja expression over other answers, computed at render time.
+      placeholder  an obviously-fake value, also recorded as Copier's placeholder so
+                   it can be reported afterwards. Setup time is the wrong moment to
+                   demand a production URL, so these never block a scaffold.
+      default      an ordinary value that is right for most projects.
+    """
     q: dict = {"type": spec.get("type", "str")}
     if "help" in spec:
         q["help"] = spec["help"]
     if "choices" in spec:
         q["choices"] = spec["choices"]
-    if spec.get("derive"):
+
+    if spec.get("required"):
+        pass  # no default: Copier will demand an answer
+    elif spec.get("derive"):
         q["default"] = spec["derive"]
-    elif not spec.get("required"):
+    elif "placeholder" in spec:
+        q["placeholder"] = spec["placeholder"]
+        q["default"] = spec["placeholder"]
+        existing = q.get("help", "").rstrip()
+        if existing and not existing.endswith((".", "!", "?")):
+            existing += "."
+        q["help"] = f"{existing} A placeholder is fine; replace before use.".strip()
+    else:
         q["default"] = spec.get("default", "")
+
     if "validator" in spec:
         q["validator"] = (
             f"{{% if not ({name} | string | regex_search('{spec['validator']}')) %}}"
@@ -490,12 +510,6 @@ def write_copier_yml(
         questions[tok] = question_block(tok, TOKEN_POLICY[tok])
     for name, spec in EXTRA_VARS.get(layer, {}).items():
         questions[name] = question_block(name, spec)
-    if layer in NATIVE_INIT_LAYERS:
-        questions["RUN_NATIVE_INIT"] = {
-            "type": "bool",
-            "default": False,
-            "help": "Run the native toolchain init (cargo/bun) as a post-copy task?",
-        }
 
     body = yaml.safe_dump(cfg, sort_keys=False, width=100)
     if questions:
@@ -643,10 +657,9 @@ def build_interview(out: Path, declared: dict[str, dict[str, dict]]) -> int:
 
 
 def main() -> int:
-    if len(sys.argv) != 3:
-        print(__doc__)
-        return 2
-    assets, out = Path(sys.argv[1]).expanduser(), Path(sys.argv[2])
+    repo = Path(__file__).resolve().parents[1]
+    assets = Path(sys.argv[1]).expanduser() if len(sys.argv) > 1 else repo / "assets"
+    out = Path(sys.argv[2]) if len(sys.argv) > 2 else repo / "templates"
     if not assets.is_dir():
         raise SystemExit(f"FATAL: assets root not found: {assets}")
     ASSETS_ROOT.clear()

@@ -45,6 +45,17 @@ class Question:
     choices: list | None = None
     required: bool = False
     when: str = ""
+    # An obviously-fake default, so a scaffold is never blocked on a value nobody
+    # knows yet. Reported after the fact instead.
+    placeholder: str = ""
+    # A default containing the template delimiter is computed at render time from
+    # other answers. Reported separately so a reader cannot mistake the expression
+    # for a literal value to pass through.
+    derived_from: str = ""
+
+    @property
+    def derived(self) -> bool:
+        return bool(self.derived_from)
 
 
 @dataclass
@@ -97,14 +108,21 @@ def _parse_questions(cfg: dict) -> dict[str, Question]:
             # Copier's shorthand form: `NAME: default_value`
             out[key] = Question(name=key, default=spec)
             continue
+        default = spec.get("default")
+        derived_from = ""
+        if isinstance(default, str) and "@@" in default:
+            derived_from = default
+            default = None
         out[key] = Question(
             name=key,
             type=spec.get("type", "str"),
             help=spec.get("help", ""),
-            default=spec.get("default"),
+            default=default,
             choices=spec.get("choices"),
             required="default" not in spec,
             when=str(spec.get("when", "")),
+            placeholder=str(spec.get("placeholder", "")),
+            derived_from=derived_from,
         )
     return out
 
@@ -192,6 +210,19 @@ def validate_data(catalog: Catalog, data: dict) -> list[Problem]:
                 name,
             )
         )
+
+    for name, q in sorted(catalog.questions_for(layers).items()):
+        if not q.placeholder:
+            continue
+        if str(data.get(name, q.placeholder)) == q.placeholder:
+            problems.append(
+                Problem(
+                    "warning",
+                    "PLACEHOLDER_IN_USE",
+                    f"still the placeholder {q.placeholder!r}" + (f". {q.help}" if q.help else ""),
+                    name,
+                )
+            )
 
     for name, q in sorted(catalog.questions_for(layers).items()):
         if q.choices and name in data and data[name] not in q.choices:

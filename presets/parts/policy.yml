@@ -1,0 +1,7 @@
+# Repository policy every stack shares. Extend this first.
+SPDX_ID: Apache-2.0
+DEFAULT_BRANCH: main
+MAX_FILE_KB: "512"
+HOOK_EXCLUDE_PATTERNS: ""
+JOB_TIMEOUT_MINUTES: "15"
+SETUP_COMMAND: just setup

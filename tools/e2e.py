@@ -24,23 +24,22 @@ from pathlib import Path
 
 import yaml
 
+from project_setup.cli import load_preset
+
 REPO = Path(__file__).resolve().parents[1]
 PRESETS = REPO / "presets"
 CLI = REPO / ".venv/bin/project-setup"
 
+# Only these two have no default: everything else is defaulted or placeholdered, so a
+# scaffold is never blocked on a value nobody knows yet.
 IDENTITY = {
     "PROJECT_NAME": "e2e-app",
     "DESCRIPTION": "End-to-end verification project",
-    "CODEOWNER": "@example-org/core",
-    "SECURITY_CONTACT": "security@example.com",
 }
 
-# Answers a preset documents as un-presettable. Kept here so a new undeclared gap
-# makes this run fail rather than being quietly filled in.
-GAP_FILLERS: dict[str, dict[str, str]] = {
-    "api-service": {"ORG": "example-org", "API_SERVER_URL": "https://api.example.com"},
-    "web-app": {"INLANG_MESSAGE_FORMAT_MODULE_URL": "https://cdn.example/plugin.js"},
-}
+# Nothing to fill: a preset plus the two identity answers is a complete answer set.
+# A preset that needs more than that is a preset bug, and this run will surface it.
+GAP_FILLERS: dict[str, dict[str, str]] = {}
 
 # What each preset must produce. One probe per selected capability is enough to catch
 # a layer that silently stopped being placed.
@@ -69,6 +68,15 @@ FORBIDDEN: dict[str, list[str]] = {
 }
 
 
+# Not ours, and not scanned: native init populates these, and third-party files
+# legitimately contain the token delimiter.
+VENDOR = {".git", "node_modules", ".venv", "target", "dist", "__pycache__"}
+
+
+def ours(path: Path, root: Path) -> bool:
+    return not (VENDOR & set(path.relative_to(root).parts))
+
+
 class Failure(Exception):
     pass
 
@@ -78,17 +86,16 @@ def run(args: list[str]) -> subprocess.CompletedProcess:
 
 
 def answers_for(preset: str) -> dict:
-    data = yaml.safe_load((PRESETS / f"{preset}.yml").read_text()) or {}
+    data = load_preset(preset, PRESETS)[0]
     data.update(IDENTITY)
     data.update(GAP_FILLERS.get(preset, {}))
-    data["RUN_NATIVE_INIT"] = False  # keep the run offline
     return data
 
 
 def fingerprint(root: Path) -> dict[str, str]:
     out: dict[str, str] = {}
     for path in sorted(root.rglob("*")):
-        if path.is_file() and ".git" not in path.parts:
+        if path.is_file() and ours(path, root):
             out[str(path.relative_to(root))] = hashlib.sha256(path.read_bytes()).hexdigest()
     return out
 
@@ -130,7 +137,7 @@ def check_preset(preset: str, workdir: Path) -> dict:
     leftovers = [
         str(p.relative_to(dest))
         for p in dest.rglob("*")
-        if p.is_file() and ".git" not in p.parts and "@@" in p.read_text(errors="ignore")
+        if p.is_file() and ours(p, dest) and "@@" in p.read_text(errors="ignore")
     ]
     if leftovers:
         raise Failure(f"unresolved @@ tokens in {leftovers}")
@@ -147,7 +154,7 @@ def check_preset(preset: str, workdir: Path) -> dict:
     empties = [
         str(p.relative_to(dest))
         for p in dest.rglob("*")
-        if p.is_dir() and ".git" not in p.parts and not any(p.iterdir())
+        if p.is_dir() and ours(p, dest) and not any(p.iterdir())
     ]
     if empties:
         raise Failure(f"empty directories left behind: {empties}")
@@ -170,7 +177,7 @@ def check_preset(preset: str, workdir: Path) -> dict:
 
     return {
         "layers": len(result["layers"]),
-        "files": sum(1 for p in dest.rglob("*") if p.is_file() and ".git" not in p.parts),
+        "files": sum(1 for p in dest.rglob("*") if p.is_file() and ours(p, dest)),
         # Both are wall clock. Treat them as comparable only within one run:
         # they track machine load, not the scaffolder.
         "apply_seconds": round(result["seconds"], 2),

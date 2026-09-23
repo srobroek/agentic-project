@@ -1,0 +1,8 @@
+# Rust: nextest, deny, machete, llvm-cov. Library crate by default.
+WANT_LANG_RUST: true
+RUST_VERSION: "1.93.0"
+CARGO_NEXTEST_VERSION: "0.9.104"
+CARGO_DENY_VERSION: "0.19.1"
+CARGO_MACHETE_VERSION: "0.9.1"
+CARGO_LLVM_COV_VERSION: "0.6.20"
+RUST_LIBRARY: true

@@ -73,15 +73,14 @@ def resolve_data_dir(kind: str, explicit: Path | None) -> Path:
 
 
 def load_data(args: argparse.Namespace, catalog: Catalog | None = None) -> dict:
-    """Build the answer set from a preset, a data file, and --set overrides.
+    """Build the answer set from presets, a data file, and --set overrides.
 
-    Later sources win, so an agent can copy a preset and override the few keys it
-    needs rather than restating the whole thing.
+    Sources compose, later winning, so a stack can be assembled from parts and then
+    adjusted: presets in the order given, then the data file, then each --set.
     """
     data: dict = {}
-    if getattr(args, "preset", None):
-        path = resolve_preset(args.preset, args.presets)
-        data.update(yaml.safe_load(path.read_text()) or {})
+    for name in getattr(args, "preset", None) or []:
+        data.update(load_preset(name, args.presets)[0])
     if getattr(args, "data_file", None):
         path = Path(args.data_file)
         if not path.is_file():
@@ -118,12 +117,51 @@ def parse_scalar(raw: str, declared_type: str | None = None) -> object:
     return raw if parsed is None and raw != "" else parsed
 
 
+EXTENDS_KEY = "_extends"
+
+
+def load_preset(
+    name: str, presets_dir: Path, _chain: tuple[str, ...] = ()
+) -> tuple[dict, dict[str, str]]:
+    """Resolve a preset and everything it extends.
+
+    Returns the merged answers and, per key, the preset that last set it. A preset
+    lists its bases under `_extends`; they are merged depth-first and first, so the
+    extending preset always wins over what it builds on.
+    """
+    if name in _chain:
+        raise SystemExit(f"preset cycle: {' -> '.join((*_chain, name))}")
+
+    raw = yaml.safe_load(resolve_preset(name, presets_dir).read_text()) or {}
+    bases = raw.pop(EXTENDS_KEY, []) or []
+    if isinstance(bases, str):
+        bases = [bases]
+
+    merged: dict = {}
+    origin: dict[str, str] = {}
+    for base in bases:
+        base_data, base_origin = load_preset(base, presets_dir, (*_chain, name))
+        merged.update(base_data)
+        origin.update(base_origin)
+    for key, value in raw.items():
+        merged[key] = value
+        origin[key] = name
+    return merged, origin
+
+
 def resolve_preset(name: str, presets_dir: Path) -> Path:
     for candidate in (presets_dir / name, presets_dir / f"{name}.yml"):
         if candidate.is_file():
             return candidate
-    available = ", ".join(sorted(p.stem for p in presets_dir.glob("*.yml"))) or "none"
-    raise SystemExit(f"unknown preset {name!r}. Available: {available}")
+    stacks = sorted(p.stem for p in presets_dir.glob("*.yml"))
+    parts = sorted(f"parts/{p.stem}" for p in (presets_dir / "parts").glob("*.yml"))
+    raise SystemExit(
+        f"unknown preset {name!r}.\n"
+        f"  stacks: {', '.join(stacks) or 'none'}\n"
+        f"  parts : {', '.join(parts) or 'none'}\n\n"
+        f"  Presets compose, so a shape with no stack of its own is still reachable:\n"
+        f"    project-setup apply --preset parts/lang-rust --preset parts/lang-ts ..."
+    )
 
 
 # --------------------------------------------------------------- subcommands
@@ -145,6 +183,10 @@ def cmd_catalog(args: argparse.Namespace, catalog: Catalog) -> int:
                             "default": q.default,
                             "choices": q.choices,
                             "help": q.help,
+                            # Computed from other answers at render time. Do not ask
+                            # for it, and do not pass the expression through.
+                            "derived": q.derived,
+                            "derived_from": q.derived_from or None,
                         }
                         for q in layer.questions.values()
                     },
@@ -170,29 +212,58 @@ def cmd_catalog(args: argparse.Namespace, catalog: Catalog) -> int:
 
 
 def cmd_presets(args: argparse.Namespace, catalog: Catalog) -> int:
-    files = sorted(args.presets.glob("*.yml"))
+    stacks = sorted(args.presets.glob("*.yml"))
+    parts = sorted((args.presets / "parts").glob("*.yml"))
+
     if args.show:
-        path = resolve_preset(args.show, args.presets)
-        print(path.read_text(), end="")
+        data, origin = load_preset(args.show, args.presets)
+        if args.json:
+            print(json.dumps({"answers": data, "from": origin}, indent=2, default=str))
+            return 0
+        print(f"{args.show} resolves to {len(data)} answers:\n")
+        width = max((len(k) for k in data), default=0)
+        for key in sorted(data):
+            value = str(data[key]).replace("\n", " ")[:44]
+            print(f"  {key:<{width}}  {value:<44}  <- {origin.get(key, args.show)}")
+        print(f"\nlayers: {', '.join(selected_layers(catalog, data))}")
         return 0
+
     if args.json:
         print(
             json.dumps(
-                {p.stem: yaml.safe_load(p.read_text()) or {} for p in files},
+                {
+                    "stacks": {p.stem: load_preset(p.stem, args.presets)[0] for p in stacks},
+                    "parts": {
+                        f"parts/{p.stem}": load_preset(f"parts/{p.stem}", args.presets)[0]
+                        for p in parts
+                    },
+                },
                 indent=2,
+                default=str,
             )
         )
         return 0
-    if not files:
+
+    if not stacks and not parts:
         print("no presets found")
         return 0
-    for path in files:
-        data = yaml.safe_load(path.read_text()) or {}
-        layers = selected_layers(catalog, data)
-        summary = data.get("DESCRIPTION", "")
-        print(f"{path.stem:<18}{', '.join(layers)}")
-        if summary:
-            print(f"{'':<16}{summary}")
+
+    print("STACKS - a whole project shape. Compose with --preset a --preset b.\n")
+    for path in stacks:
+        data, _ = load_preset(path.stem, args.presets)
+        optional = [n for n in selected_layers(catalog, data) if catalog.layers[n].optional]
+        print(f"  {path.stem:<20}{', '.join(optional) or '(always-on layers only)'}")
+
+    if parts:
+        print("\nPARTS - one concern each. Stacks are built from these.\n")
+        for path in parts:
+            data, _ = load_preset(f"parts/{path.stem}", args.presets)
+            selects = sorted(
+                k.removeprefix("WANT_").lower()
+                for k, v in data.items()
+                if k.startswith("WANT_") and v
+            )
+            print(f"  parts/{path.stem:<20}{', '.join(selects) or 'policy only'}")
     return 0
 
 
@@ -334,12 +405,27 @@ def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
     if result.ok:
         prune_empty_dirs(dest)
         run_generators(dest, result, data=data, quiet=True)
-    if result.ok:
         (dest / ANSWERS_FILE).write_text(
             "# Written by project-setup apply. Re-run with --data-file to reproduce.\n"
             + yaml.safe_dump(data, sort_keys=True)
         )
-    return _report(result, json_out=args.json, verb="placed")
+    code = _report(result, json_out=args.json, verb="placed")
+
+    # Last, so it is the thing left on screen: what still needs a real value.
+    if result.ok and not args.json:
+        questions = catalog.questions_for(selected_layers(catalog, data))
+        holders = [
+            (p.key, data.get(p.key) or questions[p.key].placeholder)
+            for p in validate_data(catalog, data)
+            if p.code == "PLACEHOLDER_IN_USE"
+        ]
+        if holders:
+            width = max(len(k) for k, _ in holders)
+            print(f"\n{len(holders)} answer(s) still carry a placeholder:")
+            for key, value in holders:
+                print(f"  {key:<{width}}  {value}")
+            print("  Replace them, then re-run apply with the real values.")
+    return code
 
 
 # --------------------------------------------------------------- entry point
@@ -362,7 +448,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True)
 
     def add_data_args(sp: argparse.ArgumentParser) -> None:
-        sp.add_argument("--preset", help="preset name from presets/")
+        sp.add_argument(
+            "--preset",
+            action="append",
+            help="preset name; repeatable, later presets win",
+        )
         sp.add_argument("--data-file", help="YAML answer file")
         sp.add_argument("--set", action="append", metavar="KEY=VALUE", help="override one answer")
 

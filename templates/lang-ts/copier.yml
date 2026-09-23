@@ -29,7 +29,6 @@ _tasks:
   - '@@ _copier_conf.src_path @@/tasks/native_init.py'
   - ts
   - '@@ PROJECT_NAME @@'
-  when: '@@ RUN_NATIVE_INIT @@'
 
 BIOME_VERSION:
   default: 2.4.1
@@ -55,7 +54,3 @@ PROJECT_NAME:
   type: str
   validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z][a-z0-9-]+$'')) %}PROJECT_NAME must
     match ^[a-z][a-z0-9-]+${% endif %}'
-RUN_NATIVE_INIT:
-  default: false
-  help: Run the native toolchain init (cargo/bun) as a post-copy task?
-  type: bool

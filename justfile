@@ -7,7 +7,7 @@ setup:
     uv pip install pytest ruff
 
 # Re-port the asset layers from the omp-plugins source of truth.
-port ASSETS:
+port ASSETS="./assets":
     python3 tools/port_assets.py "{{ ASSETS }}" templates
 
 # List every template layer and the questions it declares.

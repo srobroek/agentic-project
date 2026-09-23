@@ -49,7 +49,10 @@ I18N_PROJECT_DIR:
   validator: '{% if not (I18N_PROJECT_DIR | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}I18N_PROJECT_DIR
     must match ^[A-Za-z0-9._/-]+${% endif %}'
 INLANG_MESSAGE_FORMAT_MODULE_URL:
-  help: Exact module URL from the user. There is no safe default to recommend
+  default: https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js
+  help: Inlang message-format plugin module URL; pin the version you want. A placeholder is fine; replace
+    before use.
+  placeholder: https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js
   type: str
 LOCALES_JSON:
   default: '["en"]'

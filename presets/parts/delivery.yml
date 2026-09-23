@@ -1,0 +1,3 @@
+# Release automation and parallel-agent worktrees.
+WANT_RELEASE: true
+WANT_WORKTRUNK: true

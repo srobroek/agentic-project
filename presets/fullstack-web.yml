@@ -1,0 +1,14 @@
+# Go backend, TypeScript front end, translated and accessibility-scanned, on AWS.
+# The highest-level stack here: it is only a composition of parts.
+_extends:
+  - parts/policy
+  - parts/forge-github
+  - parts/lang-go
+  - parts/lang-ts
+  - parts/web-ui
+  - parts/infra-aws
+  - parts/delivery
+JOB_TIMEOUT_MINUTES: "25"
+COMMIT_SCOPES: "api,web,i18n,infra,ci,deps"
+INSTALL_COMMANDS: mise install && go mod download && bun install
+USAGE_EXAMPLE: just dev

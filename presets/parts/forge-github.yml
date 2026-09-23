@@ -1,0 +1,2 @@
+# GitHub. Selecting the forge swaps the entire CI surface.
+FORGE_PLATFORM: github

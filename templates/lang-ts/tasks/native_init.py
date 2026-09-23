@@ -12,6 +12,7 @@ tool is absent, so a scaffold never hard-fails on a missing toolchain.
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -42,7 +43,10 @@ def main() -> int:
         if Path("package.json").exists():
             print("native_init: package.json present, skipping")
             return 0
-        return run(["bun", "init", "-y"])
+        code = run(["bun", "init", "-y"])
+        if code == 0:
+            _tidy_after_bun(arg)
+        return code
 
     if kind == "py":
         if Path("pyproject.toml").exists():
@@ -52,6 +56,32 @@ def main() -> int:
 
     print(f"native_init: unknown kind {kind!r}", file=sys.stderr)
     return 2
+
+
+def _tidy_after_bun(project_name: str) -> None:
+    """Reconcile what `bun init` writes with what the layers own.
+
+    `bun init -y` takes no name argument, so it names the package after the directory,
+    and it drops a generic CLAUDE.md. The steering layer owns agent instructions and
+    refuses to overwrite a CLAUDE.md it did not write, which would fail the whole
+    apply on an otherwise clean scaffold.
+    """
+    manifest = Path("package.json")
+    if manifest.is_file():
+        try:
+            data = json.loads(manifest.read_text())
+        except json.JSONDecodeError:
+            print("native_init: package.json is not valid JSON, leaving it", file=sys.stderr)
+        else:
+            if data.get("name") != project_name:
+                data["name"] = project_name
+                manifest.write_text(json.dumps(data, indent=2) + "\n")
+                print(f"native_init: set package.json name to {project_name}")
+
+    claude = Path("CLAUDE.md")
+    if claude.is_file() and not claude.is_symlink():
+        claude.unlink()
+        print("native_init: removed bun's CLAUDE.md; the steering layer owns that file")
 
 
 if __name__ == "__main__":

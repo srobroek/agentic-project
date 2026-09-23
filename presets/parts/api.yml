@@ -1,0 +1,5 @@
+# A documented OpenAPI contract, linted by vacuum in CI.
+# ORG and API_SERVER_URL have no safe default; supply them per project.
+WANT_API: true
+API_VERSION: "1.0.0"
+API_FAIL_SEVERITY: warn

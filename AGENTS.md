@@ -100,6 +100,31 @@ MUST keep every capability name prefixed with `project-setup`. OMP deduplicates 
 all configured sources and keeps the first match, so a shared name silently hides one plugin.
 `project-setup` is already claimed by the older installed plugin.
 
+## Answer policy
+
+MUST keep the hard-required set to `PROJECT_NAME` and `DESCRIPTION`. Anything a user cannot
+know at setup time gets a `placeholder` in `TOKEN_POLICY`, which becomes both the default and
+Copier's own placeholder marker, and is reported by `validate` and at the end of `apply`.
+Blocking a scaffold on a production URL is the wrong trade: the value wanted is visibility.
+
+MUST NOT add a question for something a task can decide. `native_init.py` skips when the
+manifest exists and warns when the tool is absent, so `RUN_NATIVE_INIT` was deleted rather
+than defaulted.
+
+MUST reconcile what a native tool writes with what a layer owns. `bun init` drops its own
+CLAUDE.md, which the steering layer owns and refuses to overwrite -- that failed an otherwise
+clean apply until `native_init.py` removed it and set the package name from `PROJECT_NAME`.
+
+MUST exclude `node_modules`, `.git`, `target` and friends from any recursive scan. Native init
+populates them and third-party files legitimately contain `@@`.
+
+## Assets are vendored here
+
+`assets/` is the source of truth for file content and `templates/` is generated from it by
+`tools/port_assets.py`, which defaults to both. The assets used to live in the omp-plugins
+`project-setup` plugin; retiring that plugin removed them, so they were recovered from its
+git history into this repository. Do not reintroduce a dependency on another repository.
+
 ## Template resolution
 
 MUST NOT bundle `templates/` or `presets/` into the wheel. They are the plugin's payload and

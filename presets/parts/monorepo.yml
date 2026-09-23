@@ -1,0 +1,8 @@
+# Per-member CI. MONOREPO_MEMBERS is a composed answer: each entry needs a job-safe
+# name, a repo-relative path and a capability map. Replace the examples.
+IS_MONOREPO: true
+MONOREPO_MEMBERS: |
+  [
+    {"name": "api", "path": "services/api", "capabilities": {"go": ["lint", "test"]}},
+    {"name": "web", "path": "apps/web", "capabilities": {"ts": ["lint", "test"]}}
+  ]

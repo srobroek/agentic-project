@@ -96,6 +96,29 @@ guess scaffolds from the wrong layer set.
 Step 4 is why layers can overlap without any layer owning a shared file. The CI caller is
 *derived from the tree*: add a language layer and the workflow graph gains its jobs.
 
+## Presets: stacks and parts
+
+A **part** carries one concern: a language toolchain, a forge, release automation. A **stack**
+is a composition of parts. Nothing prevents composing them yourself, so a shape with no stack
+of its own is still reachable:
+
+    project-setup presets                       # stacks, and the parts beneath them
+    project-setup presets --show desktop-rust-ts   # what it resolves to, and from where
+    project-setup apply --preset parts/lang-rust --preset parts/lang-ts ...
+
+`--preset` is repeatable and later presets win. A stack lists its bases under `_extends`,
+resolved depth-first, so the stack always overrides the parts it builds on. Cycles are refused.
+
+## Two required answers, and placeholders for the rest
+
+Only `PROJECT_NAME` and `DESCRIPTION` have no default. A production URL, an owner, a security
+contact — things nobody knows while setting up — carry an obvious placeholder rather than
+blocking the scaffold, and `apply` lists them when it finishes:
+
+    2 answer(s) still carry a placeholder:
+      CODEOWNER         @TODO-owner
+      SECURITY_CONTACT  security@example.com
+
 ## Layers
 
 | Always applied | Opt-in |

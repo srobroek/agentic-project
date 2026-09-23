@@ -29,7 +29,6 @@ _tasks:
   - '@@ _copier_conf.src_path @@/tasks/native_init.py'
   - rust
   - '@@ ''lib'' if RUST_LIBRARY else ''bin'' @@'
-  when: '@@ RUN_NATIVE_INIT @@'
 
 CARGO_DENY_VERSION:
   default: 0.19.1
@@ -53,10 +52,6 @@ FORGE_PLATFORM:
 JOB_TIMEOUT_MINUTES:
   default: '15'
   type: str
-RUN_NATIVE_INIT:
-  default: false
-  help: Run the native toolchain init (cargo/bun) as a post-copy task?
-  type: bool
 RUST_LIBRARY:
   default: true
   help: Library crate? (a binary crate commits Cargo.lock)

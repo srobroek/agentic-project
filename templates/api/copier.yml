@@ -40,7 +40,9 @@ API_FAIL_SEVERITY:
   help: vacuum lint severity that fails the gate
   type: str
 API_SERVER_URL:
-  help: Production endpoint. An unresolved value is a blocking gap, not a placeholder
+  default: https://api.example.com
+  help: Production endpoint. Unknown at setup time is normal. A placeholder is fine; replace before use.
+  placeholder: https://api.example.com
   type: str
 API_TITLE:
   default: '@@ PROJECT_NAME @@'
@@ -64,7 +66,9 @@ JOB_TIMEOUT_MINUTES:
   default: '15'
   type: str
 ORG:
-  help: Organisation or owner, used for the API contact and CODEOWNERS
+  default: TODO-org
+  help: Organisation or owner, used for the API contact. A placeholder is fine; replace before use.
+  placeholder: TODO-org
   type: str
 REPO_URL:
   default: ''

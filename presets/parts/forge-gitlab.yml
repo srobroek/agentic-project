@@ -1,0 +1,2 @@
+# GitLab: .github/ is excluded everywhere and .gitlab/ci fragments are used instead.
+FORGE_PLATFORM: gitlab

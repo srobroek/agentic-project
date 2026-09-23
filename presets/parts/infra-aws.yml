@@ -1,0 +1,3 @@
+# AWS CDK in TypeScript. The generator owns the member; nothing is templated into it.
+WANT_INFRA_AWS_CDK: true
+AWS_CDK_DEST_SHELL: infrastructure

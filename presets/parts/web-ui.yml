@@ -1,0 +1,10 @@
+# A human-facing surface: translated and accessibility-scanned.
+# INLANG_MESSAGE_FORMAT_MODULE_URL has no safe default; supply the exact module URL.
+# Replace the example a11y routes -- an empty surfaces array records scanning as a gap.
+WANT_I18N: true
+WANT_A11Y: true
+BASE_LOCALE: en
+LOCALES_JSON: '["en"]'
+I18N_PROJECT_DIR: project.inlang
+A11Y_SURFACES_JSON: '[{"name":"web","baseURL":"http://localhost:3000","routes":["/"]}]'
+A11Y_WEB_SERVERS_JSON: '[{"command":"bun run dev","url":"http://localhost:3000","cwd":"."}]'

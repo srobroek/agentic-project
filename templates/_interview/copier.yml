@@ -90,9 +90,10 @@ API_FAIL_SEVERITY:
   when: '@@ WANT_API @@'
 API_SERVER_URL:
   type: str
-  help: Production endpoint. An unresolved value is a blocking gap, not a placeholder
+  help: Production endpoint. Unknown at setup time is normal. A placeholder is fine; replace before use.
+  placeholder: https://api.example.com
+  default: https://api.example.com
   when: '@@ WANT_API @@'
-  default: ''
 API_TITLE:
   type: str
   default: '@@ PROJECT_NAME @@'
@@ -140,7 +141,9 @@ CARGO_NEXTEST_VERSION:
   when: '@@ WANT_LANG_RUST @@'
 CODEOWNER:
   type: str
-  help: Owner or team for CODEOWNERS, e.g. @me or @org/team
+  help: Owner or team for CODEOWNERS, e.g. @me or @org/team. A placeholder is fine; replace before use.
+  placeholder: '@TODO-owner'
+  default: '@TODO-owner'
 CODE_OF_CONDUCT_CONTACT:
   type: str
   help: Reporting contact. Empty omits CODE_OF_CONDUCT.md
@@ -214,9 +217,11 @@ I18N_PROJECT_DIR:
   when: '@@ WANT_I18N @@'
 INLANG_MESSAGE_FORMAT_MODULE_URL:
   type: str
-  help: Exact module URL from the user. There is no safe default to recommend
+  help: Inlang message-format plugin module URL; pin the version you want. A placeholder is fine; replace
+    before use.
+  placeholder: https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js
+  default: https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js
   when: '@@ WANT_I18N @@'
-  default: ''
 INSTALL_COMMANDS:
   type: str
   default: mise install && just setup
@@ -246,9 +251,10 @@ NODE_VERSION:
   when: '@@ WANT_LANG_TS @@'
 ORG:
   type: str
-  help: Organisation or owner, used for the API contact and CODEOWNERS
+  help: Organisation or owner, used for the API contact. A placeholder is fine; replace before use.
+  placeholder: TODO-org
+  default: TODO-org
   when: '@@ WANT_API @@'
-  default: ''
 PLAYWRIGHT_VERSION:
   type: str
   default: 1.56.0
@@ -277,11 +283,6 @@ REPO_URL:
   help: Remote URL. Empty drops the blocks that reference it
   default: ''
   when: '@@ WANT_API @@'
-RUN_NATIVE_INIT:
-  type: bool
-  default: false
-  help: Run the native toolchain init (cargo/bun) as a post-copy task?
-  when: '@@ WANT_LANG_RUST or WANT_LANG_TS @@'
 RUST_LIBRARY:
   type: bool
   help: Library crate? (a binary crate commits Cargo.lock)
@@ -293,7 +294,9 @@ RUST_VERSION:
   when: '@@ WANT_LANG_RUST @@'
 SECURITY_CONTACT:
   type: str
-  help: Private security channel, or the forge advisory URL
+  help: Private security channel, or the forge advisory URL. A placeholder is fine; replace before use.
+  placeholder: security@example.com
+  default: security@example.com
 SETUP_COMMAND:
   type: str
   default: just setup
