@@ -61,10 +61,12 @@ def test_a_gated_question_is_declared_after_its_gate(interview):
         seen.add(name)
 
 
-def test_no_pinned_tool_version_is_ever_asked(interview):
-    """They are pinned in the layers and Renovate bumps them, which the skill says.
+def test_no_tool_version_is_asked_unless_the_user_asks_to_set_them(interview):
+    """One question stands in for the whole set.
 
-    The interactive interview asked fourteen of them anyway.
+    Asking sixteen versions unprompted was one mistake; never asking them was the
+    other. A user who needs Python 3.12 or an older Rust says so once, and everybody
+    else answers a single no.
     """
     pins = [
         name
@@ -72,7 +74,27 @@ def test_no_pinned_tool_version_is_ever_asked(interview):
         if name.endswith("_VERSION") and name not in ("API_VERSION", "PYTHON_VERSION_NODOT")
     ]
     assert len(pins) >= 14, "expected the pinned toolchain set to be present"
-    assert [name for name in pins if is_asked(interview[name])] == []
+    unguarded = [
+        name for name in pins if "PIN_TOOL_VERSIONS" not in interview[name].get("when", "")
+    ]
+    assert unguarded == []
+    assert all(is_asked(interview[name]) for name in pins), "a pin is asked, just not by default"
+
+
+def test_the_version_gate_is_asked_once_and_before_every_version(interview):
+    order = list(interview)
+    assert interview["PIN_TOOL_VERSIONS"]["default"] is False
+    assert interview["PIN_TOOL_VERSIONS"]["help"]
+    first_version = min(
+        order.index(n) for n in order if "PIN_TOOL_VERSIONS" in interview[n].get("when", "")
+    )
+    assert order.index("PIN_TOOL_VERSIONS") < first_version
+
+
+def test_a_version_keeps_its_own_layer_gate_too(interview):
+    """Opting into versions must not ask for a toolchain the project does not use."""
+    assert interview["GO_VERSION"]["when"] == "@@ (WANT_LANG_GO) and PIN_TOOL_VERSIONS @@"
+    assert interview["UV_VERSION"]["when"] == "@@ PIN_TOOL_VERSIONS @@"
 
 
 def test_the_contract_version_is_still_asked(interview):
@@ -116,18 +138,38 @@ def test_a_plain_project_answers_a_sane_number_of_questions(interview):
     assert len(unconditional) <= 30, unconditional
 
 
-def test_the_catalog_reports_which_questions_are_never_asked():
-    """An agent should be able to check, not remember, which questions to skip."""
+def test_the_catalog_reports_what_it_does_not_ask_by_default():
+    """An agent should be able to check, not remember, which questions to skip.
+
+    `pinned` and `asked` are different facts: a pin is a real question behind one
+    gate, a derived value is not a question at all.
+    """
     catalog = load_catalog(TEMPLATES)
     questions = catalog.questions_for(["lang-python", "api"])
-    assert questions["PYTHON_VERSION"].asked is False
+    assert questions["PYTHON_VERSION"].pinned is True
+    assert questions["PYTHON_VERSION"].asked is True
     assert questions["PYTHON_VERSION_NODOT"].asked is False
+    assert questions["PYTHON_VERSION_NODOT"].pinned is False
+    assert questions["API_VERSION"].pinned is False
     assert questions["API_VERSION"].asked is True
     assert questions["API_SERVER_URL"].asked is True
 
 
+def test_the_version_gate_is_not_reported_as_an_unknown_answer():
+    """The interview writes it into the answers file `apply` then validates.
+
+    It reaches no template on purpose, so the naive UNKNOWN_KEY rule would warn
+    about an answer the tool itself produced.
+    """
+    from project_setup.catalog import validate_data
+
+    catalog = load_catalog(TEMPLATES)
+    data = {"PROJECT_NAME": "x", "DESCRIPTION": "y", "PIN_TOOL_VERSIONS": True}
+    assert [p for p in validate_data(catalog, data) if p.code == "UNKNOWN_KEY"] == []
+
+
 def test_a_supplied_answer_the_interview_skips_is_still_recorded(tmp_path):
-    """Copier records only what it asked, and it never asks a pin.
+    """Copier records only what it asked, and it does not ask a pin by default.
 
     So a preset that pins PYTHON_VERSION handed to `interview` produced an answers
     file without it, and `apply --data-file` then silently used the layer default.

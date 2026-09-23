@@ -37,6 +37,7 @@ JOB_TIMEOUT_MINUTES:
   type: str
 PYTHON_VERSION:
   default: '3.13'
+  help: Python minor, e.g. 3.13. Sets requires-python and the ruff target
   type: str
 PYTHON_VERSION_NODOT:
   default: '@@ PYTHON_VERSION | replace(''.'', '''') @@'
@@ -48,4 +49,5 @@ PY_SRC_LAYOUT:
   type: bool
 UV_VERSION:
   default: 0.9.8
+  help: uv
   type: str

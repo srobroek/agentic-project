@@ -30,6 +30,7 @@ AWS_CDK_DEST_SHELL:
   type: str
 AWS_CDK_VERSION:
   default: 2.1142.0
+  help: aws-cdk CLI, exact stable release
   type: str
 FORGE_PLATFORM:
   choices:

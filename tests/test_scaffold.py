@@ -228,6 +228,17 @@ def test_derived_python_version_needs_no_answer(tmp_path: Path):
     assert 'target-version = "py313"' in (tmp_path / "ruff.toml").read_text()
 
 
+def test_a_chosen_tool_version_reaches_the_files_that_pin_it(tmp_path: Path):
+    """The point of asking at all: a user who needs 3.12 gets 3.12 everywhere.
+
+    Including the derived PYTHON_VERSION_NODOT, which is computed from the answer
+    rather than from the layer default.
+    """
+    assert scaffold(tmp_path, "py-lib", extra={"PYTHON_VERSION": "3.12"}).ok
+    assert 'target-version = "py312"' in (tmp_path / "ruff.toml").read_text()
+    assert '"3.12"' in (tmp_path / ".mise/conf.d/python.toml").read_text()
+
+
 def test_api_contract_is_rendered_with_its_licence_url(tmp_path: Path):
     result = scaffold(
         tmp_path, "api-service", extra={"ORG": "example-org", "API_SERVER_URL": "https://api.x"}

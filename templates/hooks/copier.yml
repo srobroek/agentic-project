@@ -29,4 +29,5 @@ MAX_FILE_KB:
   type: str
 UV_VERSION:
   default: 0.9.8
+  help: uv
   type: str

@@ -161,20 +161,67 @@ TOKEN_POLICY: dict[str, dict] = {
         "default": "",
         "help": "Allowed commit scopes, comma separated. Empty leaves scopes unrestricted",
     },
-    # Versions are pinned, not resolved at run time. Renovate owns the bumps.
-    "GO_VERSION": {"type": "str", "default": "1.26", "ask": False},
-    "GOLANGCI_LINT_VERSION": {"type": "str", "default": "2.7.1", "ask": False},
-    "GOVULNCHECK_VERSION": {"type": "str", "default": "1.1.4", "ask": False},
-    "NODE_VERSION": {"type": "str", "default": "24", "ask": False},
-    "BUN_VERSION": {"type": "str", "default": "1.3.2", "ask": False},
-    "BIOME_VERSION": {"type": "str", "default": "2.4.1", "ask": False},
-    "UV_VERSION": {"type": "str", "default": "0.9.8", "ask": False},
-    "RUST_VERSION": {"type": "str", "default": "1.93.0", "ask": False},
-    "CARGO_NEXTEST_VERSION": {"type": "str", "default": "0.9.104", "ask": False},
-    "CARGO_DENY_VERSION": {"type": "str", "default": "0.19.1", "ask": False},
-    "CARGO_MACHETE_VERSION": {"type": "str", "default": "0.9.1", "ask": False},
-    "CARGO_LLVM_COV_VERSION": {"type": "str", "default": "0.6.20", "ask": False},
-    "PYTHON_VERSION": {"type": "str", "default": "3.13", "ask": False},
+    # Tool versions. Pinned, not resolved at run time: Renovate owns the bumps, and a
+    # scaffold that reads "latest" builds something different next week. A user who
+    # needs a specific one is asked -- once, behind PIN_GATE -- rather than never.
+    "GO_VERSION": {
+        "type": "str",
+        "default": "1.26",
+        "pin": True,
+        "help": "Go toolchain",
+    },
+    "GOLANGCI_LINT_VERSION": {
+        "type": "str",
+        "default": "2.7.1",
+        "pin": True,
+        "help": "golangci-lint",
+    },
+    "GOVULNCHECK_VERSION": {
+        "type": "str",
+        "default": "1.1.4",
+        "pin": True,
+        "help": "govulncheck",
+    },
+    "NODE_VERSION": {
+        "type": "str",
+        "default": "24",
+        "pin": True,
+        "help": "Node major, for tools that need a Node runtime",
+    },
+    "BUN_VERSION": {"type": "str", "default": "1.3.2", "pin": True, "help": "Bun"},
+    "BIOME_VERSION": {"type": "str", "default": "2.4.1", "pin": True, "help": "Biome"},
+    "UV_VERSION": {"type": "str", "default": "0.9.8", "pin": True, "help": "uv"},
+    "RUST_VERSION": {
+        "type": "str",
+        "default": "1.93.0",
+        "pin": True,
+        "help": "Rust toolchain, written to rust-toolchain.toml",
+    },
+    "CARGO_NEXTEST_VERSION": {
+        "type": "str",
+        "default": "0.9.104",
+        "pin": True,
+        "help": "cargo-nextest",
+    },
+    "CARGO_DENY_VERSION": {"type": "str", "default": "0.19.1", "pin": True, "help": "cargo-deny"},
+    "CARGO_MACHETE_VERSION": {
+        "type": "str",
+        "default": "0.9.1",
+        "pin": True,
+        "help": "cargo-machete",
+    },
+    "CARGO_LLVM_COV_VERSION": {
+        "type": "str",
+        "default": "0.6.20",
+        "pin": True,
+        "help": "cargo-llvm-cov",
+    },
+    "PYTHON_VERSION": {
+        "type": "str",
+        "default": "3.13",
+        "pin": True,
+        "help": "Python minor, e.g. 3.13. Sets requires-python and the ruff target",
+    },
     # Derived rather than asked: 3.13 -> 313. Copier renders the default as Jinja.
     "PYTHON_VERSION_NODOT": {
         "type": "str",
@@ -276,7 +323,12 @@ TOKEN_POLICY: dict[str, dict] = {
     },
     # Pinned like every other tool version: `just aws-cdk-init` passes it to the
     # native CDK CLI, which refuses anything but an exact stable release.
-    "AWS_CDK_VERSION": {"type": "str", "default": "2.1142.0", "ask": False},
+    "AWS_CDK_VERSION": {
+        "type": "str",
+        "default": "2.1142.0",
+        "pin": True,
+        "help": "aws-cdk CLI, exact stable release",
+    },
     "A11Y_SURFACES_JSON": {
         "type": "str",
         "default": "[]",
@@ -292,8 +344,18 @@ TOKEN_POLICY: dict[str, dict] = {
         "default": "",
         "help": "Dependency and fixture setup before Playwright starts, indented four spaces",
     },
-    "PLAYWRIGHT_VERSION": {"type": "str", "default": "1.56.0", "ask": False},
-    "AXE_PLAYWRIGHT_VERSION": {"type": "str", "default": "4.11.0", "ask": False},
+    "PLAYWRIGHT_VERSION": {
+        "type": "str",
+        "default": "1.56.0",
+        "pin": True,
+        "help": "Playwright",
+    },
+    "AXE_PLAYWRIGHT_VERSION": {
+        "type": "str",
+        "default": "4.11.0",
+        "pin": True,
+        "help": "@axe-core/playwright",
+    },
     "ADRS": {
         "type": "str",
         "default": "[]",
@@ -634,6 +696,25 @@ ASK_WHEN: dict[str, str] = {
     "MONOREPO_MEMBERS": "IS_MONOREPO",
 }
 
+# One question stands in for every tool-version question. Never asking them at all
+# was the wrong end of the trade: the pins are right for almost everybody, and the
+# user who needs Python 3.12 or an older Rust had no way to say so short of editing
+# the answers file. Asking sixteen versions unprompted was the other wrong end.
+PIN_GATE = "PIN_TOOL_VERSIONS"
+PIN_GATE_SPEC: dict = {
+    "type": "bool",
+    "default": False,
+    "help": (
+        "Pin tool versions yourself? No keeps this template's stable set, which Renovate bumps"
+    ),
+}
+
+
+def is_pin(name: str) -> bool:
+    """A tool version Renovate owns: asked only behind PIN_GATE."""
+    return bool(TOKEN_POLICY.get(name, {}).get("pin"))
+
+
 # Every variable an interview question may reference in a `when:` or a derived
 # default without being a question itself.
 INTERVIEW_BUILTINS: frozenset[str] = frozenset({"_copier_conf", "_copier_operation"})
@@ -749,6 +830,16 @@ def build_interview(out: Path, declared: dict[str, dict[str, dict]]) -> int:
             "default": False,
             "help": f"Include the {layer} layer?",
         }
+    # Asked once, straight after the selection that decides whether any tool version
+    # is in play at all. A scaffold with no language layer pins nothing, so it is not
+    # asked there either.
+    pin_owners = sorted({layer for name in specs if is_pin(name) for layer in owners[name]})
+    if pin_owners:
+        gate = dict(PIN_GATE_SPEC)
+        optional_owners = sorted(want_var(layer) for layer in pin_owners if layer not in ALWAYS_ON)
+        if len(optional_owners) == len(pin_owners):
+            gate["when"] = "@@ " + " or ".join(optional_owners) + " @@"
+        questions[PIN_GATE] = gate
     for name in interview_order(declared):
         if name in questions:
             continue
@@ -766,17 +857,21 @@ def build_interview(out: Path, declared: dict[str, dict[str, dict]]) -> int:
             # A gated question must have a default, or an unselected layer would
             # make Copier demand an answer it will never use.
             spec.setdefault("default", "")
-        if not TOKEN_POLICY.get(name, {}).get("ask", True) or is_derived(spec):
-            # Not a setup-time decision: a pinned tool version that Renovate bumps,
-            # or a value computed from another answer. `when: false` keeps the
-            # default in force and the value settable with --set, while taking the
-            # question out of the conversation.
+        if is_pin(name):
+            # Behind the one gate, so the default stands unless the user asked to
+            # set versions. Copier still records it, and --set still overrides it.
+            gating.append(PIN_GATE)
+            spec["when"] = "@@ " + " and ".join(gating) + " @@"
+            spec.setdefault("default", "")
+        elif is_derived(spec):
+            # Computed from another answer at render time, so there is nothing to
+            # ask. `when: false` keeps the default in force and --set working.
             spec["when"] = "false"
         if spec.get("when") != "false" and not spec.get("help"):
             raise SystemExit(
                 f"FATAL {name}: an asked question needs `help`. Without it the prompt is "
                 f"the bare token name, which tells a user nothing. Add help to "
-                f"TOKEN_POLICY[{name!r}], or mark it `ask: False` if it is a pin."
+                f"TOKEN_POLICY[{name!r}]."
             )
         questions[name] = spec
 

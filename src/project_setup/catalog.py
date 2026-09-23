@@ -25,6 +25,10 @@ ALWAYS_ON: tuple[str, ...] = (
 INTERVIEW = "_interview"
 ANSWERS_FILE = ".project-setup-answers.yml"
 
+# The interview's own gate for the tool-version questions. It reaches no template, so
+# it is a known key rather than an unknown one when it appears in an answers file.
+PIN_GATE = "PIN_TOOL_VERSIONS"
+
 
 def want_var(layer: str) -> str:
     """WANT_ variable that selects a layer: 'lang-go' -> 'WANT_LANG_GO'."""
@@ -52,10 +56,13 @@ class Question:
     # other answers. Reported separately so a reader cannot mistake the expression
     # for a literal value to pass through.
     derived_from: str = ""
-    # False for a question the interview deliberately never asks: a pinned tool
-    # version, or a value derived from another answer. Machine-readable so an agent
-    # can check instead of remembering a prose rule. Still settable with --set.
+    # False for a question the interview never asks because there is nothing to
+    # decide: a value derived from another answer. Still settable with --set.
     asked: bool = True
+    # A tool version. Asked only when the user says they want to set versions, so a
+    # caller offers that choice once instead of reading out sixteen pins. Machine
+    # readable so an agent can check rather than remember a prose rule.
+    pinned: bool = False
 
     @property
     def derived(self) -> bool:
@@ -116,7 +123,11 @@ class Catalog:
         return names
 
 
-def _parse_questions(cfg: dict, never_asked: frozenset[str] = frozenset()) -> dict[str, Question]:
+def _parse_questions(
+    cfg: dict,
+    never_asked: frozenset[str] = frozenset(),
+    pinned: frozenset[str] = frozenset(),
+) -> dict[str, Question]:
     out: dict[str, Question] = {}
     for key, spec in cfg.items():
         if key.startswith("_"):
@@ -141,34 +152,36 @@ def _parse_questions(cfg: dict, never_asked: frozenset[str] = frozenset()) -> di
             placeholder=str(spec.get("placeholder", "")),
             derived_from=derived_from,
             asked=key not in never_asked,
+            pinned=key in pinned,
         )
     return out
 
 
-def _never_asked(templates_dir: Path) -> frozenset[str]:
-    """Questions the generated interview pins out of the conversation.
+def _interview_conditions(templates_dir: Path) -> dict[str, str]:
+    """Each interview question's `when:`, which is where the gating actually lives.
 
-    `when: false` is how the interview says "not a setup-time decision". Reading it
-    back here is what lets `catalog --json` tell a caller which questions not to ask,
+    Reading it back is what lets `catalog --json` tell a caller what not to ask,
     instead of leaving that as a rule to remember.
     """
     cfg_path = templates_dir / INTERVIEW / "copier.yml"
     if not cfg_path.is_file():
-        return frozenset()
+        return {}
     cfg = yaml.safe_load(cfg_path.read_text()) or {}
-    return frozenset(
-        key
+    return {
+        key: str(spec.get("when", ""))
         for key, spec in cfg.items()
-        if not key.startswith("_")
-        and isinstance(spec, dict)
-        and str(spec.get("when", "")).strip().lower() in ("false", "no")
-    )
+        if not key.startswith("_") and isinstance(spec, dict)
+    }
 
 
 def load_catalog(templates_dir: Path) -> Catalog:
     if not templates_dir.is_dir():
         raise FileNotFoundError(f"templates directory not found: {templates_dir}")
-    never_asked = _never_asked(templates_dir)
+    conditions = _interview_conditions(templates_dir)
+    never_asked = frozenset(
+        key for key, when in conditions.items() if when.strip().lower() in ("false", "no")
+    )
+    pinned = frozenset(key for key, when in conditions.items() if PIN_GATE in when)
     layers: dict[str, Layer] = {}
     for child in sorted(templates_dir.iterdir()):
         if not child.is_dir() or child.name == INTERVIEW:
@@ -180,7 +193,7 @@ def load_catalog(templates_dir: Path) -> Catalog:
         layers[child.name] = Layer(
             name=child.name,
             path=child,
-            questions=_parse_questions(cfg, never_asked),
+            questions=_parse_questions(cfg, never_asked, pinned),
             has_tasks=bool(cfg.get("_tasks")),
         )
     if not layers:
@@ -226,7 +239,7 @@ def validate_data(catalog: Catalog, data: dict) -> list[Problem]:
     want_names = {want_var(n) for n in catalog.optional_layers()}
 
     for key in sorted(data):
-        if key.startswith("_") or key in want_names or key in known:
+        if key.startswith("_") or key in want_names or key in known or key == PIN_GATE:
             continue
         problems.append(
             Problem(

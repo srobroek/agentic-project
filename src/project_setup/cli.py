@@ -17,6 +17,7 @@ import yaml
 
 from .catalog import (
     ANSWERS_FILE,
+    PIN_GATE,
     Catalog,
     Question,
     load_catalog,
@@ -191,9 +192,14 @@ def cmd_catalog(args: argparse.Namespace, catalog: Catalog) -> int:
                             # for it, and do not pass the expression through.
                             "derived": q.derived,
                             "derived_from": q.derived_from or None,
-                            # False means the interview never asks it: a pinned tool
-                            # version, or a derived value. Still settable with --set.
+                            # False means there is nothing to ask: the value is
+                            # derived. Still settable with --set.
                             "asked": q.asked,
+                            # A tool version. Offer the one choice -- "set versions
+                            # yourself, or take the pinned set?" -- and ask these
+                            # only if the user says yes.
+                            "pinned": q.pinned,
+                            "pin_gate": PIN_GATE if q.pinned else None,
                         }
                         for q in layer.questions.values()
                     },
@@ -230,17 +236,18 @@ def cmd_presets(args: argparse.Namespace, catalog: Catalog) -> int:
         print(f"{args.show} resolves to {len(data)} answers:\n")
         width = max((len(k) for k in data), default=0)
         questions = catalog.questions_for(selected_layers(catalog, data))
-        pinned = []
+        notes = []
         for key in sorted(data):
-            note = "" if questions.get(key, Question(key)).asked else "  (pinned)"
+            q = questions.get(key, Question(key))
+            note = "  (tool version)" if q.pinned else "" if q.asked else "  (derived)"
             if note:
-                pinned.append(key)
+                notes.append(key)
             print(f"  {key:<{width}}  {answer_display(data[key]):<46}  <- {origin.get(key)}{note}")
         print(f"\nlayers: {', '.join(selected_layers(catalog, data))}")
-        if pinned:
+        if notes:
             print(
-                f"{len(pinned)} pinned answer(s) are not asked: a tool version Renovate bumps, "
-                f"or a derived value."
+                f"{len(notes)} answer(s) are not asked unless you ask to set them: a tool "
+                f"version Renovate bumps, or a value derived from another answer."
             )
         return 0
 

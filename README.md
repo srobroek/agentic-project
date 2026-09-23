@@ -135,10 +135,12 @@ blocking the scaffold, and `apply` lists them when it finishes:
 | --- | --- |
 | `base` `governance` `hooks` `just` `ci` `forge` `steering` | `release` `worktrunk` `api` `i18n` `a11y` `infra-aws-cdk` `lang-go` `lang-python` `lang-ts` `lang-rust` |
 
-58 distinct questions across all layers, but only the selected layers' questions are asked,
-only two are ever required — `PROJECT_NAME` and `DESCRIPTION` — and 20 are never asked at all:
-a pinned tool version is Renovate's to bump and a derived value is computed from another
-answer. `catalog --json` marks each of those `"asked": false`; `--set` still overrides them.
+59 distinct questions across all layers, but only the selected layers' questions are asked, and
+only two are ever required — `PROJECT_NAME` and `DESCRIPTION`. Four are derived from another
+answer and never asked; `catalog --json` marks them `"asked": false`. Sixteen tool versions sit
+behind a single yes/no question, `PIN_TOOL_VERSIONS`: answer no and the pinned set stands,
+answer yes and you are asked only for the toolchains your layers actually use. `catalog --json`
+marks those `"pinned": true`. `--set` overrides any of them without the gate.
 
 `FORGE_PLATFORM` is a single answer that swaps the entire CI surface: choose `gitlab` and every
 `.github/` file from every layer is excluded, the `.gitlab/ci` fragments are used instead, and

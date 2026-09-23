@@ -58,6 +58,10 @@ WANT_INFRA_AWS_CDK:
   type: bool
   default: false
   help: Include the infra-aws-cdk layer?
+PIN_TOOL_VERSIONS:
+  type: bool
+  default: false
+  help: Pin tool versions yourself? No keeps this template's stable set, which Renovate bumps
 INSTALL_COMMANDS:
   type: str
   help: What a fresh clone runs to install dependencies; shown in the README
@@ -114,8 +118,9 @@ COMMIT_SCOPES:
   default: ''
 UV_VERSION:
   type: str
+  help: uv
   default: 0.9.8
-  when: 'false'
+  when: '@@ PIN_TOOL_VERSIONS @@'
 IS_MONOREPO:
   type: bool
   help: Monorepo? Writes .ci/members.json, which drives per-member CI jobs
@@ -139,8 +144,9 @@ MONOREPO_MEMBERS:
   when: '@@ IS_MONOREPO @@'
 BUN_VERSION:
   type: str
+  help: Bun
   default: 1.3.2
-  when: 'false'
+  when: '@@ (WANT_A11Y or WANT_LANG_TS) and PIN_TOOL_VERSIONS @@'
 A11Y_SURFACES_JSON:
   type: str
   help: JSON array of {name, baseURL, routes}. '[]' records axe scanning as a gap
@@ -158,12 +164,14 @@ A11Y_PREPARE_COMMANDS:
   when: '@@ (WANT_A11Y) @@'
 PLAYWRIGHT_VERSION:
   type: str
+  help: Playwright
   default: 1.56.0
-  when: 'false'
+  when: '@@ (WANT_A11Y) and PIN_TOOL_VERSIONS @@'
 AXE_PLAYWRIGHT_VERSION:
   type: str
+  help: '@axe-core/playwright'
   default: 4.11.0
-  when: 'false'
+  when: '@@ (WANT_A11Y) and PIN_TOOL_VERSIONS @@'
 ORG:
   type: str
   help: Organisation or owner, used for the API contact. A placeholder is fine; replace before use.
@@ -249,8 +257,9 @@ AWS_CDK_DEST_SHELL:
   when: '@@ (WANT_INFRA_AWS_CDK) @@'
 AWS_CDK_VERSION:
   type: str
+  help: aws-cdk CLI, exact stable release
   default: 2.1142.0
-  when: 'false'
+  when: '@@ (WANT_INFRA_AWS_CDK) and PIN_TOOL_VERSIONS @@'
 GO_VENDOR:
   type: bool
   help: Commit vendor/?
@@ -258,16 +267,19 @@ GO_VENDOR:
   when: '@@ (WANT_LANG_GO) @@'
 GO_VERSION:
   type: str
+  help: Go toolchain
   default: '1.26'
-  when: 'false'
+  when: '@@ (WANT_LANG_GO) and PIN_TOOL_VERSIONS @@'
 GOLANGCI_LINT_VERSION:
   type: str
+  help: golangci-lint
   default: 2.7.1
-  when: 'false'
+  when: '@@ (WANT_LANG_GO) and PIN_TOOL_VERSIONS @@'
 GOVULNCHECK_VERSION:
   type: str
+  help: govulncheck
   default: 1.1.4
-  when: 'false'
+  when: '@@ (WANT_LANG_GO) and PIN_TOOL_VERSIONS @@'
 PY_SRC_LAYOUT:
   type: bool
   help: src/ layout? (false for a flat layout)
@@ -275,8 +287,9 @@ PY_SRC_LAYOUT:
   when: '@@ (WANT_LANG_PYTHON) @@'
 PYTHON_VERSION:
   type: str
+  help: Python minor, e.g. 3.13. Sets requires-python and the ruff target
   default: '3.13'
-  when: 'false'
+  when: '@@ (WANT_LANG_PYTHON) and PIN_TOOL_VERSIONS @@'
 PYTHON_VERSION_NODOT:
   type: str
   help: Derived from PYTHON_VERSION; override only if you must
@@ -289,32 +302,39 @@ RUST_LIBRARY:
   when: '@@ (WANT_LANG_RUST) @@'
 RUST_VERSION:
   type: str
+  help: Rust toolchain, written to rust-toolchain.toml
   default: 1.93.0
-  when: 'false'
+  when: '@@ (WANT_LANG_RUST) and PIN_TOOL_VERSIONS @@'
 CARGO_NEXTEST_VERSION:
   type: str
+  help: cargo-nextest
   default: 0.9.104
-  when: 'false'
+  when: '@@ (WANT_LANG_RUST) and PIN_TOOL_VERSIONS @@'
 CARGO_DENY_VERSION:
   type: str
+  help: cargo-deny
   default: 0.19.1
-  when: 'false'
+  when: '@@ (WANT_LANG_RUST) and PIN_TOOL_VERSIONS @@'
 CARGO_MACHETE_VERSION:
   type: str
+  help: cargo-machete
   default: 0.9.1
-  when: 'false'
+  when: '@@ (WANT_LANG_RUST) and PIN_TOOL_VERSIONS @@'
 CARGO_LLVM_COV_VERSION:
   type: str
+  help: cargo-llvm-cov
   default: 0.6.20
-  when: 'false'
+  when: '@@ (WANT_LANG_RUST) and PIN_TOOL_VERSIONS @@'
 NODE_VERSION:
   type: str
+  help: Node major, for tools that need a Node runtime
   default: '24'
-  when: 'false'
+  when: '@@ (WANT_LANG_TS) and PIN_TOOL_VERSIONS @@'
 BIOME_VERSION:
   type: str
+  help: Biome
   default: 2.4.1
-  when: 'false'
+  when: '@@ (WANT_LANG_TS) and PIN_TOOL_VERSIONS @@'
 FORGE_HOSTNAME:
   type: str
   help: Self-hosted forge host. Empty means the platform's public host

@@ -32,9 +32,11 @@ _tasks:
 
 BIOME_VERSION:
   default: 2.4.1
+  help: Biome
   type: str
 BUN_VERSION:
   default: 1.3.2
+  help: Bun
   type: str
 FORGE_PLATFORM:
   choices:
@@ -49,6 +51,7 @@ JOB_TIMEOUT_MINUTES:
   type: str
 NODE_VERSION:
   default: '24'
+  help: Node major, for tools that need a Node runtime
   type: str
 PROJECT_NAME:
   help: Repository name, lowercase with dashes

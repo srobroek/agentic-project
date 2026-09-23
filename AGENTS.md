@@ -84,10 +84,11 @@ undefined, not an error. `_check_declaration_order` fails the port on one.
 MUST give every asked question `help`. Without it the prompt is the bare token name, so
 the interview asks `MAX_FILE_KB` and tells the user nothing. The port refuses.
 
-MUST mark a question the interview should not ask with `ask: False`, not by leaving it
-asked. A pinned tool version is Renovate's to bump and a derived value is computed, so
-both get `when: false` in `_interview`: not asked, still settable with `--set`. The flag
-reaches `catalog --json` as `"asked": false`, so a caller can check rather than remember.
+MUST mark a tool version with `pin: True` in `TOKEN_POLICY`, which puts it behind the single
+`PIN_TOOL_VERSIONS` gate in `_interview` rather than in front of every user or out of reach
+of all of them. It reaches `catalog --json` as `"pinned": true`. A value derived from another
+answer is not a question at all and gets `when: false`, reported as `"asked": false`. Both
+remain settable with `--set`.
 
 MUST resolve a generator argument against the catalog defaults, not the raw answers.
 Copier applies a layer's default itself; `run_generators` assembles its arguments outside

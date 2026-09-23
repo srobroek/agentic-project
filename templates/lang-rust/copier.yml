@@ -32,15 +32,19 @@ _tasks:
 
 CARGO_DENY_VERSION:
   default: 0.19.1
+  help: cargo-deny
   type: str
 CARGO_LLVM_COV_VERSION:
   default: 0.6.20
+  help: cargo-llvm-cov
   type: str
 CARGO_MACHETE_VERSION:
   default: 0.9.1
+  help: cargo-machete
   type: str
 CARGO_NEXTEST_VERSION:
   default: 0.9.104
+  help: cargo-nextest
   type: str
 FORGE_PLATFORM:
   choices:
@@ -59,6 +63,7 @@ RUST_LIBRARY:
   type: bool
 RUST_VERSION:
   default: 1.93.0
+  help: Rust toolchain, written to rust-toolchain.toml
   type: str
 SPDX_ID:
   choices:

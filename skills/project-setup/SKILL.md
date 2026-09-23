@@ -127,6 +127,10 @@ the four identity answers no preset can carry — `PROJECT_NAME`, `DESCRIPTION`,
 selection. Then ask only the questions those layers declare, grouped by layer, each with its
 default and its permitted values.
 
+**Both paths.** Ask once whether the user wants to set specific tool versions or take the
+pinned set, and name the versions the selected layers would use so the answer is informed.
+Expect no, and move on. This is one question, not sixteen.
+
 MUST ask in rounds. One question at a time turns a two-minute conversation into twenty.
 
 MUST offer, once, that the scaffold runs without a model, so the user can re-run or reproduce
@@ -157,9 +161,15 @@ so rather than improvising a question.
 MUST NOT re-ask anything the user has already told you, in this conversation or in a
 `.project-setup-answers.yml` already in the repository. Read it back instead.
 
-MUST NOT ask a question `catalog --json` marks `"asked": false`. Twenty are: every pinned
-tool version, and every value derived from another answer. The interview does not ask them
-either. If a user names a version, pass it with `--set`; it still overrides.
+MUST NOT ask a question `catalog --json` marks `"asked": false`. Those are values derived from
+another answer; the interview does not ask them either.
+
+MUST ask about tool versions exactly once, with one question: does the user want to set
+specific versions, or take the pinned set? Every question marked `"pinned": true` — sixteen
+toolchain and tool versions — is behind that one gate, `PIN_TOOL_VERSIONS`. Take the pins
+unless the user asks otherwise: they are a tested combination and Renovate bumps them. If the
+user does want to choose, ask only the pins the selected layers own, and only those. A user
+who names one version in passing needs no gate: pass it with `--set` and say you did.
 
 MUST NOT ask a question the catalog marks `derived`. Those are computed from other answers at
 render time; `derived_from` shows the expression, which is not a value to pass through.
@@ -291,6 +301,7 @@ MUST report each command's own output. "Setup complete" in place of output hides
 NOT copying template files by hand. `apply` places them byte-exactly; you cannot.
 NOT editing a generated file. `.gitignore`, `.pre-commit-config.yaml` and the justfile import
   block are rewritten from `.d/` fragments; edit the fragment and re-run the generator.
-NOT re-resolving pinned tool versions. They are pinned in the layers and Renovate bumps them.
+NOT looking up the latest release of a pinned tool. The pins are a tested set and Renovate
+  bumps them; ask whether the user wants to choose, and take their answer if they do.
 NOT `--no-tasks` unless the user asks. Tasks are what initialise git, materialise the
   licence, and let the language's own tool own its manifest.

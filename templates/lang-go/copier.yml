@@ -33,9 +33,11 @@ FORGE_PLATFORM:
   type: str
 GOLANGCI_LINT_VERSION:
   default: 2.7.1
+  help: golangci-lint
   type: str
 GOVULNCHECK_VERSION:
   default: 1.1.4
+  help: govulncheck
   type: str
 GO_VENDOR:
   default: false
@@ -43,6 +45,7 @@ GO_VENDOR:
   type: bool
 GO_VERSION:
   default: '1.26'
+  help: Go toolchain
   type: str
 JOB_TIMEOUT_MINUTES:
   default: '15'
