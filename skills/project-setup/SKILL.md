@@ -165,7 +165,7 @@ MUST NOT ask a question `catalog --json` marks `"asked": false`. Those are value
 another answer; the interview does not ask them either.
 
 MUST ask about tool versions exactly once, with one question: does the user want to set
-specific versions, or take the pinned set? Every question marked `"pinned": true` — sixteen
+specific versions, or take the pinned set? Every question marked `"pinned": true` — nineteen
 toolchain and tool versions — is behind that one gate, `PIN_TOOL_VERSIONS`. Take the pins
 unless the user asks otherwise: they are a tested combination and Renovate bumps them. If the
 user does want to choose, ask only the pins the selected layers own, and only those. A user
@@ -175,9 +175,11 @@ MUST NOT ask a question the catalog marks `derived`. Those are computed from oth
 render time; `derived_from` shows the expression, which is not a value to pass through.
 
 MUST NOT ask the user to decide something a task already decides. Native toolchain init is
-not a question: `cargo init`, `bun init` and `uv init` each skip when their manifest already
-exists and warn when the tool is absent, so the right thing happens per language without
-anybody choosing. `bun init`'s own leftovers are removed by the task, not by you.
+not a question: `cargo init`, `bun init`, `uv init` and `go mod init` each skip when their
+manifest already exists and warn when the tool is absent, so the right thing happens per
+language without anybody choosing. Reconciling what those tools leave behind is the task's
+job too, not yours: bun's generic CLAUDE.md and stale lockfile, uv's second interpreter pin,
+the placeholder each one writes.
 
 ### Two answers are required; everything else has a value
 

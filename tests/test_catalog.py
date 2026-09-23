@@ -200,6 +200,51 @@ def test_the_declared_placeholder_is_discoverable(catalog):
     assert any(p.code == "PLACEHOLDER_IN_USE" and p.key == "CODEOWNER" for p in problems)
 
 
+def test_a_branch_answer_that_contradicts_the_checkout_is_a_warning(tmp_path):
+    """DEFAULT_BRANCH reaches the CI triggers and release-please.
+
+    `main` written into a checkout on `master` produced a repository whose pipelines
+    watch a branch that does not exist, and nothing said so.
+    """
+    from project_setup.catalog import repo_conflicts
+
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git/HEAD").write_text("ref: refs/heads/master\n")
+
+    problems = repo_conflicts(tmp_path, {"DEFAULT_BRANCH": "main"})
+
+    assert [p.code for p in problems] == ["ANSWER_CONTRADICTS_REPO"]
+    assert problems[0].level == "warning"
+    assert "master" in problems[0].message
+
+
+def test_a_matching_branch_says_nothing(tmp_path):
+    from project_setup.catalog import repo_conflicts
+
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git/HEAD").write_text("ref: refs/heads/main\n")
+
+    assert repo_conflicts(tmp_path, {"DEFAULT_BRANCH": "main"}) == []
+
+
+def test_a_greenfield_destination_has_no_branch_to_contradict(tmp_path):
+    from project_setup.catalog import repo_conflicts
+
+    assert repo_conflicts(tmp_path, {"DEFAULT_BRANCH": "main"}) == []
+
+
+def test_a_destination_that_cannot_hold_a_repository_is_named(tmp_path):
+    """`mkdir` raised FileExistsError from inside pathlib, after writing the licence."""
+    from project_setup.cli import unusable_dest
+
+    a_file = tmp_path / "notadir"
+    a_file.write_text("")
+
+    assert "is a file" in (unusable_dest(a_file) or "")
+    assert unusable_dest(tmp_path / "does/not/exist/yet") is None
+    assert "which is a file" in (unusable_dest(a_file / "under/a/file") or "")
+
+
 def test_a_stack_is_only_a_composition_of_parts(catalog):
     from project_setup.cli import load_preset
 

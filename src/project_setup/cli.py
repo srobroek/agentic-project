@@ -21,6 +21,7 @@ from .catalog import (
     Catalog,
     Question,
     load_catalog,
+    repo_conflicts,
     selected_layers,
     validate_data,
     want_var,
@@ -309,7 +310,7 @@ def answer_display(value: object, width: int = ANSWER_WIDTH) -> str:
 
 def cmd_validate(args: argparse.Namespace, catalog: Catalog) -> int:
     data = load_data(args, catalog)
-    problems = validate_data(catalog, data)
+    problems = validate_data(catalog, data) + repo_conflicts(Path(args.dest), data)
     layers = selected_layers(catalog, data)
     errors = [p for p in problems if p.level == "error"]
 
@@ -495,6 +496,8 @@ def cmd_plan(args: argparse.Namespace, catalog: Catalog) -> int:
             print(f"  {p}", file=sys.stderr)
         print("refusing to plan against an incomplete answer set", file=sys.stderr)
         return 1
+    for conflict in repo_conflicts(Path(args.dest), data):
+        print(f"  {conflict}", file=sys.stderr)
     result = place_layers(
         catalog,
         Path(args.dest),
@@ -518,6 +521,8 @@ def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
     if (problem := unusable_dest(dest)) is not None:
         print(problem, file=sys.stderr)
         return 1
+    for conflict in repo_conflicts(dest, data):
+        print(f"  {conflict}", file=sys.stderr)
     dest.mkdir(parents=True, exist_ok=True)
     result = place_layers(
         catalog,
@@ -598,6 +603,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     v = sub.add_parser("validate", help="check an answer set before writing anything")
     add_data_args(v)
+    v.add_argument("--dest", default=".", help="checkout the answers are checked against")
     v.add_argument("--json", action="store_true")
     v.set_defaults(func=cmd_validate)
 

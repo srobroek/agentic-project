@@ -135,12 +135,16 @@ blocking the scaffold, and `apply` lists them when it finishes:
 | --- | --- |
 | `base` `governance` `hooks` `just` `ci` `forge` `steering` | `release` `worktrunk` `api` `i18n` `a11y` `infra-aws-cdk` `lang-go` `lang-python` `lang-ts` `lang-rust` |
 
-59 distinct questions across all layers, but only the selected layers' questions are asked, and
+61 distinct questions across all layers, but only the selected layers' questions are asked, and
 only two are ever required — `PROJECT_NAME` and `DESCRIPTION`. Four are derived from another
-answer and never asked; `catalog --json` marks them `"asked": false`. Sixteen tool versions sit
+answer and never asked; `catalog --json` marks them `"asked": false`. Nineteen tool versions sit
 behind a single yes/no question, `PIN_TOOL_VERSIONS`: answer no and the pinned set stands,
 answer yes and you are asked only for the toolchains your layers actually use. `catalog --json`
 marks those `"pinned": true`. `--set` overrides any of them without the gate.
+
+Each language layer hands its manifest to the language's own tool — `cargo init`, `bun init`,
+`uv init`, `go mod init` — and then reconciles what that tool leaves behind against what the
+layers own. A fresh scaffold of any stack passes its own `just setup` and `just check`.
 
 `FORGE_PLATFORM` is a single answer that swaps the entire CI surface: choose `gitlab` and every
 `.github/` file from every layer is excluded, the `.gitlab/ci` fragments are used instead, and
@@ -154,7 +158,8 @@ marks those `"pinned": true`. `--set` overrides any of them without the gate.
 | Re-apply | byte-identical, 0 changes |
 | Unresolved tokens | 0 |
 | Empty directories | 0 |
-| Tests | 90 unit + 12 presets end to end |
+| Tests | 152 unit + 12 presets end to end |
+| Fresh scaffold | `just setup` and `just check` green, all four languages |
 
 CPU time rather than wall clock, because wall clock tracks machine load.
 

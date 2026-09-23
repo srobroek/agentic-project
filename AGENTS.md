@@ -90,6 +90,16 @@ of all of them. It reaches `catalog --json` as `"pinned": true`. A value derived
 answer is not a question at all and gets `when: false`, reported as `"asked": false`. Both
 remain settable with `--set`.
 
+MUST add a script to `TASK_SCRIPTS[layer]` when you add a `_task` that runs it. The two
+tables are declared apart, so wiring one alone produces a layer that places every file and
+then dies with "can't open file" from a path inside `templates/`, which reads like a corrupt
+checkout. `check_task_scripts_installed()` fails the port instead.
+
+MUST leave a fresh scaffold able to run its own `just setup` and `just check`. Every tool a
+recipe names has to be provided by something the same scaffold installs: a `.mise/conf.d/`
+pin, a dependency group, or a package manifest. `tests/test_toolchain.py` enforces it per
+layer, because `bunx biome` with biome in no manifest silently resolved a PATH shim.
+
 MUST resolve a generator argument against the catalog defaults, not the raw answers.
 Copier applies a layer's default itself; `run_generators` assembles its arguments outside
 Copier, so an unanswered `DEFAULT_BRANCH` aborted a half-written scaffold with a KeyError.

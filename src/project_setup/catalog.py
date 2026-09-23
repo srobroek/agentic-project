@@ -314,6 +314,36 @@ def _inert_answers(data: dict) -> list[Problem]:
     ]
 
 
+def repo_conflicts(dest: Path, data: dict) -> list[Problem]:
+    """Answers that contradict the repository they are about to be written into.
+
+    DEFAULT_BRANCH reaches the CI workflows and release-please, so `main` written into
+    a checkout on `master` produces a repository whose pipelines never trigger. The
+    scaffolder is standing in that checkout and can see the difference; a warning is
+    the right weight, because the user may be about to rename the branch.
+    """
+    head = dest / ".git/HEAD"
+    if not head.is_file():
+        return []
+    ref = head.read_text().strip()
+    if not ref.startswith("ref: refs/heads/"):
+        return []
+    branch = ref.removeprefix("ref: refs/heads/")
+    answered = str(data.get("DEFAULT_BRANCH", "")) or None
+    if answered is None or answered == branch:
+        return []
+    return [
+        Problem(
+            "warning",
+            "ANSWER_CONTRADICTS_REPO",
+            f"DEFAULT_BRANCH is {answered!r} but the checkout at {dest} is on {branch!r}. "
+            f"CI triggers and release-please read this, so they would watch a branch that "
+            f"does not exist. Set DEFAULT_BRANCH={branch}, or rename the branch.",
+            "DEFAULT_BRANCH",
+        )
+    ]
+
+
 def _owners(catalog: Catalog, question: str, layers: list[str]) -> str:
     return ", ".join(n for n in layers if question in catalog.layers[n].questions)
 
