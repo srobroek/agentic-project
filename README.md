@@ -150,12 +150,21 @@ blocking the scaffold, and `apply` lists them when it finishes:
 | --- | --- |
 | `base` `governance` `hooks` `just` `ci` `forge` `steering` | `release` `worktrunk` `api` `i18n` `a11y` `infra-aws-cdk` `lang-go` `lang-python` `lang-ts` `lang-rust` |
 
-61 distinct questions across all layers, but only the selected layers' questions are asked, and
-only two are ever required — `PROJECT_NAME` and `DESCRIPTION`. Four are derived from another
-answer and never asked; `catalog --json` marks them `"asked": false`. Nineteen tool versions sit
-behind a single yes/no question, `PIN_TOOL_VERSIONS`: answer no and the pinned set stands,
-answer yes and you are asked only for the toolchains your layers actually use. `catalog --json`
-marks those `"pinned": true`. `--set` overrides any of them without the gate.
+61 distinct questions across all layers, only the selected layers' are asked, and only two are
+ever required — `PROJECT_NAME` and `DESCRIPTION`. A minimal project answers eleven prompts,
+because four classes of question are not asked by default. `catalog --json` reports which class
+each one is in, and `--set` reaches every one of them without the gate:
+
+| Class | Asked | Marked | Why |
+| --- | --- | --- | --- |
+| tool version | behind `PIN_TOOL_VERSIONS` | `"pinned": true` | a tested set Renovate bumps |
+| shipped default | behind `CUSTOMISE_DEFAULTS` | `"tuned": true` | a hook limit, a job timeout, the README's install line |
+| composed | never | `"composed": true` | a JSON artifact nobody types at a prompt: the ADR list, the monorepo members |
+| derived | never | `"derived": true` | a pure function of another answer |
+
+The layer selection is one multiselect, not one yes/no per layer. `WANT_<LAYER>` stays the
+answer a preset, a data file and `--set` write, and it is derived from the list when the
+interview asks.
 
 Each language layer hands its manifest to the language's own tool — `cargo init`, `bun init`,
 `uv init`, `go mod init` — and then reconciles what that tool leaves behind against what the
@@ -176,7 +185,7 @@ the files; removing somebody's CI is not this tool's call.
 | Re-apply | byte-identical, 0 changes |
 | Unresolved tokens | 0 |
 | Empty directories | 0 |
-| Tests | 176 unit + 12 presets end to end |
+| Tests | 187 unit + 12 presets end to end |
 | Fresh scaffold | `just setup` and `just check` green, all four languages |
 
 CPU time rather than wall clock, because wall clock tracks machine load.

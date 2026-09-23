@@ -98,11 +98,45 @@ so detail that does not fit belongs in `skills/project-setup/SKILL.md`, which is
 composed answer is assembled anyway. A `placeholder` question does not restate that it is
 a placeholder: the prompt pre-fills it, and `validate` and the end of `apply` both name it.
 
-MUST mark a tool version with `pin: True` in `TOKEN_POLICY`, which puts it behind the single
-`PIN_TOOL_VERSIONS` gate in `_interview` rather than in front of every user or out of reach
-of all of them. It reaches `catalog --json` as `"pinned": true`. A value derived from another
-answer is not a question at all and gets `when: false`, reported as `"asked": false`. Both
-remain settable with `--set`.
+MUST put a question into exactly one of the four not-asked classes, by flag in
+`TOKEN_POLICY`, and never by hand in `_interview`. `catalog --json` reports all four, so a
+caller checks rather than remembers, and every one of them stays settable with `--set`:
+
+| Flag | `_interview` | `catalog --json` | Why |
+| --- | --- | --- | --- |
+| `pin: True` | behind `PIN_TOOL_VERSIONS` | `"pinned": true` | a tested version Renovate bumps |
+| `tune: True` | behind `CUSTOMISE_DEFAULTS` | `"tuned": true` | a default that is already right |
+| `compose: True` | `when: false` | `"composed": true` | a JSON artifact nobody types in one line |
+| `derive:` | `when: false` | `"derived": true` | a pure function of another answer |
+
+The two gates exist because both ends of the trade were wrong. Sixteen tool versions and
+eight thresholds asked unprompted made a minimal project answer 27 questions, every default
+already correct; never asking them put them out of reach of the user who needs Python 3.12.
+One question stands in for each set. `composed` and `derived` are both `asked: false` and a
+caller must do opposite things with them: a composed value is exactly what it should supply,
+a derived one would land a Jinja expression in a file.
+
+MUST select layers through `SELECTION`, the one multiselect, and derive each `WANT_<LAYER>`
+from it. Ten `Include the <layer> layer? (y/N)` prompts were ten of those 27 questions. The
+booleans remain the canonical answer -- every preset, `--set` and `selected_layers` read
+them, and `selected_layers` reads the list too, as a union rather than a fallback. `--dest`
+aside, `seed_selection` is the one place that translates: it converts supplied `WANT_*` into
+the list's pre-selection and drops the booleans, because supplied data beats a rendered
+default and the interview would otherwise ignore every deselection the user made.
+
+MUST keep `PIN_GATE`, `TUNE_GATE` and `SELECTION` defined only in
+`src/project_setup/catalog.py`, as `ALWAYS_ON` already is. `tools/port_assets.py` imports
+them. `PIN_GATE` was declared in both files and they agreed only by luck.
+
+MUST report what an answer no longer selects but the checkout still holds. Copier excludes
+what a layer stopped contributing; nothing deletes what an earlier apply wrote, so
+re-applying with `WANT_RELEASE: false` left the whole release layer in place. The
+destination's own answers file records what was selected last time, so `deselected_layers`
+needs no manifest to notice, and `orphaned_files` gets the file list from a pretend place
+rather than a static walk -- a layer's paths are templated and conditionally excluded, so
+Copier's own list is the only one right by construction. It costs one dry run per dropped
+layer, which is why nothing scans until a layer has actually been dropped. A warning, like
+`STALE_FORGE_SURFACE`: deleting a user's files is not this tool's call.
 
 MUST add a script to `TASK_SCRIPTS[layer]` when you add a `_task` that runs it. The two
 tables are declared apart, so wiring one alone produces a layer that places every file and

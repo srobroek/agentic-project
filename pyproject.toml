@@ -25,3 +25,8 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RET"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# So `pytest` works in a fresh clone, before `uv pip install -e .`. Without it every
+# test file failed to collect on `No module named 'project_setup'`, which reads like a
+# broken checkout rather than a missing install step. `tools` is here because the port
+# enforces the interview's invariants and the tests that pin them have to call it.
+pythonpath = ["src", "tools"]

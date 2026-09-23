@@ -108,11 +108,13 @@ TOKEN_POLICY: dict[str, dict] = {
         "type": "str",
         "default": "mise install && just setup",
         "help": "What a fresh clone runs to install dependencies; shown in the README",
+        "tune": True,
     },
     "USAGE_EXAMPLE": {
         "type": "str",
         "default": "just dev",
         "help": "One command the README shows for running the project",
+        "tune": True,
     },
     "SPDX_ID": {
         "type": "str",
@@ -134,6 +136,7 @@ TOKEN_POLICY: dict[str, dict] = {
         "type": "str",
         "default": "",
         "help": "Reporting contact. Empty omits CODE_OF_CONDUCT.md",
+        "tune": True,
     },
     "DEFAULT_BRANCH": {
         "type": "str",
@@ -145,21 +148,25 @@ TOKEN_POLICY: dict[str, dict] = {
         "type": "str",
         "default": "15",
         "help": "Per-job CI timeout; a hung job holds a runner until it fires",
+        "tune": True,
     },
     "MAX_FILE_KB": {
         "type": "str",
         "default": "512",
         "help": "Largest file the added-large-files hook accepts",
+        "tune": True,
     },
     "HOOK_EXCLUDE_PATTERNS": {
         "type": "str",
         "default": "",
         "help": r"Paths excluded from hooks, joined with \|. Empty drops the block",
+        "tune": True,
     },
     "COMMIT_SCOPES": {
         "type": "str",
         "default": "",
         "help": "Allowed commit scopes, comma separated. Empty leaves scopes unrestricted",
+        "tune": True,
     },
     # Tool versions. Pinned, not resolved at run time: Renovate owns the bumps, and a
     # scaffold that reads "latest" builds something different next week. A user who
@@ -365,11 +372,13 @@ TOKEN_POLICY: dict[str, dict] = {
         "type": "str",
         "default": "[]",
         "help": "JSON array of ADRs, one file written each; [] writes none",
+        "compose": True,
     },
     "MONOREPO_MEMBERS": {
         "type": "str",
         "default": "[]",
         "help": "JSON array of {name, path, capabilities}; [] is single-root",
+        "compose": True,
     },
 }
 
@@ -736,7 +745,13 @@ def check_task_scripts_installed() -> None:
 
 
 # Single-sourced from the package so the port and the CLI cannot disagree.
-from project_setup.catalog import ALWAYS_ON, ANSWERS_FILE  # noqa: E402
+from project_setup.catalog import (  # noqa: E402
+    ALWAYS_ON,
+    ANSWERS_FILE,
+    PIN_GATE,
+    SELECTION,
+    TUNE_GATE,
+)
 
 
 def want_var(layer: str) -> str:
@@ -748,6 +763,18 @@ def want_var(layer: str) -> str:
 # these two are what the user came to answer.
 IDENTITY_FIRST: tuple[str, ...] = ("PROJECT_NAME", "DESCRIPTION")
 
+# The shape, asked straight after identity. FORGE_PLATFORM swaps the entire CI
+# surface in one answer, so asking it 27th of 27 -- after every hook threshold and
+# job timeout -- put the widest-reaching answer behind the narrowest ones.
+SHAPE_NEXT: tuple[str, ...] = ("FORGE_PLATFORM",)
+
+# One multiselect instead of ten `Include the <layer> layer? (y/N)` prompts. Each
+# WANT_<LAYER> is then derived from it and never asked, which keeps every preset,
+# every layer's `when:`, `--set` and `selected_layers` reading exactly the key they
+# already read. SELECTION itself is imported: it is interview-only, like PIN_GATE,
+# and the package has to recognise it as a known key rather than a stray answer.
+SELECTION_HELP = "Layers to include, beyond the seven every project gets"
+
 # Conditions beyond layer selection. A question whose own answer decides whether it
 # is meaningful is gated on that answer, not asked and then ignored.
 ASK_WHEN: dict[str, str] = {
@@ -758,17 +785,44 @@ ASK_WHEN: dict[str, str] = {
 # was the wrong end of the trade: the pins are right for almost everybody, and the
 # user who needs Python 3.12 or an older Rust had no way to say so short of editing
 # the answers file. Asking sixteen versions unprompted was the other wrong end.
-PIN_GATE = "PIN_TOOL_VERSIONS"
+# PIN_GATE is imported above, so the port and the CLI cannot disagree about it.
 PIN_GATE_SPEC: dict = {
     "type": "bool",
     "default": False,
     "help": "Choose tool versions yourself? No keeps the pinned set Renovate bumps",
 }
 
+# The same trade, for the thresholds and commands whose defaults are already right:
+# a hook size limit, a job timeout, the README's install line. Eight of the 27
+# prompts a minimal project answered were these, every one of them correct as
+# shipped. Behind one gate they stay reachable without being read out to everybody.
+# TUNE_GATE is imported above, for the same reason.
+TUNE_GATE_SPEC: dict = {
+    "type": "bool",
+    "default": False,
+    "help": "Change the hook, CI and README defaults? No keeps the shipped set",
+}
+
 
 def is_pin(name: str) -> bool:
     """A tool version Renovate owns: asked only behind PIN_GATE."""
     return bool(TOKEN_POLICY.get(name, {}).get("pin"))
+
+
+def is_tuned(name: str) -> bool:
+    """A default that is already right: asked only behind TUNE_GATE."""
+    return bool(TOKEN_POLICY.get(name, {}).get("tune"))
+
+
+def is_composed(name: str) -> bool:
+    """An answer assembled from the conversation, never typed at a prompt.
+
+    A JSON array of ADRs is not a question a human can answer in one line, and the
+    prompt asking for one was truncated mid-schema anyway. Not asked, still set by
+    `--set` and by a data file, and marked `composed` in `catalog --json` so a caller
+    can tell it apart from a derived value it must not supply.
+    """
+    return bool(TOKEN_POLICY.get(name, {}).get("compose"))
 
 
 # Every variable an interview question may reference in a `when:` or a derived
@@ -913,12 +967,24 @@ def build_interview(out: Path, declared: dict[str, dict[str, dict]]) -> int:
     # until the layer selection exists, because the selection is what gates it.
     for name in IDENTITY_FIRST:
         questions[name] = dict(specs[name])
+    # One multiselect, not ten yes/no prompts. Each WANT_<LAYER> is derived from it
+    # below, so everything downstream still reads the key it always read.
+    questions[SELECTION] = {
+        "type": "str",
+        "multiselect": True,
+        "choices": optional,
+        "default": [],
+        "help": SELECTION_HELP,
+    }
     for layer in optional:
         questions[want_var(layer)] = {
             "type": "bool",
-            "default": False,
-            "help": f"Include the {layer} layer?",
+            "default": f"@@ '{layer}' in {SELECTION} @@",
+            "when": "false",
         }
+    # The widest-reaching answer, next. It swaps every layer's CI surface at once.
+    for name in SHAPE_NEXT:
+        questions[name] = dict(specs[name])
     # Asked once, straight after the selection that decides whether any tool version
     # is in play at all. A scaffold with no language layer pins nothing, so it is not
     # asked there either.
@@ -929,6 +995,11 @@ def build_interview(out: Path, declared: dict[str, dict[str, dict]]) -> int:
         if len(optional_owners) == len(pin_owners):
             gate["when"] = "@@ " + " or ".join(optional_owners) + " @@"
         questions[PIN_GATE] = gate
+    # The same shape for the defaults that are already right. Unconditional: every
+    # layer set has at least one of them, and a gate with a `when:` nobody can
+    # predict is worse than one question answered no.
+    if any(is_tuned(name) for name in specs):
+        questions[TUNE_GATE] = dict(TUNE_GATE_SPEC)
     for name in interview_order(declared):
         if name in questions:
             continue
@@ -946,10 +1017,14 @@ def build_interview(out: Path, declared: dict[str, dict[str, dict]]) -> int:
             # A gated question must have a default, or an unselected layer would
             # make Copier demand an answer it will never use.
             spec.setdefault("default", "")
-        if is_pin(name):
+        if is_composed(name):
+            # Assembled from the conversation, not typed at a prompt. Not asked at
+            # all, and `--set` and a data file still carry it.
+            spec["when"] = "false"
+        elif is_pin(name) or is_tuned(name):
             # Behind the one gate, so the default stands unless the user asked to
-            # set versions. Copier still records it, and --set still overrides it.
-            gating.append(PIN_GATE)
+            # set them. Copier still records it, and --set still overrides it.
+            gating.append(PIN_GATE if is_pin(name) else TUNE_GATE)
             spec["when"] = "@@ " + " and ".join(gating) + " @@"
             spec.setdefault("default", "")
         elif is_derived(spec):
@@ -1019,10 +1094,18 @@ def main() -> int:
     print("-" * len(w))
     print(f"{'TOTAL':<12}{sum(r for _, r, _, _ in rows):>9}{sum(v for _, _, v, _ in rows):>10}")
     n = build_interview(out, declared)
-    print(
-        f"\n_interview: {n} questions "
-        f"({len([name for name in declared if name not in ALWAYS_ON])} selection booleans + tokens)"
-    )
+    cfg = yaml.safe_load((out / "_interview" / "copier.yml").read_text())
+    asked = [
+        key
+        for key, spec in cfg.items()
+        if not key.startswith("_")
+        and isinstance(spec, dict)
+        and str(spec.get("when", "")).strip().lower() != "false"
+    ]
+    plain = [key for key in asked if not cfg[key].get("when")]
+    # The number that matters is what a minimal project is actually prompted for; the
+    # total counts every gated and layer-specific question nobody sees.
+    print(f"\n_interview: {n} declared, {len(asked)} askable, {len(plain)} asked of everybody")
     return 0
 
 

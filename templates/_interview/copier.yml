@@ -16,58 +16,87 @@ PROJECT_NAME:
 DESCRIPTION:
   type: str
   help: One-line purpose
+LAYERS:
+  type: str
+  multiselect: true
+  choices:
+  - release
+  - worktrunk
+  - lang-go
+  - lang-python
+  - lang-ts
+  - lang-rust
+  - api
+  - i18n
+  - a11y
+  - infra-aws-cdk
+  default: []
+  help: Layers to include, beyond the seven every project gets
 WANT_RELEASE:
   type: bool
-  default: false
-  help: Include the release layer?
+  default: '@@ ''release'' in LAYERS @@'
+  when: 'false'
 WANT_WORKTRUNK:
   type: bool
-  default: false
-  help: Include the worktrunk layer?
+  default: '@@ ''worktrunk'' in LAYERS @@'
+  when: 'false'
 WANT_LANG_GO:
   type: bool
-  default: false
-  help: Include the lang-go layer?
+  default: '@@ ''lang-go'' in LAYERS @@'
+  when: 'false'
 WANT_LANG_PYTHON:
   type: bool
-  default: false
-  help: Include the lang-python layer?
+  default: '@@ ''lang-python'' in LAYERS @@'
+  when: 'false'
 WANT_LANG_TS:
   type: bool
-  default: false
-  help: Include the lang-ts layer?
+  default: '@@ ''lang-ts'' in LAYERS @@'
+  when: 'false'
 WANT_LANG_RUST:
   type: bool
-  default: false
-  help: Include the lang-rust layer?
+  default: '@@ ''lang-rust'' in LAYERS @@'
+  when: 'false'
 WANT_API:
   type: bool
-  default: false
-  help: Include the api layer?
+  default: '@@ ''api'' in LAYERS @@'
+  when: 'false'
 WANT_I18N:
   type: bool
-  default: false
-  help: Include the i18n layer?
+  default: '@@ ''i18n'' in LAYERS @@'
+  when: 'false'
 WANT_A11Y:
   type: bool
-  default: false
-  help: Include the a11y layer?
+  default: '@@ ''a11y'' in LAYERS @@'
+  when: 'false'
 WANT_INFRA_AWS_CDK:
   type: bool
-  default: false
-  help: Include the infra-aws-cdk layer?
+  default: '@@ ''infra-aws-cdk'' in LAYERS @@'
+  when: 'false'
+FORGE_PLATFORM:
+  type: str
+  help: Only github and gitlab are supported; other forges are an explicit gap
+  choices:
+  - github
+  - gitlab
+  default: github
 PIN_TOOL_VERSIONS:
   type: bool
   default: false
   help: Choose tool versions yourself? No keeps the pinned set Renovate bumps
+CUSTOMISE_DEFAULTS:
+  type: bool
+  default: false
+  help: Change the hook, CI and README defaults? No keeps the shipped set
 INSTALL_COMMANDS:
   type: str
   help: What a fresh clone runs to install dependencies; shown in the README
   default: mise install && just setup
+  when: '@@ CUSTOMISE_DEFAULTS @@'
 USAGE_EXAMPLE:
   type: str
   help: One command the README shows for running the project
   default: just dev
+  when: '@@ CUSTOMISE_DEFAULTS @@'
 SPDX_ID:
   type: str
   help: Licence. Materialised into LICENSE by a post-copy task
@@ -91,10 +120,12 @@ CODE_OF_CONDUCT_CONTACT:
   type: str
   help: Reporting contact. Empty omits CODE_OF_CONDUCT.md
   default: ''
+  when: '@@ CUSTOMISE_DEFAULTS @@'
 ADRS:
   type: str
   help: JSON array of ADRs, one file written each; [] writes none
   default: '[]'
+  when: 'false'
 DEFAULT_BRANCH:
   type: str
   help: Branch CI listens on and the force-push guard protects
@@ -105,14 +136,17 @@ MAX_FILE_KB:
   type: str
   help: Largest file the added-large-files hook accepts
   default: '512'
+  when: '@@ CUSTOMISE_DEFAULTS @@'
 HOOK_EXCLUDE_PATTERNS:
   type: str
   help: Paths excluded from hooks, joined with \|. Empty drops the block
   default: ''
+  when: '@@ CUSTOMISE_DEFAULTS @@'
 COMMIT_SCOPES:
   type: str
   help: Allowed commit scopes, comma separated. Empty leaves scopes unrestricted
   default: ''
+  when: '@@ CUSTOMISE_DEFAULTS @@'
 UV_VERSION:
   type: str
   help: uv
@@ -126,18 +160,12 @@ JOB_TIMEOUT_MINUTES:
   type: str
   help: Per-job CI timeout; a hung job holds a runner until it fires
   default: '15'
-FORGE_PLATFORM:
-  type: str
-  help: Only github and gitlab are supported; other forges are an explicit gap
-  choices:
-  - github
-  - gitlab
-  default: github
+  when: '@@ CUSTOMISE_DEFAULTS @@'
 MONOREPO_MEMBERS:
   type: str
   help: JSON array of {name, path, capabilities}; [] is single-root
   default: '[]'
-  when: '@@ IS_MONOREPO @@'
+  when: 'false'
 BUN_VERSION:
   type: str
   help: Bun

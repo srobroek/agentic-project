@@ -127,9 +127,10 @@ the four identity answers no preset can carry — `PROJECT_NAME`, `DESCRIPTION`,
 selection. Then ask only the questions those layers declare, grouped by layer, each with its
 default and its permitted values.
 
-**Both paths.** Ask once whether the user wants to set specific tool versions or take the
-pinned set, and name the versions the selected layers would use so the answer is informed.
-Expect no, and move on. This is one question, not sixteen.
+**Both paths.** Two gates, two questions, asked once each. Whether the user wants to set
+specific tool versions or take the pinned set — name the versions the selected layers would
+use, so the answer is informed. And whether they want to change the shipped hook, CI and
+README defaults. Expect no to both, and move on. That is two questions, not twenty-three.
 
 MUST ask in rounds. One question at a time turns a two-minute conversation into twenty.
 
@@ -161,8 +162,15 @@ so rather than improvising a question.
 MUST NOT re-ask anything the user has already told you, in this conversation or in a
 `.project-setup-answers.yml` already in the repository. Read it back instead.
 
-MUST NOT ask a question `catalog --json` marks `"asked": false`. Those are values derived from
-another answer; the interview does not ask them either.
+MUST read which class a question is in before deciding whether to ask it. `catalog --json`
+marks four, and they call for four different things:
+
+| Marked | Do |
+| --- | --- |
+| `"derived": true` | never ask, never pass through. `derived_from` is an expression, not a value |
+| `"composed": true` | never ask. Assemble it from the conversation and pass it with `--set` |
+| `"pinned": true` | one question for the whole set, `PIN_TOOL_VERSIONS`. Default to the pins |
+| `"tuned": true` | one question for the whole set, `CUSTOMISE_DEFAULTS`. Default to the shipped values |
 
 MUST ask about tool versions exactly once, with one question: does the user want to set
 specific versions, or take the pinned set? Every question marked `"pinned": true` — nineteen
@@ -171,8 +179,11 @@ unless the user asks otherwise: they are a tested combination and Renovate bumps
 user does want to choose, ask only the pins the selected layers own, and only those. A user
 who names one version in passing needs no gate: pass it with `--set` and say you did.
 
-MUST NOT ask a question the catalog marks `derived`. Those are computed from other answers at
-render time; `derived_from` shows the expression, which is not a value to pass through.
+MUST ask about the shipped defaults the same way, once. Everything marked `"tuned": true` — a
+hook size limit, a per-job CI timeout, the README's install and usage lines, the allowed
+commit scopes — is behind `CUSTOMISE_DEFAULTS`. Reading seven thresholds out to somebody who
+wanted a repository is the mistake this replaced. Take the defaults unless the user raises
+one, and pass a value they do name with `--set`.
 
 MUST NOT ask the user to decide something a task already decides. Native toolchain init is
 not a question: `cargo init`, `bun init`, `uv init` and `go mod init` each skip when their
@@ -243,9 +254,9 @@ and these are the reason to involve a model at all:
 
 | Answer | What it needs |
 | --- | --- |
-| `INSTALL_COMMANDS`, `USAGE_EXAMPLE` | derived from the accepted stack |
-| `COMMIT_SCOPES` | the project's real module names |
-| `HOOK_EXCLUDE_PATTERNS` | paths that genuinely must be excluded |
+| `INSTALL_COMMANDS`, `USAGE_EXAMPLE` | derived from the accepted stack. Behind `CUSTOMISE_DEFAULTS`, so pass a composed value with `--set` rather than opening the gate |
+| `COMMIT_SCOPES` | the project's real module names. Behind the same gate |
+| `HOOK_EXCLUDE_PATTERNS` | paths that genuinely must be excluded. Behind the same gate |
 | `MONOREPO_MEMBERS` | a JSON array of `{name, path, capabilities}`, one per member. This drives per-member CI jobs, so a wrong path produces a job that tests nothing |
 | `DEV_COMMAND` | only if the project actually serves something; empty drops the worktree dev-server block |
 | `ADRS` | a JSON array of decisions, each needing `title`, `decision`, `rationale`, `consequences`. One file is written per entry. An ADR without a decision and its rationale is refused |
@@ -257,8 +268,10 @@ keeps it verbatim because these are declared `str`; a bare YAML list would rende
 repr and land in the file as invalid JSON.
 
 `FORGE_PLATFORM` is worth calling out: it is a single answer that swaps the entire CI surface.
-Ask it once, early. Only `github` and `gitlab` are supported; any other forge is an explicit
-gap, not something to improvise.
+The interview asks it third, straight after the layer selection, and you should too. Only
+`github` and `gitlab` are supported; any other forge is an explicit gap, not something to
+improvise. Changing it later excludes the other forge's files rather than deleting them, so
+`validate` reports `STALE_FORGE_SURFACE` and the files have to go by hand.
 
 Read a composed value back to the user before applying. Never invent a value that looks
 plausible; leave it unset and name the gap.
@@ -286,7 +299,7 @@ symlink to it — nothing is lost, and the run says what it folded in.
 The `.d/` fragment layers are additive: a new fragment lands beside the existing ones and the
 generators fold it in, preserving text outside the managed markers.
 
-## Adding a layer later
+## Adding or dropping a layer later
 
 Re-run with the extra layer selected. Applying is idempotent, so unchanged files stay
 byte-identical and your hand-written code is untouched.
@@ -296,7 +309,12 @@ project-setup apply --data-file .project-setup-answers.yml --dest . \
   --set WANT_LANG_RUST=true --json
 ```
 
-Reuse the recorded answers and add only the selection.
+Reuse the recorded answers and add only the selection. `WANT_<LAYER>` is the key to write; the
+interview's `LAYERS` multiselect is another spelling of the same thing and both are read.
+
+Dropping a layer is not symmetrical. Deselecting it stops it being written; nothing deletes
+what an earlier apply wrote. `validate` reports `STALE_LAYER_FILES`, naming the files that
+layer left behind, and removing them is the user's decision to confirm — not yours to take.
 
 Changing an answer that already fed a generated file re-derives it. `COMMIT_SCOPES` is folded
 into `.pre-commit-config.yaml`; a new value replaces that hook and `merge_hooks.py` reports

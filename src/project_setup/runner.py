@@ -18,8 +18,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import copier
+import yaml
 
-from .catalog import Catalog, selected_layers
+from .catalog import Catalog, selected_layers, want_var
 
 
 @contextlib.contextmanager
@@ -179,8 +180,11 @@ def place_layers(
     pretend: bool = False,
     run_tasks: bool = True,
     quiet: bool = True,
+    layers: list[str] | None = None,
 ) -> RunResult:
-    layers = selected_layers(catalog, data)
+    # An explicit list is for asking what one layer on its own would write. The
+    # answers always select the always-on set too, which is not an answer to that.
+    layers = selected_layers(catalog, data) if layers is None else layers
     result = RunResult(dest=dest, layers=layers, pretend=pretend)
 
     for name in layers:
@@ -296,6 +300,80 @@ def generator_destinations(dest: Path, layers: list[str]) -> list[tuple[str, boo
             path = dest / relative
             if path.is_symlink() or path.exists():
                 found.append((relative, GENERATOR_KEEPS_EXISTING.get(relative, False)))
+    return found
+
+
+def deselected_layers(catalog: Catalog, dest: Path, data: dict) -> list[str]:
+    """Layers a previous apply selected and this answer set does not.
+
+    The destination's own answers file is the record of what was selected last time,
+    so this needs no manifest and no guessing. A layer that was never applied is not
+    deselected, it is simply absent.
+    """
+    from .catalog import ANSWERS_FILE
+
+    recorded_file = dest / ANSWERS_FILE
+    if not recorded_file.is_file():
+        return []
+    try:
+        recorded = yaml.safe_load(recorded_file.read_text()) or {}
+    except yaml.YAMLError:
+        return []
+    if not isinstance(recorded, dict):
+        return []
+    before = set(selected_layers(catalog, recorded))
+    now = set(selected_layers(catalog, data))
+    return sorted(before - now)
+
+
+def orphaned_files(
+    catalog: Catalog, dest: Path, layers: list[str], data: dict | None = None
+) -> dict[str, list[str]]:
+    """Files each named layer would place, which are still present in the destination.
+
+    Copier excludes what a layer no longer contributes; it does not delete what an
+    earlier run already wrote. So turning a layer off left its whole output in place,
+    exactly as switching `FORGE_PLATFORM` did before `_stale_forge_surface`.
+
+    The file list comes from a pretend place into a scratch directory rather than a
+    static walk of the layer. A layer's paths are templated and conditionally
+    excluded, so the only list that is right by construction is the one Copier itself
+    produces. It costs one dry run per deselected layer, which is why the caller
+    establishes there is a deselected layer first.
+
+    One layer at a time, explicitly: the answer set selects the always-on layers too,
+    and their files are not what this is asking about. The real answers are merged in
+    so a templated path resolves the way it resolved when it was written, and the two
+    required questions are filled because a probe that cannot render lists nothing --
+    which reads as "no leftovers" and is the failure this function exists to avoid.
+    """
+    found: dict[str, list[str]] = {}
+    for name in layers:
+        answers = {
+            "PROJECT_NAME": "orphan-probe",
+            "DESCRIPTION": "orphan probe",
+            **catalog.defaults_for([name]),
+            **(data or {}),
+            want_var(name): True,
+        }
+        with tempfile.TemporaryDirectory(prefix="project-setup-orphans-") as scratch:
+            probe = place_layers(
+                catalog,
+                Path(scratch),
+                answers,
+                pretend=True,
+                run_tasks=False,
+                layers=[name],
+            )
+        if not probe.ok:
+            continue
+        still_here = [
+            relative
+            for relative in probe.files("create")
+            if (dest / relative).is_symlink() or (dest / relative).exists()
+        ]
+        if still_here:
+            found[name] = still_here
     return found
 
 

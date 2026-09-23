@@ -39,10 +39,42 @@ def test_identity_comes_before_anything_else(interview):
     assert order[1] == "DESCRIPTION"
 
 
-def test_layer_selection_comes_before_the_questions_it_gates(interview):
+def test_one_multiselect_replaces_ten_yes_no_prompts(interview):
+    """Ten `Include the <layer> layer? (y/N)` prompts were ten of 27 questions.
+
+    The list is asked; each WANT_<LAYER> is derived from it and never asked, so every
+    preset, every `--set` and `selected_layers` still read the key they always read.
+    """
+    from port_assets import SELECTION_HELP
+
+    from project_setup.catalog import SELECTION
+
     order = list(interview)
+    assert order[2] == SELECTION
+    assert interview[SELECTION]["multiselect"] is True
+    assert interview[SELECTION]["help"] == SELECTION_HELP
+    assert interview[SELECTION]["default"] == []
+
     wants = [n for n in order if n.startswith("WANT_")]
-    assert wants == order[2 : 2 + len(wants)]
+    assert len(wants) == len(interview[SELECTION]["choices"])
+    # Declared straight after the list they read, and none of them is a prompt.
+    assert wants == order[3 : 3 + len(wants)]
+    for name in wants:
+        assert is_asked(interview[name]) is False
+        assert SELECTION in interview[name]["default"]
+
+
+def test_the_widest_reaching_answer_is_asked_with_the_shape(interview):
+    """FORGE_PLATFORM swaps every layer's CI surface, and was asked 27th of 27.
+
+    Its position followed layer order, `forge` after `ci`, which put the answer with
+    the largest blast radius behind every hook threshold and job timeout.
+    """
+    order = list(interview)
+    assert order.index("FORGE_PLATFORM") < order.index("SPDX_ID")
+    assert order.index("FORGE_PLATFORM") < order.index("DEFAULT_BRANCH")
+    wants = [n for n in order if n.startswith("WANT_")]
+    assert order.index("FORGE_PLATFORM") == order.index(wants[-1]) + 1
 
 
 def test_a_gated_question_is_declared_after_its_gate(interview):
@@ -121,10 +153,20 @@ def test_every_asked_question_carries_help(interview):
     assert bare == []
 
 
-def test_monorepo_members_is_gated_on_the_flag_that_makes_it_meaningful(interview):
-    """It was asked of every project, monorepo or not, as a raw JSON array."""
-    assert interview["MONOREPO_MEMBERS"]["when"] == "@@ IS_MONOREPO @@"
-    assert list(interview).index("IS_MONOREPO") < list(interview).index("MONOREPO_MEMBERS")
+def test_a_json_artifact_is_not_a_prompt(interview):
+    """`[{"title": ..., "decision": ...}]` is not answerable in one line.
+
+    Gating MONOREPO_MEMBERS on IS_MONOREPO fixed asking it of every project and left
+    the real problem: a human typing a JSON array at a prompt that the terminal then
+    truncated mid-schema. These are assembled from the conversation, which is what
+    `composed` says, and `--set` and a data file still carry them.
+    """
+    for name in ("ADRS", "MONOREPO_MEMBERS"):
+        assert is_asked(interview[name]) is False
+        # Not a Jinja expression over other answers: a real value with a real default.
+        assert "@@" not in str(interview[name]["default"])
+    assert interview["MONOREPO_MEMBERS"]["default"] == "[]"
+    assert interview["ADRS"]["default"] == "[]"
 
 
 def test_a_language_question_is_gated_on_its_layer(interview):
@@ -133,9 +175,41 @@ def test_a_language_question_is_gated_on_its_layer(interview):
 
 
 def test_a_plain_project_answers_a_sane_number_of_questions(interview):
-    """Deselecting every optional layer has to actually shorten the interview."""
+    """A minimal project answered 27 prompts; a PTY drive now counts eleven.
+
+    Counted the way a user experiences it: a question with no `when:` is asked of
+    everybody, whatever they selected. The bound is tight on purpose -- an eleventh
+    unconditional question is a decision somebody should have to make deliberately,
+    not one that lands because there was room.
+    """
     unconditional = [n for n, spec in interview.items() if is_asked(spec) and not spec.get("when")]
-    assert len(unconditional) <= 30, unconditional
+    assert len(unconditional) <= 11, unconditional
+
+
+def test_every_shipped_default_sits_behind_the_one_gate(interview):
+    """Not never-asked and not asked of everybody: one question stands in for them.
+
+    The same trade PIN_TOOL_VERSIONS made. Asking for a hook size limit and a job
+    timeout unprompted was the wrong end of it; putting them out of reach is the other.
+    """
+    from project_setup.catalog import TUNE_GATE
+
+    order = list(interview)
+    gated = [n for n in order if TUNE_GATE in str(interview[n].get("when", ""))]
+
+    assert interview[TUNE_GATE]["default"] is False
+    assert interview[TUNE_GATE]["help"]
+    assert order.index(TUNE_GATE) < min(order.index(n) for n in gated)
+    assert set(gated) == {
+        "CODE_OF_CONDUCT_CONTACT",
+        "COMMIT_SCOPES",
+        "HOOK_EXCLUDE_PATTERNS",
+        "INSTALL_COMMANDS",
+        "JOB_TIMEOUT_MINUTES",
+        "MAX_FILE_KB",
+        "USAGE_EXAMPLE",
+    }
+    assert all(is_asked(interview[n]) for n in gated), "a knob is asked, just not by default"
 
 
 def test_the_catalog_reports_what_it_does_not_ask_by_default():
@@ -307,3 +381,73 @@ def test_the_handover_names_the_destination_and_the_whole_answers_path(tmp_path)
         # Quoted, because a destination with a space in it is a single argument.
         assert f"--dest '{dest}'" in line
         assert f"--data-file '{dest / '.project-setup-answers.yml'}'" in line
+
+
+def test_the_catalog_tells_composed_apart_from_derived():
+    """Both are `asked: false`, and a caller must do opposite things with them.
+
+    A derived value is a Jinja expression over another answer and passing it through
+    lands the expression in a file. A composed value is the one class a caller is
+    expected to assemble and supply.
+    """
+    catalog = load_catalog(TEMPLATES)
+    questions = catalog.questions_for(["governance", "hooks", "ci", "lang-python"])
+
+    assert questions["ADRS"].composed is True
+    assert questions["ADRS"].derived is False
+    assert questions["ADRS"].asked is False
+    assert questions["MONOREPO_MEMBERS"].composed is True
+
+    assert questions["PYTHON_VERSION_NODOT"].derived is True
+    assert questions["PYTHON_VERSION_NODOT"].composed is False
+
+    assert questions["MAX_FILE_KB"].tuned is True
+    assert questions["MAX_FILE_KB"].asked is True
+    assert questions["PYTHON_VERSION"].pinned is True
+    assert questions["PYTHON_VERSION"].tuned is False
+
+
+def test_the_interview_keys_are_not_reported_as_unknown_answers():
+    """The interview writes all three into the answers file `apply` then validates."""
+    from project_setup.catalog import INTERVIEW_KEYS, validate_data
+
+    catalog = load_catalog(TEMPLATES)
+    data = {"PROJECT_NAME": "x", "DESCRIPTION": "y", **{k: True for k in INTERVIEW_KEYS}}
+    data["LAYERS"] = ["lang-ts"]
+
+    assert [p for p in validate_data(catalog, data) if p.code == "UNKNOWN_KEY"] == []
+
+
+def test_the_multiselect_selects_the_same_layers_the_booleans_do():
+    """Both spellings reach `selected_layers`, and neither is a fallback."""
+    from project_setup.catalog import selected_layers
+
+    catalog = load_catalog(TEMPLATES)
+    by_list = selected_layers(catalog, {"LAYERS": ["lang-rust", "release"]})
+    by_flags = selected_layers(catalog, {"WANT_LANG_RUST": True, "WANT_RELEASE": True})
+
+    assert by_list == by_flags
+    assert "lang-rust" in by_list and "release" in by_list
+    # A union, because an interview seeded from a preset can record both.
+    both = selected_layers(catalog, {"LAYERS": ["release"], "WANT_LANG_RUST": True})
+    assert both == by_list
+
+
+def test_a_preset_pre_selects_its_layers_and_stays_deselectable():
+    """Handing Copier the booleans as well would make them win over the multiselect.
+
+    Supplied data beats a rendered default, so the list would show the preset's
+    layers and then ignore every deselection the user made in the prompt.
+    """
+    from project_setup.cli import seed_selection
+
+    catalog = load_catalog(TEMPLATES)
+    seeded = seed_selection(
+        catalog, {"PROJECT_NAME": "x", "WANT_LANG_TS": True, "WANT_RELEASE": True}
+    )
+
+    assert seeded["LAYERS"] == ["lang-ts", "release"]
+    assert [k for k in seeded if k.startswith("WANT_")] == []
+    assert seeded["PROJECT_NAME"] == "x"
+    # Nothing supplied means nothing to seed; the interview asks from scratch.
+    assert seed_selection(catalog, {}) == {}

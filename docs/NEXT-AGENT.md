@@ -24,13 +24,16 @@ Read `README.md` for what it is, `AGENTS.md` for the invariants, and
 
 ```sh
 just port                          # regenerate templates/ from assets/
-.venv/bin/python -m pytest -q      # 176 unit tests
+.venv/bin/python -m pytest -q      # 187 unit tests
 .venv/bin/python tools/e2e.py      # all 12 stacks, end to end, with tasks
 ```
 
-Run them through the project interpreter. A bare `pytest` resolves to the mise shim, which
-cannot import `project_setup`, and every test file fails to collect. `just check` and
-`just e2e` do this for you.
+`pytest` alone now also works wherever the runtime dependencies are installed: `pythonpath`
+in `pyproject.toml` puts `src` and `tools` on the path, so a fresh clone needs no editable
+install. When the interpreter that owns the `pytest` name lacks `copier` or `jinja2` — the
+mise shim on this machine does — `tests/conftest.py` fails collection with one line naming
+`.venv/bin/python -m pytest`, instead of five `ModuleNotFoundError` tracebacks that read
+like a corrupt checkout.
 
 `tools/e2e.py` asserts, per stack: validate is clean, `plan` writes nothing, `apply`
 succeeds, no `@@` tokens survive, expected files exist, excluded files do not, no empty
@@ -43,11 +46,12 @@ Re-run all three after every change. A change that breaks `e2e.py` is a regressi
 All four have now been driven for real. What each one produced is recorded here so the next
 reader does not repeat it.
 
-1. **The interactive interview.** Driven through a PTY at 80, 120 and 200 columns. 27 prompts
-   for the most minimal project, in a sane order, and deselecting a language does stop its
-   questions. Nine prompts were truncated mid-word by the terminal width; fixed and now
-   enforced by `_check_help_fits_a_prompt`. Its closing line named an `apply` command with no
-   `--dest`; the CLI prints the whole pipeline instead. There is still no TTY driver in the
+1. **The interactive interview.** Driven through a PTY at 80, 120 and 200 columns. It asked
+   27 prompts for the most minimal project; ten were one-layer-at-a-time yes/no questions and
+   eight were defaults already correct, so it now asks thirteen. Deselecting a language does
+   stop its questions. Nine prompts were truncated mid-word by the terminal width; fixed and
+   now enforced by `_check_help_fits_a_prompt`. Its closing line named an `apply` command with
+   no `--dest`; the CLI prints the whole pipeline instead. There is still no TTY driver in the
    suite — the properties are pinned on the generated question set, which is where they live.
 2. **The agent interview.** Run headless against a greenfield directory. It classified the
    repository, offered two composed shapes and a manual path in one round, and recommended
@@ -88,8 +92,10 @@ regression even if it looks tidier.
    `validate` and listed at the end of `apply`. The goal is visibility, not a wall.
 3. **Never ask what a task decides.** `native_init.py` skips when its manifest exists and
    warns when its tool is absent, so there was no decision for a user to make.
-4. **Never ask for a `derived` value.** `catalog --json` marks them; `derived_from` holds the
-   expression, which is not a value to pass through.
+4. **Never ask for a `derived` value, and know which of the four classes a question is in.**
+   `catalog --json` marks all four. `derived` holds an expression in `derived_from`, which is
+   not a value to pass through; `composed` is the JSON artifact a caller is expected to
+   assemble and supply; `pinned` and `tuned` are real questions, each behind one gate.
 5. **Only `.jinja` files render.** `@@` is the variable delimiter, chosen by auditing the
    corpus: `{{` appears in 24 asset files and `${{` in 20, while `{%` and `{#` appear in
    none. That is what keeps GitHub Actions and justfile syntax intact.
@@ -113,48 +119,42 @@ alone, so a brownfield repository's own hooks survive. `merge` in `assets/hooks/
 carries the reasoning, and
 `tests/test_scaffold.py::test_changing_a_merged_answer_re_derives_the_generated_file` pins it.
 
+## Resolved: five judgement calls the owner took
+
+These were recorded here as deliberately-left-alone, and then decided the other way. Each
+is now implemented, and the reasoning lives next to the code that carries it.
+
+1. **The layer selection is one multiselect.** Ten `Include the <layer> layer? (y/N)` prompts
+   became `LAYERS`, and each `WANT_<LAYER>` is derived from it. The booleans stay the
+   canonical answer, so no preset changed; `selected_layers` reads both spellings as a union,
+   and `seed_selection` is the only translation point.
+2. **The shipped defaults sit behind one gate.** `CUSTOMISE_DEFAULTS`, the same trade
+   `PIN_TOOL_VERSIONS` already made, for `MAX_FILE_KB`, `JOB_TIMEOUT_MINUTES`,
+   `HOOK_EXCLUDE_PATTERNS`, `COMMIT_SCOPES`, `CODE_OF_CONDUCT_CONTACT`, `INSTALL_COMMANDS`
+   and `USAGE_EXAMPLE`. `catalog --json` marks them `"tuned": true`.
+3. **`ADRS` and `MONOREPO_MEMBERS` are not prompts.** `compose: True` in `TOKEN_POLICY`,
+   `when: false` in the interview, `"composed": true` in `catalog --json` — a fourth class,
+   distinct from `derived` because a caller must supply one and must never supply the other.
+4. **A deselected layer's leftovers are named.** `deselected_layers` reads the destination's
+   own recorded answers, and `orphaned_files` gets the file list from a pretend place rather
+   than the per-layer manifest this entry assumed was needed. Reported as
+   `STALE_LAYER_FILES`.
+5. **`FORGE_PLATFORM` is asked third**, straight after the layer selection, via `SHAPE_NEXT`.
+
 ## Found, judged, and deliberately left alone
 
-None of these was fixed. Each is recorded with its file and its symptom so the finding
-survives, and each was left because the trade belongs to whoever owns the design, not
-because it went unnoticed. This repository has no ledger, so this list is the carrier.
+Neither of these was fixed. Each is recorded with its file and its symptom so the finding
+survives. This repository has no ledger, so this list is the carrier.
 
-1. **`tools/port_assets.py` — the layer selection is ten separate yes/no prompts.** A
-   minimal project answers 27 questions and 10 of them are `Include the <layer> layer?`. A
-   Copier `multiselect` would be one. It changes `WANT_*` from booleans to a list, which
-   every preset, `selected_layers` and `want_var` read. Check: one prompt selects the layers
-   and `presets --show` still resolves each stack to the same layer list.
-2. **`tools/port_assets.py` — eight always-asked questions are knobs with correct
-   defaults.** `MAX_FILE_KB`, `JOB_TIMEOUT_MINUTES`, `HOOK_EXCLUDE_PATTERNS`,
-   `COMMIT_SCOPES`, `CODE_OF_CONDUCT_CONTACT`, `INSTALL_COMMANDS`, `USAGE_EXAMPLE`, `ADRS`.
-   `PIN_TOOL_VERSIONS` is the precedent for putting a set behind one gate. Not applied,
-   because none of them is derivable, task-decided or preset-fixed, so none meets the bar
-   the rest of this document sets. Check: a plain project answers fewer than twenty prompts
-   and every knob is still reachable without editing the answers file.
-3. **`tools/port_assets.py` — `ADRS` and `MONOREPO_MEMBERS` are prompted as raw JSON.**
-   `SKILL.md` calls them artifacts assembled from the conversation, which is exactly what a
-   human at a one-line prompt cannot do. Dropping them from `_interview` would shorten it
-   and remove an unanswerable question, at the cost of making a monorepo inexpressible
-   without a model. Check: `interview` never prompts for a JSON array, and `--set` and a
-   data file still carry both.
-4. **`src/project_setup/catalog.py` — deselecting a layer leaks its files.** Re-applying
-   with `WANT_RELEASE: false` leaves the release layer's files in place, exactly as the
-   forge switch did before `_stale_forge_surface`. Detecting it needs a per-layer file
-   manifest, which nothing currently builds. Check: re-applying with a layer removed reports
-   the files that layer wrote and which are still present.
-5. **`templates/_interview/copier.yml` — `FORGE_PLATFORM` is asked 27th of 27.**
-   `SKILL.md` says to ask it "at once, early", because it swaps the whole CI surface. Its
-   position follows layer order, `forge` after `ci`. Check: it is asked with the layer
-   selection, and `_check_declaration_order` still passes.
-6. **`catalog --json` no longer carries the `ADRS` schema.** It moved out of `help` to fit
+1. **`catalog --json` no longer carries the `ADRS` schema.** It moved out of `help` to fit
    an 80-column prompt, and now lives only in `skills/project-setup/SKILL.md`. A non-agent
    reader of `catalog --json` has one more hop. The alternative is a `detail` field the port
    keeps out of the interview: more machinery, and a second string per token to drift.
    Check: the schema is reachable from `catalog --json` without lengthening any prompt.
-7. **`README.md`, `AGENTS.md`, `SKILL.md`, this file — `uvx slopvac` fails on all four, and
-   did so before any of this work.** Measured on the previous commit: the same 71.4 score and
-   the same failure classes, Unicode dashes and the `prose-format` budget. The em dash is this
-   repository's own markdown style, so the fix is a deliberate style change across every
+2. **`README.md`, `AGENTS.md`, `SKILL.md`, this file — `uvx slopvac` fails on all four, and
+   did so before any of this work.** Measured on the commit before it: the same 71.4 score
+   and the same failure classes, Unicode dashes and the `prose-format` budget. The em dash is
+   this repository's own markdown style, so the fix is a deliberate style change across every
    document, not a patch to whichever paragraph was edited last. Check: `uvx slopvac` passes
    on all four, and the Python comments still read the way they do now.
 

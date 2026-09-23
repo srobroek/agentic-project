@@ -596,3 +596,83 @@ def test_every_generator_declares_where_it_writes():
         assert destinations, f"{rel} declares no destination"
         for relative in destinations:
             assert relative in GENERATOR_KEEPS_EXISTING, f"{relative} has no merge/replace class"
+
+
+def test_deselecting_a_layer_names_the_files_it_leaves_behind(tmp_path):
+    """Copier excludes what a layer no longer contributes; it deletes nothing.
+
+    So turning a layer off left its whole output in place, exactly as switching
+    FORGE_PLATFORM did. The destination's own answers file is the record of what was
+    selected last time, so no manifest is needed to notice.
+    """
+    from project_setup.catalog import ANSWERS_FILE, load_catalog
+    from project_setup.runner import deselected_layers
+
+    catalog = load_catalog(TEMPLATES)
+    (tmp_path / ANSWERS_FILE).write_text("WANT_RELEASE: true\nWANT_LANG_GO: true\n")
+
+    assert deselected_layers(catalog, tmp_path, {"WANT_LANG_GO": True}) == ["release"]
+    # Nothing dropped when the selection is unchanged, or grew.
+    assert deselected_layers(catalog, tmp_path, {"WANT_RELEASE": True, "WANT_LANG_GO": True}) == []
+    assert deselected_layers(catalog, tmp_path, {"LAYERS": ["release", "lang-go", "api"]}) == []
+
+
+def test_a_destination_with_no_answers_file_has_nothing_deselected(tmp_path):
+    """A layer that was never applied is absent, not deselected."""
+    from project_setup.catalog import load_catalog
+    from project_setup.runner import deselected_layers
+
+    catalog = load_catalog(TEMPLATES)
+    assert deselected_layers(catalog, tmp_path, {}) == []
+
+
+def test_the_orphan_scan_names_only_files_that_are_actually_there(tmp_path):
+    """The list comes from a pretend place, because a layer's paths are templated.
+
+    A static walk of the layer directory would report paths Copier excluded and miss
+    the ones it expands, so the only list right by construction is Copier's own.
+    """
+    from project_setup.catalog import load_catalog
+    from project_setup.runner import orphaned_files
+
+    catalog = load_catalog(TEMPLATES)
+    assert orphaned_files(catalog, tmp_path, ["release"]) == {}
+
+    (tmp_path / "release-please-config.json").write_text("{}\n")
+    found = orphaned_files(catalog, tmp_path, ["release"])
+
+    assert "release-please-config.json" in found["release"]
+    assert all((tmp_path / p).exists() for p in found["release"])
+
+
+def test_a_deselected_layers_leftovers_are_a_warning_not_a_refusal(tmp_path):
+    """The user may be one `git rm` from meaning it; deleting their files is not ours."""
+    from project_setup.catalog import ANSWERS_FILE, load_catalog
+    from project_setup.cli import checkout_problems
+
+    catalog = load_catalog(TEMPLATES)
+    (tmp_path / ANSWERS_FILE).write_text("WANT_RELEASE: true\n")
+    (tmp_path / "release-please-config.json").write_text("{}\n")
+
+    problems = checkout_problems(catalog, tmp_path, {"PROJECT_NAME": "x"})
+    stale = [p for p in problems if p.code == "STALE_LAYER_FILES"]
+
+    assert len(stale) == 1
+    assert stale[0].level == "warning"
+    assert stale[0].key == "WANT_RELEASE"
+    assert "release-please-config.json" in stale[0].message
+
+
+def test_a_greenfield_destination_costs_no_orphan_scan(tmp_path, monkeypatch):
+    """The scan dry-runs Copier per dropped layer, so it must not run by default."""
+    from project_setup import cli
+    from project_setup.catalog import load_catalog
+
+    catalog = load_catalog(TEMPLATES)
+
+    def fail(*args, **kwargs):
+        raise AssertionError("orphaned_files ran for a destination with nothing deselected")
+
+    monkeypatch.setattr(cli, "orphaned_files", fail)
+
+    assert cli.checkout_problems(catalog, tmp_path, {"PROJECT_NAME": "x"}) == []

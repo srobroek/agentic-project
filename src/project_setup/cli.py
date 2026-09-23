@@ -19,7 +19,10 @@ import yaml
 from .catalog import (
     ANSWERS_FILE,
     PIN_GATE,
+    SELECTION,
+    TUNE_GATE,
     Catalog,
+    Problem,
     Question,
     load_catalog,
     repo_conflicts,
@@ -29,7 +32,9 @@ from .catalog import (
 )
 from .runner import (
     REPORTED_OPERATIONS,
+    deselected_layers,
     generator_destinations,
+    orphaned_files,
     place_layers,
     prune_empty_dirs,
     run_generators,
@@ -200,14 +205,23 @@ def cmd_catalog(args: argparse.Namespace, catalog: Catalog) -> int:
                             # for it, and do not pass the expression through.
                             "derived": q.derived,
                             "derived_from": q.derived_from or None,
-                            # False means there is nothing to ask: the value is
-                            # derived. Still settable with --set.
+                            # False means the interview does not ask it. Which of the
+                            # next three is true says why, and what a caller should
+                            # do about it.
                             "asked": q.asked,
                             # A tool version. Offer the one choice -- "set versions
                             # yourself, or take the pinned set?" -- and ask these
                             # only if the user says yes.
                             "pinned": q.pinned,
                             "pin_gate": PIN_GATE if q.pinned else None,
+                            # A default that is already right. Same single choice,
+                            # its own gate: "change the shipped defaults?"
+                            "tuned": q.tuned,
+                            "tune_gate": TUNE_GATE if q.tuned else None,
+                            # A JSON artifact nobody types at a prompt. Not asked,
+                            # and the one class a caller is expected to compose and
+                            # supply -- unlike `derived`, which it must not.
+                            "composed": q.composed,
                         }
                         for q in layer.questions.values()
                     },
@@ -232,6 +246,22 @@ def cmd_catalog(args: argparse.Namespace, catalog: Catalog) -> int:
     return 0
 
 
+def not_asked_note(q: Question) -> str:
+    """Why the interview would not ask for this, in three words.
+
+    Four different reasons, and a reader acts on each differently: a pin and a tuned
+    default are real questions behind one gate, a composed artifact is what a caller
+    is expected to supply, and a derived value must never be passed through.
+    """
+    if q.pinned:
+        return "  (tool version)"
+    if q.tuned:
+        return "  (shipped default)"
+    if q.composed:
+        return "  (composed)"
+    return "" if q.asked else "  (derived)"
+
+
 def cmd_presets(args: argparse.Namespace, catalog: Catalog) -> int:
     stacks = sorted(args.presets.glob("*.yml"))
     parts = sorted((args.presets / "parts").glob("*.yml"))
@@ -247,15 +277,17 @@ def cmd_presets(args: argparse.Namespace, catalog: Catalog) -> int:
         notes = []
         for key in sorted(data):
             q = questions.get(key, Question(key))
-            note = "  (tool version)" if q.pinned else "" if q.asked else "  (derived)"
+            note = not_asked_note(q)
             if note:
                 notes.append(key)
             print(f"  {key:<{width}}  {answer_display(data[key]):<46}  <- {origin.get(key)}{note}")
         print(f"\nlayers: {', '.join(selected_layers(catalog, data))}")
         if notes:
             print(
-                f"{len(notes)} answer(s) are not asked unless you ask to set them: a tool "
-                f"version Renovate bumps, or a value derived from another answer."
+                f"{len(notes)} answer(s) the interview does not ask by default. A tool version "
+                f"Renovate bumps, a default that is already right, an artifact composed from "
+                f"the conversation, or a value derived from another answer. Each is still set "
+                f"by this preset, by --set, and by a data file."
             )
         return 0
 
@@ -315,9 +347,36 @@ def answer_display(value: object, width: int = ANSWER_WIDTH) -> str:
     return text if len(text) <= width else text[: width - 1] + "\u2026"
 
 
+def checkout_problems(catalog: Catalog, dest: Path, data: dict) -> list[Problem]:
+    """Everything the destination contradicts, cheap checks first.
+
+    `repo_conflicts` reads two files. The orphan scan dry-runs Copier once per
+    deselected layer, so it runs only when the recorded answers say a layer was
+    turned off -- which is never, for the greenfield case every preset takes.
+    """
+    problems = repo_conflicts(dest, data)
+    dropped = deselected_layers(catalog, dest, data)
+    if not dropped:
+        return problems
+    for layer, files in orphaned_files(catalog, dest, dropped, data).items():
+        shown = ", ".join(files[:4]) + (f", and {len(files) - 4} more" if len(files) > 4 else "")
+        problems.append(
+            Problem(
+                "warning",
+                "STALE_LAYER_FILES",
+                f"the {layer} layer is no longer selected, but {len(files)} file(s) it wrote "
+                f"are still in {dest}: {shown}. Deselecting a layer stops it being written, "
+                f"it does not remove what an earlier apply wrote. Delete them to finish "
+                f"dropping the layer.",
+                want_var(layer),
+            )
+        )
+    return problems
+
+
 def cmd_validate(args: argparse.Namespace, catalog: Catalog) -> int:
     data = load_data(args, catalog)
-    problems = validate_data(catalog, data) + repo_conflicts(Path(args.dest), data)
+    problems = validate_data(catalog, data) + checkout_problems(catalog, Path(args.dest), data)
     layers = selected_layers(catalog, data)
     errors = [p for p in problems if p.level == "error"]
 
@@ -390,6 +449,24 @@ def unusable_dest(dest: Path) -> str | None:
     return None
 
 
+def seed_selection(catalog: Catalog, supplied: dict) -> dict:
+    """Turn supplied layer answers into the multiselect's pre-selection.
+
+    A preset names its layers one `WANT_<LAYER>: true` at a time; the interview asks
+    once, with a list. Handing Copier both would make the booleans win -- supplied
+    data beats a rendered default -- so the multiselect would show the preset's
+    layers and then ignore every deselection the user made. The list is the single
+    authority during an interview, and the booleans are derived back from it.
+    """
+    if not supplied:
+        return supplied
+    seeded = {k: v for k, v in supplied.items() if not k.startswith("WANT_")}
+    chosen = [n for n in selected_layers(catalog, supplied) if catalog.layers[n].optional]
+    if chosen or SELECTION in supplied:
+        seeded[SELECTION] = sorted(set(chosen) | set(supplied.get(SELECTION) or []))
+    return seeded
+
+
 def cmd_interview(args: argparse.Namespace, catalog: Catalog) -> int:
     """Hand the questions to Copier's own prompt engine. No LLM involved."""
     dest = Path(args.dest)
@@ -398,6 +475,7 @@ def cmd_interview(args: argparse.Namespace, catalog: Catalog) -> int:
         return 1
     dest.mkdir(parents=True, exist_ok=True)
     supplied = load_data(args, catalog) if (args.preset or args.data_file or args.set) else {}
+    supplied = seed_selection(catalog, supplied)
     copier.run_copy(
         str(catalog.interview_path),
         dest,
@@ -541,7 +619,7 @@ def cmd_plan(args: argparse.Namespace, catalog: Catalog) -> int:
             print(f"  {p}", file=sys.stderr)
         print("refusing to plan against an incomplete answer set", file=sys.stderr)
         return 1
-    for conflict in repo_conflicts(Path(args.dest), data):
+    for conflict in checkout_problems(catalog, Path(args.dest), data):
         print(f"  {conflict}", file=sys.stderr)
     result = place_layers(
         catalog,
@@ -566,7 +644,7 @@ def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
     if (problem := unusable_dest(dest)) is not None:
         print(problem, file=sys.stderr)
         return 1
-    for conflict in repo_conflicts(dest, data):
+    for conflict in checkout_problems(catalog, dest, data):
         print(f"  {conflict}", file=sys.stderr)
     dest.mkdir(parents=True, exist_ok=True)
     result = place_layers(

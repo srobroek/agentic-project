@@ -26,9 +26,17 @@ ALWAYS_ON: tuple[str, ...] = (
 INTERVIEW = "_interview"
 ANSWERS_FILE = ".project-setup-answers.yml"
 
-# The interview's own gate for the tool-version questions. It reaches no template, so
-# it is a known key rather than an unknown one when it appears in an answers file.
+# Keys the interview owns. Each reaches no template, so each is a known key rather
+# than an unknown one when it turns up in an answers file. Defined here and imported
+# by tools/port_assets.py: two copies would silently disagree about what is a gate.
+#
+# PIN_GATE stands in for every tool version; TUNE_GATE for every default that is
+# already right. SELECTION is the one multiselect that replaced ten yes/no prompts,
+# and `selected_layers` reads it alongside the WANT_ booleans a preset sets.
 PIN_GATE = "PIN_TOOL_VERSIONS"
+TUNE_GATE = "CUSTOMISE_DEFAULTS"
+SELECTION = "LAYERS"
+INTERVIEW_KEYS: frozenset[str] = frozenset({PIN_GATE, TUNE_GATE, SELECTION})
 
 
 def want_var(layer: str) -> str:
@@ -57,13 +65,22 @@ class Question:
     # other answers. Reported separately so a reader cannot mistake the expression
     # for a literal value to pass through.
     derived_from: str = ""
-    # False for a question the interview never asks because there is nothing to
-    # decide: a value derived from another answer. Still settable with --set.
+    # False for a question the interview never asks. Three different reasons, and a
+    # caller has to tell them apart: `derived` is computed from another answer and
+    # must not be passed through; `composed` is assembled from the conversation and
+    # is exactly what a caller should supply; a `pinned` or `tuned` value is asked,
+    # just behind one gate. All four stay settable with --set.
     asked: bool = True
     # A tool version. Asked only when the user says they want to set versions, so a
     # caller offers that choice once instead of reading out sixteen pins. Machine
     # readable so an agent can check rather than remember a prose rule.
     pinned: bool = False
+    # A default that is already right -- a hook size limit, a job timeout, the
+    # README's install line. Behind the single TUNE_GATE for the same reason.
+    tuned: bool = False
+    # A JSON artifact no human types at a one-line prompt: the ADR list, the
+    # monorepo member list. Not asked at all, and the reason to involve a model.
+    composed: bool = False
     # Copier's own `validator:` expression. Read back so `validate` can refuse an
     # answer set Copier would refuse at render time; without it `validate` reported
     # a clean answer set and the first layer then died on PROJECT_NAME.
@@ -132,6 +149,8 @@ def _parse_questions(
     cfg: dict,
     never_asked: frozenset[str] = frozenset(),
     pinned: frozenset[str] = frozenset(),
+    tuned: frozenset[str] = frozenset(),
+    composed: frozenset[str] = frozenset(),
 ) -> dict[str, Question]:
     out: dict[str, Question] = {}
     for key, spec in cfg.items():
@@ -158,36 +177,47 @@ def _parse_questions(
             derived_from=derived_from,
             asked=key not in never_asked,
             pinned=key in pinned,
+            tuned=key in tuned,
+            composed=key in composed,
             validator=str(spec.get("validator", "")),
         )
     return out
 
 
-def _interview_conditions(templates_dir: Path) -> dict[str, str]:
-    """Each interview question's `when:`, which is where the gating actually lives.
+def _interview_specs(templates_dir: Path) -> dict[str, dict]:
+    """The generated interview's own question specs.
 
-    Reading it back is what lets `catalog --json` tell a caller what not to ask,
-    instead of leaving that as a rule to remember.
+    The gating lives there, not in the layers, so reading it back is what lets
+    `catalog --json` tell a caller what not to ask instead of leaving that as a rule
+    to remember.
     """
     cfg_path = templates_dir / INTERVIEW / "copier.yml"
     if not cfg_path.is_file():
         return {}
     cfg = yaml.safe_load(cfg_path.read_text()) or {}
     return {
-        key: str(spec.get("when", ""))
-        for key, spec in cfg.items()
-        if not key.startswith("_") and isinstance(spec, dict)
+        key: spec for key, spec in cfg.items() if not key.startswith("_") and isinstance(spec, dict)
     }
 
 
 def load_catalog(templates_dir: Path) -> Catalog:
     if not templates_dir.is_dir():
         raise FileNotFoundError(f"templates directory not found: {templates_dir}")
-    conditions = _interview_conditions(templates_dir)
+    specs = _interview_specs(templates_dir)
+    conditions = {key: str(spec.get("when", "")) for key, spec in specs.items()}
     never_asked = frozenset(
         key for key, when in conditions.items() if when.strip().lower() in ("false", "no")
     )
     pinned = frozenset(key for key, when in conditions.items() if PIN_GATE in when)
+    tuned = frozenset(key for key, when in conditions.items() if TUNE_GATE in when)
+    # Not asked, and not a Jinja expression over other answers: an artifact assembled
+    # from the conversation. The distinction matters to a caller -- a derived value
+    # must not be passed through, a composed one is exactly what it should supply.
+    composed = frozenset(
+        key
+        for key in never_asked
+        if "@@" not in str(specs[key].get("default", "")) and key not in INTERVIEW_KEYS
+    )
     layers: dict[str, Layer] = {}
     for child in sorted(templates_dir.iterdir()):
         if not child.is_dir() or child.name == INTERVIEW:
@@ -199,7 +229,7 @@ def load_catalog(templates_dir: Path) -> Catalog:
         layers[child.name] = Layer(
             name=child.name,
             path=child,
-            questions=_parse_questions(cfg, never_asked, pinned),
+            questions=_parse_questions(cfg, never_asked, pinned, tuned, composed),
             has_tasks=bool(cfg.get("_tasks")),
         )
     if not layers:
@@ -208,14 +238,24 @@ def load_catalog(templates_dir: Path) -> Catalog:
 
 
 def selected_layers(catalog: Catalog, data: dict) -> list[str]:
-    """Layers to apply: the always-on set plus every WANT_<LAYER> that is true."""
+    """Layers to apply: the always-on set, plus whatever the answers select.
+
+    Two spellings reach here, and both are first-class. A preset and `--set` name
+    `WANT_<LAYER>` one layer at a time; the interview writes `LAYERS`, the one
+    multiselect that replaced ten yes/no prompts. Neither is a fallback for the
+    other: an interview seeded from a preset can record both, so this is a union.
+    """
     chosen = [n for n in ALWAYS_ON if n in catalog.layers]
-    for key, value in data.items():
-        if not key.startswith("WANT_") or not value:
-            continue
-        layer = layer_of(key)
+
+    def take(layer: str) -> None:
         if layer in catalog.layers and layer not in chosen:
             chosen.append(layer)
+
+    for name in data.get(SELECTION) or []:
+        take(str(name))
+    for key, value in data.items():
+        if key.startswith("WANT_") and value:
+            take(layer_of(key))
     order = catalog.apply_order()
     return sorted(chosen, key=order.index)
 
@@ -245,7 +285,7 @@ def validate_data(catalog: Catalog, data: dict) -> list[Problem]:
     want_names = {want_var(n) for n in catalog.optional_layers()}
 
     for key in sorted(data):
-        if key.startswith("_") or key in want_names or key in known or key == PIN_GATE:
+        if key.startswith("_") or key in want_names or key in known or key in INTERVIEW_KEYS:
             continue
         problems.append(
             Problem(
