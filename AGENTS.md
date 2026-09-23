@@ -100,6 +100,17 @@ MUST keep every capability name prefixed with `project-setup`. OMP deduplicates 
 all configured sources and keeps the first match, so a shared name silently hides one plugin.
 `project-setup` is already claimed by the older installed plugin.
 
+## Template resolution
+
+MUST NOT bundle `templates/` or `presets/` into the wheel. They are the plugin's payload and
+the plugin upgrades independently; a bundled copy would serve stale layers silently. The CLI
+resolves them from `--templates`/`--presets`, then `PROJECT_SETUP_TEMPLATES`/
+`PROJECT_SETUP_PRESETS`, then a source checkout, and fails naming all three otherwise.
+
+MUST NOT derive the plugin directory from `$0` or the working directory. `$0` in an agent's
+shell is the shell itself, and the working directory is the user's target repository. Ask
+`omp plugin list --json` for the plugin's own path. `tests/test_resolve.py` covers the chain.
+
 ## Verifying a change
 
     just port ../omp-plugins/project-setup/skills/project-setup/assets

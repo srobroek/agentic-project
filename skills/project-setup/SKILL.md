@@ -15,23 +15,58 @@ TRIGGER
 
 ## Preflight
 
-The plugin ships the templates; the CLI is a Python package in the same repository.
-If `project-setup` is not on PATH, install it before doing anything else:
+The plugin ships the templates. The CLI is a separate Python package, so two things have to
+be true before you can scaffold: the command exists, and it can find this plugin's layers.
+
+Check both at once:
 
 ```sh
-command -v project-setup && project-setup catalog >/dev/null && echo ready
+project-setup catalog >/dev/null 2>&1 && echo ready
 ```
 
-If that fails, install it from this plugin's own directory. A linked plugin points at a
-working tree; a marketplace install is a copy, and either works:
+If that prints `ready`, skip the rest of this section.
+
+### Finding the layers
+
+The templates belong to the plugin, not to the CLI, so the CLI has to be told where they are.
+Ask OMP for the plugin's own path rather than guessing it:
 
 ```sh
-PLUGIN=$(dirname $(dirname $(realpath "$0" 2>/dev/null || echo .)))   # or ask the user
-uv tool install --editable "$PLUGIN" || (cd "$PLUGIN" && uv pip install -e .)
+PLUGIN=$(omp plugin list --json | python3 -c '
+import json, sys
+for e in json.load(sys.stdin).get("npm", []):
+    if e.get("name", "").endswith("/project-setup"):
+        print(e["path"]); break')
+echo "$PLUGIN"
 ```
+
+Then pass it on every invocation:
+
+```sh
+project-setup --templates "$PLUGIN/templates" --presets "$PLUGIN/presets" catalog
+```
+
+MUST pass the two flags on every call once you need them. Each of your shell commands runs in
+a fresh process, so an `export` in one does not survive into the next. `PROJECT_SETUP_TEMPLATES`
+and `PROJECT_SETUP_PRESETS` exist for a human's shell profile, not for you.
+
+MUST NOT guess the plugin path from the working directory. The working directory is the user's
+target repository, not this plugin — installing from it would install their project as the CLI.
+
+### Installing the CLI
+
+Only if `project-setup` is not on PATH at all:
+
+```sh
+uv tool install "$PLUGIN"          # a marketplace install: a copy, install it as-is
+uv tool install --editable "$PLUGIN"   # a linked plugin: tracks the working tree
+```
+
+`--editable` only matters for plugin development, where you want code changes picked up
+without reinstalling. For normal use the plain form is correct.
 
 MUST NOT proceed by hand when the CLI is missing. Copying template files yourself is the
-failure mode this plugin exists to remove.
+failure mode this plugin exists to remove. Say the CLI is unavailable and stop.
 
 ## Interview first, always
 

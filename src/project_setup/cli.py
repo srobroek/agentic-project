@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -25,8 +26,47 @@ from .catalog import (
 from .runner import place_layers, prune_empty_dirs, run_generators
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_TEMPLATES = REPO_ROOT / "templates"
-DEFAULT_PRESETS = REPO_ROOT / "presets"
+ENV_TEMPLATES = "PROJECT_SETUP_TEMPLATES"
+ENV_PRESETS = "PROJECT_SETUP_PRESETS"
+
+
+def resolve_data_dir(kind: str, explicit: Path | None) -> Path:
+    """Find the templates or presets directory.
+
+    The templates are the plugin's payload, not the CLI's. They are deliberately not
+    bundled into the wheel: the plugin can be upgraded on its own, and a bundled copy
+    would go stale without saying so. So the CLI has to be told where they are, in
+    order of precedence:
+
+      1. --templates / --presets
+      2. PROJECT_SETUP_TEMPLATES / PROJECT_SETUP_PRESETS
+      3. a source checkout, when running from one
+
+    Anything else is an error that names all three, because a wrong guess here means
+    scaffolding from the wrong layer set.
+    """
+    env_var = ENV_TEMPLATES if kind == "templates" else ENV_PRESETS
+    candidates: list[tuple[str, Path]] = []
+    if explicit is not None:
+        candidates.append((f"--{kind}", explicit))
+    if os.environ.get(env_var):
+        candidates.append((env_var, Path(os.environ[env_var]).expanduser()))
+    candidates.append(("source checkout", REPO_ROOT / kind))
+
+    for _origin, path in candidates:
+        if path.is_dir():
+            return path
+
+    tried = "\n".join(f"    {origin}: {path}" for origin, path in candidates)
+    raise SystemExit(
+        f"error: no {kind} directory found. Tried:\n{tried}\n\n"
+        f"  Point the CLI at the plugin's {kind}, either per run:\n"
+        f"    project-setup --{kind} /path/to/plugin/{kind} ...\n"
+        f"  or once, for the shell:\n"
+        f"    export {env_var}=/path/to/plugin/{kind}\n\n"
+        f"  An OMP-installed plugin reports its own path:\n"
+        f"    omp plugin list --json"
+    )
 
 
 # --------------------------------------------------------------- data loading
@@ -307,8 +347,18 @@ def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="project-setup", description=__doc__)
-    p.add_argument("--templates", type=Path, default=DEFAULT_TEMPLATES)
-    p.add_argument("--presets", type=Path, default=DEFAULT_PRESETS)
+    p.add_argument(
+        "--templates",
+        type=Path,
+        default=None,
+        help=f"template layer directory (or {ENV_TEMPLATES})",
+    )
+    p.add_argument(
+        "--presets",
+        type=Path,
+        default=None,
+        help=f"preset directory (or {ENV_PRESETS})",
+    )
     sub = p.add_subparsers(dest="command", required=True)
 
     def add_data_args(sp: argparse.ArgumentParser) -> None:
@@ -353,6 +403,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    args.templates = resolve_data_dir("templates", args.templates)
+    args.presets = resolve_data_dir("presets", args.presets)
     try:
         catalog = load_catalog(args.templates)
     except FileNotFoundError as exc:

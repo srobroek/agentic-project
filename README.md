@@ -49,6 +49,31 @@ implementation to drift:
 
 Answer sources compose, later winning: `--preset`, then `--data-file`, then `--set KEY=VALUE`.
 
+## Where the templates come from
+
+The templates are the plugin's payload, not the CLI's, and are deliberately **not** bundled
+into the wheel: the plugin can be upgraded on its own, and a bundled copy would go stale
+without saying so. So the CLI has to be told where they are:
+
+| Precedence | How |
+| --- | --- |
+| 1 | `--templates DIR` / `--presets DIR` |
+| 2 | `PROJECT_SETUP_TEMPLATES` / `PROJECT_SETUP_PRESETS` |
+| 3 | a source checkout, when running from one |
+
+Running from this repository, none of that is needed. Installed from a plugin, ask OMP where
+the plugin lives:
+
+    PLUGIN=$(omp plugin list --json | python3 -c '
+    import json, sys
+    for e in json.load(sys.stdin).get("npm", []):
+        if e.get("name", "").endswith("/project-setup"):
+            print(e["path"]); break')
+    project-setup --templates "$PLUGIN/templates" --presets "$PLUGIN/presets" catalog
+
+If none of the three resolve, the CLI fails naming all three rather than guessing. A wrong
+guess scaffolds from the wrong layer set.
+
 ## How a scaffold runs
 
 1. **place** — each selected layer is rendered by Copier. `.jinja` files are rendered; every
