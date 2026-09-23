@@ -8,6 +8,11 @@ _exclude:
 - tasks
 - '*.rej'
 - '*.orig'
+- __pycache__
+- '*.pyc'
+- .pytest_cache
+- .ruff_cache
+- .DS_Store
 - '{% if FORGE_PLATFORM != ''github'' %}
 
   /.github/
@@ -25,15 +30,16 @@ _exclude:
   '
 
 DEFAULT_BRANCH:
-  default: main
-  help: Branch CI listens on and the force-push guard protects
   type: str
-  validator: '{% if not (DEFAULT_BRANCH | string | regex_search(''^[a-z0-9._/-]+$'')) %}DEFAULT_BRANCH
-    must match ^[a-z0-9._/-]+${% endif %}'
+  help: Branch CI listens on and the force-push guard protects
+  default: main
+  validator: '{% if not (DEFAULT_BRANCH | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}DEFAULT_BRANCH
+    must be a branch name: letters, digits, dot, underscore, slash or dash, with no spaces -- main, master,
+    release/2.x{% endif %}'
 FORGE_PLATFORM:
+  type: str
+  help: Only github and gitlab are supported; other forges are an explicit gap
   choices:
   - github
   - gitlab
   default: github
-  help: Only github and gitlab are supported; other forges are an explicit gap
-  type: str

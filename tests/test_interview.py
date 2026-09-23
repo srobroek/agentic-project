@@ -175,7 +175,7 @@ def test_a_language_question_is_gated_on_its_layer(interview):
 
 
 def test_a_plain_project_answers_a_sane_number_of_questions(interview):
-    """A minimal project answered 27 prompts; a PTY drive now counts eleven.
+    """A minimal project answered 27 prompts; a PTY drive now counts ten.
 
     Counted the way a user experiences it: a question with no `when:` is asked of
     everybody, whatever they selected. The bound is tight on purpose -- an eleventh
@@ -183,7 +183,44 @@ def test_a_plain_project_answers_a_sane_number_of_questions(interview):
     not one that lands because there was room.
     """
     unconditional = [n for n, spec in interview.items() if is_asked(spec) and not spec.get("when")]
-    assert len(unconditional) <= 11, unconditional
+    assert len(unconditional) <= 10, unconditional
+
+
+def test_the_monorepo_gate_is_derived_from_the_member_list(interview):
+    """It was the eleventh prompt, and no answer to it could do anything.
+
+    IS_MONOREPO's whole effect is to place .ci/members.json, whose contents are
+    MONOREPO_MEMBERS -- a composed answer the interview never asks. So `yes` could
+    only produce a manifest naming nobody, which `validate` then reported as
+    ANSWER_HAS_NO_EFFECT. Listing members is what makes a project a monorepo.
+    """
+    assert is_asked(interview["IS_MONOREPO"]) is False
+    assert "MONOREPO_MEMBERS" in interview["IS_MONOREPO"]["default"]
+    # Copier renders defaults in declaration order, so the input comes first or the
+    # reference is undefined and the comparison quietly comes out true.
+    order = list(interview)
+    assert order.index("MONOREPO_MEMBERS") < order.index("IS_MONOREPO")
+
+
+def test_every_layer_choice_says_what_the_layer_does(interview):
+    """The list was ten bare directory names.
+
+    `worktrunk`, `a11y` and `infra-aws-cdk` tell a first-time reader nothing about
+    what selecting them does, and `catalog` listed the same names with a question
+    count. Copier labels a choice and records its value, so the answer is still the
+    layer name.
+    """
+    from project_setup.catalog import LAYER_PURPOSE, SELECTION
+
+    choices = interview[SELECTION]["choices"]
+    assert isinstance(choices, dict), "a bare list gives the user nothing to choose on"
+    for label, layer in choices.items():
+        assert label.startswith(f"{layer} -- ")
+        assert LAYER_PURPOSE[layer] in label
+    # Every layer carries one, always-on included: `catalog` lists those too.
+    from project_setup.catalog import ALWAYS_ON
+
+    assert set(LAYER_PURPOSE) >= set(choices.values()) | set(ALWAYS_ON)
 
 
 def test_every_shipped_default_sits_behind_the_one_gate(interview):
@@ -273,6 +310,32 @@ def test_nothing_is_appended_when_every_answer_was_recorded(tmp_path):
 
     assert preserve_unasked(answers, {"PROJECT_NAME": "my-app"}) == []
     assert answers.read_text() == before
+
+
+def test_the_recorded_answers_carry_no_path_from_the_machine_that_ran_it(tmp_path):
+    """`_src_path` was an absolute path into the operator's home directory.
+
+    The answers file is meant to be committed. Copier writes `_src_path` for `copier
+    update`, which this tool does not have, and `load_data` drops every `_` key on the
+    way back in -- so it was never read either.
+    """
+    from project_setup.cli import drop_copier_bookkeeping
+
+    answers = tmp_path / ".project-setup-answers.yml"
+    answers.write_text(
+        "# Written by project-setup. Edit by re-running the interview.\n"
+        "DESCRIPTION: A thing\n"
+        "PROJECT_NAME: my-app\n"
+        "_commit: null\n"
+        "_src_path: /Users/someone/dev/project-setup/templates/_interview\n"
+    )
+
+    drop_copier_bookkeeping(answers)
+
+    body = answers.read_text()
+    assert "/Users/someone" not in body
+    assert body.startswith("# Written by project-setup.")
+    assert yaml.safe_load(body) == {"DESCRIPTION": "A thing", "PROJECT_NAME": "my-app"}
 
 
 def test_a_truncated_answer_says_it_is_truncated():

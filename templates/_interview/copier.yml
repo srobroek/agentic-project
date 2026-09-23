@@ -11,8 +11,9 @@ _message_after_copy: Answers recorded in .project-setup-answers.yml.
 PROJECT_NAME:
   type: str
   help: Repository name, lowercase with dashes
-  validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z][a-z0-9-]+$'')) %}PROJECT_NAME must
-    match ^[a-z][a-z0-9-]+${% endif %}'
+  validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z](?:[a-z0-9-]*[a-z0-9])?$'')) %}PROJECT_NAME
+    must be lowercase letters, digits and dashes, starting with a letter and ending with a letter or digit
+    -- my-app, flint, api2. It becomes the crate, package and module name{% endif %}'
 DESCRIPTION:
   type: str
   help: One-line purpose
@@ -20,16 +21,16 @@ LAYERS:
   type: str
   multiselect: true
   choices:
-  - release
-  - worktrunk
-  - lang-go
-  - lang-python
-  - lang-ts
-  - lang-rust
-  - api
-  - i18n
-  - a11y
-  - infra-aws-cdk
+    'release -- release-please: versioning, changelog, tags': release
+    worktrunk -- parallel-agent worktrees and their setup hooks: worktrunk
+    'lang-go -- Go: golangci-lint, govulncheck, per-package tests': lang-go
+    'lang-python -- Python: uv, ruff, ty, pytest, nox': lang-python
+    'lang-ts -- TypeScript: bun, biome, oxlint, knip': lang-ts
+    'lang-rust -- Rust: clippy, nextest, deny, machete, llvm-cov': lang-rust
+    api -- an OpenAPI contract, linted and diffed in CI: api
+    i18n -- Inlang and Paraglide message catalogues: i18n
+    a11y -- Playwright and axe scans of named routes: a11y
+    infra-aws-cdk -- AWS CDK in TypeScript, in its own subtree: infra-aws-cdk
   default: []
   help: Layers to include, beyond the seven every project gets
 WANT_RELEASE:
@@ -99,12 +100,13 @@ USAGE_EXAMPLE:
   when: '@@ CUSTOMISE_DEFAULTS @@'
 SPDX_ID:
   type: str
-  help: Licence. Materialised into LICENSE by a post-copy task
+  help: Licence, or NONE for an unpublished repository. Writes LICENSE
   choices:
   - Apache-2.0
   - MIT
   - MPL-2.0
   - AGPL-3.0-only
+  - NONE
   default: Apache-2.0
 CODEOWNER:
   type: str
@@ -130,8 +132,9 @@ DEFAULT_BRANCH:
   type: str
   help: Branch CI listens on and the force-push guard protects
   default: main
-  validator: '{% if not (DEFAULT_BRANCH | string | regex_search(''^[a-z0-9._/-]+$'')) %}DEFAULT_BRANCH
-    must match ^[a-z0-9._/-]+${% endif %}'
+  validator: '{% if not (DEFAULT_BRANCH | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}DEFAULT_BRANCH
+    must be a branch name: letters, digits, dot, underscore, slash or dash, with no spaces -- main, master,
+    release/2.x{% endif %}'
 MAX_FILE_KB:
   type: str
   help: Largest file the added-large-files hook accepts
@@ -152,10 +155,6 @@ UV_VERSION:
   help: uv
   default: 0.9.8
   when: '@@ PIN_TOOL_VERSIONS @@'
-IS_MONOREPO:
-  type: bool
-  help: Monorepo? Writes .ci/members.json, which drives per-member CI jobs
-  default: false
 JOB_TIMEOUT_MINUTES:
   type: str
   help: Per-job CI timeout; a hung job holds a runner until it fires
@@ -165,6 +164,11 @@ MONOREPO_MEMBERS:
   type: str
   help: JSON array of {name, path, capabilities}; [] is single-root
   default: '[]'
+  when: 'false'
+IS_MONOREPO:
+  type: bool
+  help: 'Per-member CI: true when MONOREPO_MEMBERS lists anybody'
+  default: '@@ MONOREPO_MEMBERS not in ('''', ''[]'', None) @@'
   when: 'false'
 BUN_VERSION:
   type: str

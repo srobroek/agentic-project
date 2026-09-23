@@ -8,6 +8,11 @@ _exclude:
 - tasks
 - '*.rej'
 - '*.orig'
+- __pycache__
+- '*.pyc'
+- .pytest_cache
+- .ruff_cache
+- .DS_Store
 _tasks:
 - command:
   - '@@ _copier_python @@'
@@ -15,18 +20,19 @@ _tasks:
   when: '@@ _copier_operation == ''copy'' @@'
 
 DESCRIPTION:
+  type: str
   help: One-line purpose
-  type: str
 INSTALL_COMMANDS:
-  default: mise install && just setup
+  type: str
   help: What a fresh clone runs to install dependencies; shown in the README
-  type: str
+  default: mise install && just setup
 PROJECT_NAME:
+  type: str
   help: Repository name, lowercase with dashes
-  type: str
-  validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z][a-z0-9-]+$'')) %}PROJECT_NAME must
-    match ^[a-z][a-z0-9-]+${% endif %}'
+  validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z](?:[a-z0-9-]*[a-z0-9])?$'')) %}PROJECT_NAME
+    must be lowercase letters, digits and dashes, starting with a letter and ending with a letter or digit
+    -- my-app, flint, api2. It becomes the crate, package and module name{% endif %}'
 USAGE_EXAMPLE:
-  default: just dev
-  help: One command the README shows for running the project
   type: str
+  help: One command the README shows for running the project
+  default: just dev

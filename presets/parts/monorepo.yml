@@ -1,6 +1,8 @@
 # Per-member CI. MONOREPO_MEMBERS is a composed answer: each entry needs a job-safe
 # name, a repo-relative path and a capability map. Replace the examples.
-IS_MONOREPO: true
+#
+# There is no IS_MONOREPO here. It is derived from this list, so the member set is the
+# only thing to state: listing members is what makes the project a monorepo.
 MONOREPO_MEMBERS: |
   [
     {"name": "api", "path": "services/api", "capabilities": {"go": ["lint", "test"]}},

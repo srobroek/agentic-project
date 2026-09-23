@@ -8,6 +8,11 @@ _exclude:
 - tasks
 - '*.rej'
 - '*.orig'
+- __pycache__
+- '*.pyc'
+- .pytest_cache
+- .ruff_cache
+- .DS_Store
 - '{% if FORGE_PLATFORM != ''github'' %}
 
   /.github/
@@ -29,48 +34,50 @@ _tasks:
   - '@@ _copier_conf.src_path @@/tasks/native_init.py'
   - rust
   - '@@ ''lib'' if RUST_LIBRARY else ''bin'' @@'
+  - '@@ SPDX_ID @@'
 
 CARGO_DENY_VERSION:
-  default: 0.19.1
+  type: str
   help: cargo-deny
-  type: str
+  default: 0.19.1
 CARGO_LLVM_COV_VERSION:
-  default: 0.6.20
+  type: str
   help: cargo-llvm-cov
-  type: str
+  default: 0.6.20
 CARGO_MACHETE_VERSION:
-  default: 0.9.1
+  type: str
   help: cargo-machete
-  type: str
+  default: 0.9.1
 CARGO_NEXTEST_VERSION:
-  default: 0.9.104
-  help: cargo-nextest
   type: str
+  help: cargo-nextest
+  default: 0.9.104
 FORGE_PLATFORM:
+  type: str
+  help: Only github and gitlab are supported; other forges are an explicit gap
   choices:
   - github
   - gitlab
   default: github
-  help: Only github and gitlab are supported; other forges are an explicit gap
-  type: str
 JOB_TIMEOUT_MINUTES:
-  default: '15'
+  type: str
   help: Per-job CI timeout; a hung job holds a runner until it fires
-  type: str
+  default: '15'
 RUST_LIBRARY:
-  default: true
-  help: Library crate? (a binary crate commits Cargo.lock)
   type: bool
+  help: Library crate? (a binary crate commits Cargo.lock)
+  default: true
 RUST_VERSION:
-  default: 1.93.0
-  help: Rust toolchain, written to rust-toolchain.toml
   type: str
+  help: Rust toolchain, written to rust-toolchain.toml
+  default: 1.93.0
 SPDX_ID:
+  type: str
+  help: Licence, or NONE for an unpublished repository. Writes LICENSE
   choices:
   - Apache-2.0
   - MIT
   - MPL-2.0
   - AGPL-3.0-only
+  - NONE
   default: Apache-2.0
-  help: Licence. Materialised into LICENSE by a post-copy task
-  type: str

@@ -8,6 +8,11 @@ _exclude:
 - tasks
 - '*.rej'
 - '*.orig'
+- __pycache__
+- '*.pyc'
+- .pytest_cache
+- .ruff_cache
+- .DS_Store
 - '{% if FORGE_PLATFORM != ''github'' %}
 
   /.github/
@@ -25,17 +30,17 @@ _exclude:
   '
 
 AWS_CDK_DEST_SHELL:
-  default: infrastructure
+  type: str
   help: Repo-relative CDK destination, shell-quoted
-  type: str
+  default: infrastructure
 AWS_CDK_VERSION:
-  default: 2.1142.0
-  help: aws-cdk CLI, exact stable release
   type: str
+  help: aws-cdk CLI, exact stable release
+  default: 2.1142.0
 FORGE_PLATFORM:
+  type: str
+  help: Only github and gitlab are supported; other forges are an explicit gap
   choices:
   - github
   - gitlab
   default: github
-  help: Only github and gitlab are supported; other forges are an explicit gap
-  type: str

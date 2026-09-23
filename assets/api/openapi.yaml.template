@@ -4,8 +4,9 @@
 
 openapi: 3.1.0
 
-# vacuum reports a missing description, contact, or licence at warn, and the gate fails
-# at warn by default, so all three are present from the start.
+# vacuum reports a missing description or contact at warn, and the gate fails at warn by
+# default, so both are present from the start. The licence block is too, unless the
+# project states none -- vacuum's recommended ruleset does not require it.
 info:
   title: @@API_TITLE@@
   version: "@@API_VERSION@@"
@@ -15,9 +16,11 @@ info:
     # OPTIONAL BEGIN REMOTE_EXISTS -- remove only the URL when no remote exists
     url: @@REPO_URL@@
     # OPTIONAL END
+  # OPTIONAL BEGIN licensed -- an unpublished API states no licence at all
   license:
     name: @@SPDX_ID@@
     url: https://spdx.org/licenses/@@SPDX_ID@@.html
+  # OPTIONAL END
 
 servers:
   - url: @@API_SERVER_URL@@

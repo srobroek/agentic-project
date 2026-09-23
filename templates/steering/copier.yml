@@ -8,9 +8,15 @@ _exclude:
 - tasks
 - '*.rej'
 - '*.orig'
+- __pycache__
+- '*.pyc'
+- .pytest_cache
+- .ruff_cache
+- .DS_Store
 
 PROJECT_NAME:
-  help: Repository name, lowercase with dashes
   type: str
-  validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z][a-z0-9-]+$'')) %}PROJECT_NAME must
-    match ^[a-z][a-z0-9-]+${% endif %}'
+  help: Repository name, lowercase with dashes
+  validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z](?:[a-z0-9-]*[a-z0-9])?$'')) %}PROJECT_NAME
+    must be lowercase letters, digits and dashes, starting with a letter and ending with a letter or digit
+    -- my-app, flint, api2. It becomes the crate, package and module name{% endif %}'

@@ -18,6 +18,7 @@ import yaml
 
 from .catalog import (
     ANSWERS_FILE,
+    LAYER_PURPOSE,
     PIN_GATE,
     SELECTION,
     TUNE_GATE,
@@ -31,6 +32,9 @@ from .catalog import (
     want_var,
 )
 from .runner import (
+    LEFT_ALONE,
+    MERGED,
+    REPLACED,
     REPORTED_OPERATIONS,
     deselected_layers,
     generator_destinations,
@@ -189,6 +193,9 @@ def cmd_catalog(args: argparse.Namespace, catalog: Catalog) -> int:
             "optional": {name: want_var(name) for name in catalog.optional_layers()},
             "layers": {
                 name: {
+                    # What selecting it does. Neither listing said, so the one thing a
+                    # reader needs in order to choose was the one thing missing.
+                    "purpose": LAYER_PURPOSE.get(name, ""),
                     "optional": layer.optional,
                     "has_tasks": layer.has_tasks,
                     "questions": {
@@ -232,16 +239,13 @@ def cmd_catalog(args: argparse.Namespace, catalog: Catalog) -> int:
         print(json.dumps(payload, indent=2, default=str))
         return 0
 
-    print(f"{'layer':<14}{'select with':<22}{'questions':>10}  tasks")
-    print("-" * 60)
+    print(f"{'layer':<14}{'select with':<22}{'q':>3}  purpose")
+    print("-" * 78)
     for name in catalog.apply_order():
         layer = catalog.layers[name]
         selector = want_var(name) if layer.optional else "(always on)"
-        print(
-            f"{name:<14}{selector:<22}{len(layer.questions):>10}"
-            f"  {'yes' if layer.has_tasks else '-'}"
-        )
-    print("-" * 60)
+        print(f"{name:<14}{selector:<22}{len(layer.questions):>3}  {LAYER_PURPOSE.get(name, '')}")
+    print("-" * 78)
     print(f"{len(catalog.layers)} layers, {len(catalog.all_question_names())} distinct questions")
     return 0
 
@@ -430,6 +434,23 @@ def preserve_unasked(answers_file: Path, supplied: dict) -> list[str]:
     return sorted(dropped)
 
 
+def drop_copier_bookkeeping(answers_file: Path) -> None:
+    """Remove Copier's own `_`-prefixed keys from the recorded answers.
+
+    `_src_path` is an absolute path on the machine that ran the interview --
+    `/Users/someone/dev/project-setup/templates/_interview` -- and this file is meant
+    to be committed. Copier writes it for `copier update`, which this tool does not
+    have; `load_data` drops every `_` key on the way back in, so it was never read
+    either. What was left was one machine's home directory in somebody's repository.
+    """
+    recorded = yaml.safe_load(answers_file.read_text()) or {}
+    kept = {k: v for k, v in recorded.items() if not k.startswith("_")}
+    if len(kept) == len(recorded):
+        return
+    header = answers_file.read_text().partition("\n")[0]
+    answers_file.write_text(header + "\n" + yaml.safe_dump(kept, sort_keys=True))
+
+
 def unusable_dest(dest: Path) -> str | None:
     """Why this destination cannot hold a repository, in a sentence.
 
@@ -487,6 +508,7 @@ def cmd_interview(args: argparse.Namespace, catalog: Catalog) -> int:
     if not written.is_file():
         return 1
 
+    drop_copier_bookkeeping(written)
     kept = preserve_unasked(written, supplied)
     print(f"\nanswers: {written}")
     if kept:
@@ -510,6 +532,17 @@ def next_commands(answers_file: Path, dest: str) -> str:
         f"  project-setup {verb:<8} --data-file {data} --dest {where}"
         for verb in ("validate", "plan", "apply")
     )
+
+
+# One line each, in the terms a brownfield user decides in. `left-alone` exists
+# because a generator that did not write the file refuses to replace it, and a plan
+# that said "replaced outright" for a hand-written CI caller threatened a replacement
+# that never happens.
+DISPOSITION_PROSE = {
+    MERGED: "merged, your entries kept",
+    REPLACED: "replaced outright",
+    LEFT_ALONE: "left alone: yours, no generator marker",
+}
 
 
 def _files_report(result) -> None:
@@ -544,9 +577,8 @@ def _files_report(result) -> None:
         return
     width = max(len(path) for path, _ in generated)
     print(f"\n{len(generated)} existing path(s) a generator would rewrite:")
-    for path, keeps in generated:
-        how = "merged, your entries kept" if keeps else "replaced outright"
-        print(f"  {path:<{width}}  {how}")
+    for path, how in generated:
+        print(f"  {path:<{width}}  {DISPOSITION_PROSE[how]}")
 
 
 def _report(result, *, json_out: bool, verb: str) -> int:
@@ -563,6 +595,7 @@ def _report(result, *, json_out: bool, verb: str) -> int:
                             "layer": s.name,
                             "ok": s.ok,
                             "detail": s.detail,
+                            "warnings": s.warnings,
                             "seconds": round(s.seconds, 3),
                         }
                         for s in result.placed
@@ -572,18 +605,31 @@ def _report(result, *, json_out: bool, verb: str) -> int:
                         operation: result.files(operation) for operation in REPORTED_OPERATIONS
                     },
                     # Copier places none of these, so `files` cannot report them.
+                    # `keeps_existing` answers "does my content survive"; `disposition`
+                    # also separates a merge from a file the generator will not touch.
                     "generator_targets": [
-                        {"path": path, "keeps_existing": keeps}
-                        for path, keeps in generator_destinations(result.dest, result.layers)
+                        {
+                            "path": path,
+                            "keeps_existing": how != REPLACED,
+                            "disposition": how,
+                        }
+                        for path, how in generator_destinations(result.dest, result.layers)
                     ],
                     "generated": [
                         {
                             "script": s.name,
                             "ok": s.ok,
                             "detail": s.detail,
+                            "warnings": s.warnings,
                             "seconds": round(s.seconds, 3),
                         }
                         for s in result.generated
+                    ],
+                    # A step that degraded instead of failing. `ok` stays true, because
+                    # a missing toolchain is not a broken scaffold -- but a caller that
+                    # only reads `ok` reported a clean Rust project with no Cargo.toml.
+                    "warnings": [
+                        {"step": step, "message": message} for step, message in result.warnings
                     ],
                     "seconds": round(result.seconds, 3),
                 },
@@ -670,7 +716,9 @@ def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
         )
     code = _report(result, json_out=args.json, verb="placed")
 
-    # Last, so it is the thing left on screen: what still needs a real value.
+    # Last, so these are what is left on screen: what still needs a real value, and
+    # what the run skipped. A placeholder is a reminder; a skipped `cargo init` means
+    # the manifest is not there, so it goes after.
     if result.ok and not args.json:
         questions = catalog.questions_for(selected_layers(catalog, data))
         holders = [
@@ -684,7 +732,26 @@ def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
             for key, value in holders:
                 print(f"  {key:<{width}}  {value}")
             print("  Replace them, then re-run apply with the real values.")
+        _warnings_report(result)
     return code
+
+
+def _warnings_report(result) -> None:
+    """Every step that degraded instead of failing.
+
+    `apply` reported `place ok lang-rust`, `95 file(s) created` and exit 0 for a Rust
+    repository with no Cargo.toml and no src/: `cargo` was absent, the task skipped as
+    it is designed to, and the skip went into a captured log nobody printed. Degrading
+    is the right trade -- a scaffold must not hard-fail on a missing toolchain -- so
+    the exit code stays 0 and the report says what did not happen.
+    """
+    degraded = result.warnings
+    if not degraded:
+        return
+    width = max(len(step) for step, _ in degraded)
+    print(f"\n{len(degraded)} step(s) did less than the full job:")
+    for step, message in degraded:
+        print(f"  {step:<{width}}  {message}")
 
 
 # --------------------------------------------------------------- entry point

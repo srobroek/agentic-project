@@ -8,6 +8,11 @@ _exclude:
 - tasks
 - '*.rej'
 - '*.orig'
+- __pycache__
+- '*.pyc'
+- .pytest_cache
+- .ruff_cache
+- .DS_Store
 - '{% if FORGE_PLATFORM != ''github'' %}
 
   /.github/
@@ -25,9 +30,9 @@ _exclude:
   '
 
 FORGE_PLATFORM:
+  type: str
+  help: Only github and gitlab are supported; other forges are an explicit gap
   choices:
   - github
   - gitlab
   default: github
-  help: Only github and gitlab are supported; other forges are an explicit gap
-  type: str

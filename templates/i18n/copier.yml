@@ -8,6 +8,11 @@ _exclude:
 - tasks
 - '*.rej'
 - '*.orig'
+- __pycache__
+- '*.pyc'
+- .pytest_cache
+- .ruff_cache
+- .DS_Store
 - '{% if FORGE_PLATFORM != ''github'' %}
 
   /.github/
@@ -25,36 +30,36 @@ _exclude:
   '
 
 BASE_LOCALE:
-  default: en
-  help: Locale the source messages are authored in
   type: str
+  help: Locale the source messages are authored in
+  default: en
 FORGE_PLATFORM:
+  type: str
+  help: Only github and gitlab are supported; other forges are an explicit gap
   choices:
   - github
   - gitlab
   default: github
-  help: Only github and gitlab are supported; other forges are an explicit gap
-  type: str
 I18N_CHECK_COMMANDS:
-  default: ''
+  type: str
   help: Recurring completeness commands, one per deployable, indented four spaces
-  type: str
-I18N_PREPARE_COMMANDS:
   default: ''
+I18N_PREPARE_COMMANDS:
+  type: str
   help: Catalog preparation commands, indented four spaces
-  type: str
+  default: ''
 I18N_PROJECT_DIR:
-  default: project.inlang
-  help: Inlang project dir, repo-relative, e.g. apps/web/project.inlang
   type: str
+  help: Inlang project dir, repo-relative, e.g. apps/web/project.inlang
+  default: project.inlang
   validator: '{% if not (I18N_PROJECT_DIR | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}I18N_PROJECT_DIR
     must match ^[A-Za-z0-9._/-]+${% endif %}'
 INLANG_MESSAGE_FORMAT_MODULE_URL:
-  default: https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js
+  type: str
   help: Inlang message-format plugin module URL; pin the version you want
   placeholder: https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js
-  type: str
+  default: https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js
 LOCALES_JSON:
-  default: '["en"]'
-  help: JSON array of shipped locales, including the base locale
   type: str
+  help: JSON array of shipped locales, including the base locale
+  default: '["en"]'

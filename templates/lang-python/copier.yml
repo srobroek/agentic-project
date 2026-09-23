@@ -8,6 +8,11 @@ _exclude:
 - tasks
 - '*.rej'
 - '*.orig'
+- __pycache__
+- '*.pyc'
+- .pytest_cache
+- .ruff_cache
+- .DS_Store
 - '{% if FORGE_PLATFORM != ''github'' %}
 
   /.github/
@@ -31,34 +36,35 @@ _tasks:
   - '@@ PROJECT_NAME @@:@@ ''src'' if PY_SRC_LAYOUT else ''flat'' @@:@@ PYTHON_VERSION @@'
 
 FORGE_PLATFORM:
+  type: str
+  help: Only github and gitlab are supported; other forges are an explicit gap
   choices:
   - github
   - gitlab
   default: github
-  help: Only github and gitlab are supported; other forges are an explicit gap
-  type: str
 JOB_TIMEOUT_MINUTES:
-  default: '15'
+  type: str
   help: Per-job CI timeout; a hung job holds a runner until it fires
-  type: str
+  default: '15'
 PROJECT_NAME:
+  type: str
   help: Repository name, lowercase with dashes
-  type: str
-  validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z][a-z0-9-]+$'')) %}PROJECT_NAME must
-    match ^[a-z][a-z0-9-]+${% endif %}'
+  validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z](?:[a-z0-9-]*[a-z0-9])?$'')) %}PROJECT_NAME
+    must be lowercase letters, digits and dashes, starting with a letter and ending with a letter or digit
+    -- my-app, flint, api2. It becomes the crate, package and module name{% endif %}'
 PYTHON_VERSION:
-  default: '3.13'
+  type: str
   help: Python minor, e.g. 3.13. Sets requires-python and the ruff target
-  type: str
-PYTHON_VERSION_NODOT:
-  default: '@@ PYTHON_VERSION | replace(''.'', '''') @@'
-  help: Derived from PYTHON_VERSION; override only if you must
-  type: str
+  default: '3.13'
 PY_SRC_LAYOUT:
-  default: true
-  help: src/ layout? (false for a flat layout)
   type: bool
+  help: src/ layout? (false for a flat layout)
+  default: true
 UV_VERSION:
-  default: 0.9.8
-  help: uv
   type: str
+  help: uv
+  default: 0.9.8
+PYTHON_VERSION_NODOT:
+  type: str
+  help: Derived from PYTHON_VERSION; override only if you must
+  default: '@@ PYTHON_VERSION | replace(''.'', '''') @@'

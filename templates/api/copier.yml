@@ -8,6 +8,11 @@ _exclude:
 - tasks
 - '*.rej'
 - '*.orig'
+- __pycache__
+- '*.pyc'
+- .pytest_cache
+- .ruff_cache
+- .DS_Store
 - '{% if FORGE_PLATFORM != ''github'' %}
 
   /.github/
@@ -24,65 +29,67 @@ _exclude:
 
   '
 
-API_BASELINE_REF:
-  default: origin/@@ DEFAULT_BRANCH @@
-  help: Git ref the contract diff compares against
-  type: str
-API_DESCRIPTION:
-  default: '@@ DESCRIPTION @@'
-  type: str
 API_FAIL_SEVERITY:
+  type: str
+  help: vacuum lint severity that fails the gate
   choices:
   - error
   - warn
   - info
   default: warn
-  help: vacuum lint severity that fails the gate
-  type: str
 API_SERVER_URL:
-  default: https://api.example.com
+  type: str
   help: Production endpoint. Unknown at setup time is normal
   placeholder: https://api.example.com
-  type: str
-API_TITLE:
-  default: '@@ PROJECT_NAME @@'
-  type: str
+  default: https://api.example.com
 API_VERSION:
-  default: 0.1.0
+  type: str
   help: Version of your contract, not of OpenAPI
-  type: str
+  default: 0.1.0
 DEFAULT_BRANCH:
-  default: main
-  help: Branch CI listens on and the force-push guard protects
   type: str
-  validator: '{% if not (DEFAULT_BRANCH | string | regex_search(''^[a-z0-9._/-]+$'')) %}DEFAULT_BRANCH
-    must match ^[a-z0-9._/-]+${% endif %}'
+  help: Branch CI listens on and the force-push guard protects
+  default: main
+  validator: '{% if not (DEFAULT_BRANCH | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}DEFAULT_BRANCH
+    must be a branch name: letters, digits, dot, underscore, slash or dash, with no spaces -- main, master,
+    release/2.x{% endif %}'
 FORGE_PLATFORM:
+  type: str
+  help: Only github and gitlab are supported; other forges are an explicit gap
   choices:
   - github
   - gitlab
   default: github
-  help: Only github and gitlab are supported; other forges are an explicit gap
-  type: str
 JOB_TIMEOUT_MINUTES:
-  default: '15'
-  help: Per-job CI timeout; a hung job holds a runner until it fires
   type: str
+  help: Per-job CI timeout; a hung job holds a runner until it fires
+  default: '15'
 ORG:
-  default: TODO-org
+  type: str
   help: Organisation or owner, used for the API contact
   placeholder: TODO-org
-  type: str
+  default: TODO-org
 REPO_URL:
-  default: ''
-  help: Remote URL. Empty drops the blocks that reference it
   type: str
+  help: Remote URL. Empty drops the blocks that reference it
+  default: ''
 SPDX_ID:
+  type: str
+  help: Licence, or NONE for an unpublished repository. Writes LICENSE
   choices:
   - Apache-2.0
   - MIT
   - MPL-2.0
   - AGPL-3.0-only
+  - NONE
   default: Apache-2.0
-  help: Licence. Materialised into LICENSE by a post-copy task
+API_BASELINE_REF:
   type: str
+  help: Git ref the contract diff compares against
+  default: origin/@@ DEFAULT_BRANCH @@
+API_DESCRIPTION:
+  type: str
+  default: '@@ DESCRIPTION @@'
+API_TITLE:
+  type: str
+  default: '@@ PROJECT_NAME @@'

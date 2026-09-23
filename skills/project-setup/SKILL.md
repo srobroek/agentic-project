@@ -78,6 +78,8 @@ GATES
 ASK the shape before reading any answer back
 ASK the plan, before the first file is written
 ASK the licence, a published repository, a credential, a machine-global registration
+  `SPDX_ID` takes `NONE` for a repository published under no licence at all — an
+  internal service, a work repo. Do not default an unpublished project to Apache-2.0.
 
 Two entry paths. Offer both in round two and let the user pick:
 
@@ -257,7 +259,7 @@ and these are the reason to involve a model at all:
 | `INSTALL_COMMANDS`, `USAGE_EXAMPLE` | derived from the accepted stack. Behind `CUSTOMISE_DEFAULTS`, so pass a composed value with `--set` rather than opening the gate |
 | `COMMIT_SCOPES` | the project's real module names. Behind the same gate |
 | `HOOK_EXCLUDE_PATTERNS` | paths that genuinely must be excluded. Behind the same gate |
-| `MONOREPO_MEMBERS` | a JSON array of `{name, path, capabilities}`, one per member. This drives per-member CI jobs, so a wrong path produces a job that tests nothing |
+| `MONOREPO_MEMBERS` | a JSON array of `{name, path, capabilities}`, one per member. This drives per-member CI jobs, so a wrong path produces a job that tests nothing. `IS_MONOREPO` is derived from it: supply the members and do not set the flag |
 | `DEV_COMMAND` | only if the project actually serves something; empty drops the worktree dev-server block |
 | `ADRS` | a JSON array of decisions, each needing `title`, `decision`, `rationale`, `consequences`. One file is written per entry. An ADR without a decision and its rationale is refused |
 | `A11Y_SURFACES_JSON` | `{name, baseURL, routes}` per surface. `[]` records axe scanning as a gap rather than pretending to scan |
@@ -283,18 +285,28 @@ MUST read committed configuration before asking anything. Run
 is greenfield.
 
 For an existing repo, `plan` names both lists. `files.overwrite` in `--json` (a list under the
-summary otherwise) is what Copier replaces outright: a `justfile` and a `README.md` are on it.
+summary otherwise) is what Copier replaces outright: a `README.md` is on it, a `justfile` is
+not — the `just` layer skips one that is already there.
 `generator_targets` is the second list — the shared files the generators fold into after every
 layer, which Copier never places and therefore never mentions. `.gitignore`,
-`.pre-commit-config.yaml` and `AGENTS.md` are on that one, each with `keeps_existing`.
+`.pre-commit-config.yaml`, `justfile` and `AGENTS.md` are on that one, each with a
+`disposition` and a `keeps_existing` flag.
 
 MUST read both lists rather than guessing from the layer set. For every entry, ask
 `KEEP | CHANGE | REMOVE` and name the consequence. Copier overwrites by default, and the plan
 is your only warning.
 
-`keeps_existing: true` means the generator merges and your entries survive; `false` means the
-path is replaced. A hand-written `CLAUDE.md` is folded into `AGENTS.md` and replaced by a
-symlink to it — nothing is lost, and the run says what it folded in.
+`disposition` has three values. `merged` means the generator folds its block in and your
+entries survive; `replaced` means the path is rewritten; `left-alone` means the generator will
+not touch a file it did not write. A hand-written `CLAUDE.md` is folded into `AGENTS.md` and
+replaced by a symlink to it — nothing is lost, and the run says what it folded in. A
+hand-written `.github/workflows/ci.yml` is `left-alone`, and `apply` then reports that the
+`wc-*` workflows beside it are called by nothing: report that line, it is a real gap the user
+has to close by hand or by deleting the file.
+
+MUST report any step that `apply` says "did less than the full job". That list is how a
+missing toolchain surfaces: `cargo init` is skipped rather than failing the scaffold, so the
+repository has no `Cargo.toml` and the run still exits 0.
 
 The `.d/` fragment layers are additive: a new fragment lands beside the existing ones and the
 generators fold it in, preserving text outside the managed markers.

@@ -8,6 +8,11 @@ _exclude:
 - tasks
 - '*.rej'
 - '*.orig'
+- __pycache__
+- '*.pyc'
+- .pytest_cache
+- .ruff_cache
+- .DS_Store
 - '{% if FORGE_PLATFORM != ''github'' %}
 
   /.github/
@@ -31,34 +36,35 @@ _tasks:
   - '@@ PROJECT_NAME @@'
 
 FORGE_PLATFORM:
+  type: str
+  help: Only github and gitlab are supported; other forges are an explicit gap
   choices:
   - github
   - gitlab
   default: github
-  help: Only github and gitlab are supported; other forges are an explicit gap
-  type: str
 GOLANGCI_LINT_VERSION:
-  default: 2.7.1
+  type: str
   help: golangci-lint
-  type: str
+  default: 2.7.1
 GOVULNCHECK_VERSION:
-  default: 1.1.4
+  type: str
   help: govulncheck
-  type: str
+  default: 1.1.4
 GO_VENDOR:
-  default: false
-  help: Commit vendor/?
   type: bool
+  help: Commit vendor/?
+  default: false
 GO_VERSION:
-  default: '1.26'
+  type: str
   help: Go toolchain
-  type: str
+  default: '1.26'
 JOB_TIMEOUT_MINUTES:
-  default: '15'
+  type: str
   help: Per-job CI timeout; a hung job holds a runner until it fires
-  type: str
+  default: '15'
 PROJECT_NAME:
-  help: Repository name, lowercase with dashes
   type: str
-  validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z][a-z0-9-]+$'')) %}PROJECT_NAME must
-    match ^[a-z][a-z0-9-]+${% endif %}'
+  help: Repository name, lowercase with dashes
+  validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z](?:[a-z0-9-]*[a-z0-9])?$'')) %}PROJECT_NAME
+    must be lowercase letters, digits and dashes, starting with a letter and ending with a letter or digit
+    -- my-app, flint, api2. It becomes the crate, package and module name{% endif %}'

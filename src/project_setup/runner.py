@@ -83,25 +83,37 @@ GENERATORS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
     ("scripts/fold_gitignore.py", (), (".gitignore",)),
     ("scripts/merge_hooks.py", (), (".pre-commit-config.yaml",)),
     ("scripts/gen_justfile.py", (), ("justfile",)),
+    # --keep-hand-owned is what the script's own help calls "for a render that must not
+    # fail", and this is that render. Without it a brownfield repository with its own
+    # .github/workflows/ci.yml made the generator exit 3, which marked the whole apply
+    # FAIL and suppressed the placeholder report over a scaffold that was otherwise
+    # complete. Leaving somebody's CI alone is the correct outcome, not a failure.
     (
         "scripts/gen_caller.py",
-        ("--default-branch", "{DEFAULT_BRANCH}"),
+        ("--default-branch", "{DEFAULT_BRANCH}", "--keep-hand-owned"),
         (".github/workflows/ci.yml",),
     ),
     ("scripts/gen_steering.py", (), ("docs/agents",)),
     ("scripts/install_agents_index.py", (), ("AGENTS.md", "CLAUDE.md")),
 )
-# Whether a generator keeps what it finds or replaces the whole file, which is the
-# part a brownfield user needs in order to decide.
-GENERATOR_KEEPS_EXISTING = {
-    ".gitignore": True,
-    ".pre-commit-config.yaml": True,
-    "justfile": True,
-    "AGENTS.md": True,
-    ".github/workflows/ci.yml": False,
-    "CLAUDE.md": False,
-    "docs/agents": False,
+# What a generator does to a path that is already there, which is the part a
+# brownfield user needs in order to decide. Three outcomes, not two: `gen_caller`
+# refuses a ci.yml it did not write, so `plan` promising "replaced outright" for a
+# hand-written caller threatened something that never happens.
+MERGED, REPLACED, LEFT_ALONE = "merged", "replaced", "left-alone"
+GENERATOR_DISPOSITION = {
+    ".gitignore": MERGED,
+    ".pre-commit-config.yaml": MERGED,
+    "justfile": MERGED,
+    "AGENTS.md": MERGED,
+    ".github/workflows/ci.yml": REPLACED,
+    "CLAUDE.md": REPLACED,
+    "docs/agents": REPLACED,
 }
+# A generated file names its generator in its first line. Without that line the file
+# is somebody's own, and the generator named here leaves it where it is rather than
+# replacing it, so `plan` has to say that instead.
+HAND_OWNED_REFUSAL = {".github/workflows/ci.yml": "gen_caller.py"}
 # Copier announces one line per file it touches. Parsing them is what lets `plan`
 # answer the only question a brownfield user has: what of mine gets replaced?
 # `conflict` precedes `overwrite` for the same path, so `overwrite` is the signal.
@@ -109,6 +121,12 @@ GENERATOR_KEEPS_EXISTING = {
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 OPERATION = re.compile(r"^\s*(create|overwrite|identical|skip|remove|conflict)\s+(\S.*)$")
 REPORTED_OPERATIONS = ("overwrite", "create")
+# A task that degraded instead of failing. Copier captures task output, so `apply`
+# reported `place ok lang-rust` and `95 file(s) created` for a Rust repository with no
+# Cargo.toml: `cargo` was absent, the task skipped as designed, and the skip went into
+# a log nobody printed. Degrading is the right trade; degrading invisibly is not, so
+# every task marks one with this token and the summary carries it.
+TASK_WARNING = re.compile(r"^\s*([\w.-]+): WARNING (.+)$")
 
 
 @dataclass
@@ -119,6 +137,8 @@ class StepResult:
     seconds: float = 0.0
     # {operation: paths}, parsed out of Copier's own per-file announcements.
     files: dict[str, list[str]] = field(default_factory=dict)
+    # Degradations a task reported and carried on from.
+    warnings: list[str] = field(default_factory=list)
 
 
 def split_operations(output: str) -> tuple[dict[str, list[str]], str]:
@@ -146,6 +166,16 @@ def split_operations(output: str) -> tuple[dict[str, list[str]], str]:
     return files, "\n".join(rest).strip()
 
 
+def task_warnings(output: str) -> list[str]:
+    """Every degradation a task marked, without its marker."""
+    found: list[str] = []
+    for line in output.splitlines():
+        marked = TASK_WARNING.match(line)
+        if marked is not None:
+            found.append(f"{marked.group(1)}: {marked.group(2).strip()}")
+    return found
+
+
 @dataclass
 class RunResult:
     dest: Path
@@ -170,6 +200,11 @@ class RunResult:
                 if path not in seen:
                     seen.append(path)
         return sorted(seen)
+
+    @property
+    def warnings(self) -> list[tuple[str, str]]:
+        """(step, message) for every degradation, in the order they happened."""
+        return [(s.name, w) for s in self.placed + self.generated for w in s.warnings]
 
 
 def place_layers(
@@ -224,6 +259,7 @@ def place_layers(
                 detail=detail,
                 seconds=time.perf_counter() - started,
                 files=files,
+                warnings=task_warnings(output),
             )
         )
         if error:
@@ -273,8 +309,8 @@ def generator_args(extra: tuple[str, ...], answers: dict) -> list[str]:
     return out
 
 
-def generator_destinations(dest: Path, layers: list[str]) -> list[tuple[str, bool]]:
-    """Existing paths a generator will rewrite, and whether it keeps what it finds.
+def generator_destinations(dest: Path, layers: list[str]) -> list[tuple[str, str]]:
+    """Existing paths a generator will rewrite, and what it does to each one.
 
     A generator only runs when the layer that owns its script was placed, so the
     answer depends on the selected layers rather than on the templates as a whole.
@@ -291,7 +327,7 @@ def generator_destinations(dest: Path, layers: list[str]) -> list[tuple[str, boo
         "scripts/gen_steering.py": "steering",
         "scripts/install_agents_index.py": "steering",
     }
-    found: list[tuple[str, bool]] = []
+    found: list[tuple[str, str]] = []
     for rel, _extra, destinations in GENERATORS:
         owner = owners.get(rel)
         if owner is not None and owner not in layers and owner not in ALWAYS_ON:
@@ -299,8 +335,27 @@ def generator_destinations(dest: Path, layers: list[str]) -> list[tuple[str, boo
         for relative in destinations:
             path = dest / relative
             if path.is_symlink() or path.exists():
-                found.append((relative, GENERATOR_KEEPS_EXISTING.get(relative, False)))
+                found.append((relative, disposition(path, relative)))
     return found
+
+
+def disposition(path: Path, relative: str) -> str:
+    """What the generator will do to this existing path.
+
+    A generator that refuses a file it did not write leaves it alone, and `plan`
+    saying "replaced outright" for a hand-written CI caller threatened a replacement
+    that never happens. The first line is the test, because that is where every
+    generated file here names its generator.
+    """
+    owner = HAND_OWNED_REFUSAL.get(relative)
+    if owner is not None and path.is_file():
+        try:
+            first = path.read_text(errors="replace").split("\n", 1)[0]
+        except OSError:
+            first = ""
+        if owner not in first:
+            return LEFT_ALONE
+    return GENERATOR_DISPOSITION.get(relative, REPLACED)
 
 
 def deselected_layers(catalog: Catalog, dest: Path, data: dict) -> list[str]:
@@ -401,6 +456,7 @@ def run_generators(
                 proc.returncode == 0,
                 detail=detail,
                 seconds=time.perf_counter() - started,
+                warnings=task_warnings(detail),
             )
         )
         if not quiet and detail:

@@ -465,7 +465,11 @@ def main() -> int:
         print(f"{len(pairs)} steering file(s) current")
         return 0
 
-    print(f"wrote {written} of {len(pairs)} steering file(s)")
+    # "wrote 8 of 9" reads as one file having failed, when the ninth was simply
+    # already correct. Say which it is.
+    current = len(pairs) - written
+    note = f", {current} already current" if current else ""
+    print(f"wrote {written} steering file(s){note}")
     return 0
 
 

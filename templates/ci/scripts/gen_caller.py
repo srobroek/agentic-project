@@ -425,7 +425,15 @@ def main() -> int:
     if existing and not existing.startswith(MARKER):
         report = f"{CALLER} has no generator marker, so it is hand-owned"
         if args.keep_hand_owned:
-            print(f"{report}; left alone")
+            # WARNING is the token the scaffolder greps out of a generator's output.
+            # Leaving the file alone is the right call and not a failure, but a user
+            # whose caller was written by hand has workflows here that nothing calls,
+            # and a summary line saying "left alone" does not say that.
+            print(
+                f"gen_caller: WARNING {report} and was left alone. The wc-* workflows "
+                "beside it are called by nothing until you either wire them in by hand "
+                f"or delete {CALLER} and re-run."
+            )
             return 0
         print(
             f"{report}; refusing to overwrite it. Delete the file to hand the caller back "

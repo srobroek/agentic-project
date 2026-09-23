@@ -8,26 +8,32 @@ _exclude:
 - tasks
 - '*.rej'
 - '*.orig'
+- __pycache__
+- '*.pyc'
+- .pytest_cache
+- .ruff_cache
+- .DS_Store
 
 COMMIT_SCOPES:
-  default: ''
+  type: str
   help: Allowed commit scopes, comma separated. Empty leaves scopes unrestricted
-  type: str
-DEFAULT_BRANCH:
-  default: main
-  help: Branch CI listens on and the force-push guard protects
-  type: str
-  validator: '{% if not (DEFAULT_BRANCH | string | regex_search(''^[a-z0-9._/-]+$'')) %}DEFAULT_BRANCH
-    must match ^[a-z0-9._/-]+${% endif %}'
-HOOK_EXCLUDE_PATTERNS:
   default: ''
+DEFAULT_BRANCH:
+  type: str
+  help: Branch CI listens on and the force-push guard protects
+  default: main
+  validator: '{% if not (DEFAULT_BRANCH | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}DEFAULT_BRANCH
+    must be a branch name: letters, digits, dot, underscore, slash or dash, with no spaces -- main, master,
+    release/2.x{% endif %}'
+HOOK_EXCLUDE_PATTERNS:
+  type: str
   help: Paths excluded from hooks, joined with \|. Empty drops the block
-  type: str
+  default: ''
 MAX_FILE_KB:
-  default: '512'
+  type: str
   help: Largest file the added-large-files hook accepts
-  type: str
+  default: '512'
 UV_VERSION:
-  default: 0.9.8
-  help: uv
   type: str
+  help: uv
+  default: 0.9.8

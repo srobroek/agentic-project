@@ -19,10 +19,22 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Prefix the scaffolder greps out of a task's captured output. A task that degrades
+# instead of failing has to say so somewhere a caller can find it: Copier captures
+# every task's output, and `apply` reported `place ok lang-rust` and `95 file(s)
+# created` for a Rust repository with no Cargo.toml, because the skip below was
+# written into a log nobody printed. Degrading is right; degrading silently is not.
+WARNING = "WARNING"
 
-def run(cmd: list[str]) -> int:
+
+def run(cmd: list[str], owns: str = "") -> int:
     if not shutil.which(cmd[0]):
-        print(f"native_init: {cmd[0]} not on PATH; skipping {' '.join(cmd)}", file=sys.stderr)
+        lost = f", so {owns} was not created" if owns else ""
+        print(
+            f"native_init: {WARNING} {cmd[0]} is not on PATH{lost}. Install {cmd[0]} "
+            f"and re-run apply; nothing else is missing.",
+            file=sys.stderr,
+        )
         return 0
     print(f"native_init: {' '.join(cmd)}")
     return subprocess.run(cmd, check=False).returncode
@@ -35,11 +47,17 @@ def main() -> int:
     kind, arg = sys.argv[1], sys.argv[2]
     extra = sys.argv[3] if len(sys.argv) == 4 else ""
 
+    # Every reconciliation below is guarded on the manifest actually being there. When
+    # the tool is absent `run` degrades to a warning and returns 0, and a tidy pass
+    # over a tree the tool never wrote reconciles nothing against nothing.
     if kind == "rust":
         if Path("Cargo.toml").exists():
             print("native_init: Cargo.toml present, skipping")
             return 0
-        return run(["cargo", "init", f"--{arg}", "--quiet"])
+        code = run(["cargo", "init", f"--{arg}", "--quiet"], owns="Cargo.toml")
+        if code == 0 and Path("Cargo.toml").is_file():
+            _mark_unpublished_if_unlicensed(extra)
+        return code
 
     if kind == "ts":
         if Path("package.json").exists():
@@ -49,8 +67,8 @@ def main() -> int:
         # what already exists so the tidy can tell its own leftovers from a file
         # the repository brought with it.
         pre_existing = {name for name, _ in BUN_LEFTOVERS if Path(name).exists()}
-        code = run(["bun", "init", "-y"])
-        if code == 0:
+        code = run(["bun", "init", "-y"], owns="package.json")
+        if code == 0 and Path("package.json").is_file():
             _tidy_after_bun(arg, pre_existing)
             _declare_ts_dev_tools(extra)
             _seed_ts_entry_point()
@@ -75,9 +93,10 @@ def main() -> int:
                 "--lib" if layout == "src" else "--app",
                 "--python",
                 python,
-            ]
+            ],
+            owns="pyproject.toml",
         )
-        if code == 0:
+        if code == 0 and Path("pyproject.toml").is_file():
             _tidy_after_uv(pre_existing)
             _declare_dev_tools()
             _seed_python_test()
@@ -87,13 +106,40 @@ def main() -> int:
         if Path("go.mod").exists():
             print("native_init: go.mod present, skipping")
             return 0
-        code = run(["go", "mod", "init", arg])
-        if code == 0:
+        code = run(["go", "mod", "init", arg], owns="go.mod")
+        if code == 0 and Path("go.mod").is_file():
             _seed_go_package(arg)
         return code
 
     print(f"native_init: unknown kind {kind!r}", file=sys.stderr)
     return 2
+
+
+# The one SPDX_ID that is not a licence. Kept here rather than imported: task scripts
+# are copied into a layer one file at a time and run standalone.
+NO_LICENCE = "NONE"
+
+
+def _mark_unpublished_if_unlicensed(spdx: str) -> None:
+    """Say `publish = false` when the project states no licence.
+
+    `cargo init` writes no `license` field, so cargo-deny falls back to reading the
+    LICENSE file -- which a licensed project has. With `SPDX_ID=NONE` there is none,
+    and `cargo deny check licenses` then fails the crate itself as unlicensed:
+    `error[unlicensed]: <name> is unlicensed`. Measured: the `[licenses.private]`
+    block deny.toml carries for this case only applies to a crate the manifest marks
+    unpublishable, which an unlicensed crate is anyway.
+    """
+    if spdx != NO_LICENCE:
+        return
+    manifest = Path("Cargo.toml")
+    body = manifest.read_text()
+    if "publish" in body:
+        return
+    manifest.write_text(
+        body.replace('version = "0.1.0"\n', 'version = "0.1.0"\npublish = false\n', 1)
+    )
+    print("native_init: marked the crate publish = false; it states no licence")
 
 
 # What `bun init -y` writes that a layer owns or that a fresh repository should not

@@ -27,6 +27,7 @@ from __future__ import annotations
 import re
 import shutil
 import sys
+from fnmatch import fnmatch
 from pathlib import Path
 
 import yaml
@@ -101,7 +102,15 @@ TOKEN_POLICY: dict[str, dict] = {
         "type": "str",
         "required": True,
         "help": "Repository name, lowercase with dashes",
-        "validator": "^[a-z][a-z0-9-]+$",
+        # `^[a-z][a-z0-9-]+$` refused the one-letter name `q` and accepted the typo
+        # `my-app-`, which is the wrong way round for both. Start with a letter, end
+        # with a letter or digit, dashes in between.
+        "validator": "^[a-z](?:[a-z0-9-]*[a-z0-9])?$",
+        "rule": (
+            "be lowercase letters, digits and dashes, starting with a letter and "
+            "ending with a letter or digit -- my-app, flint, api2. It becomes the "
+            "crate, package and module name"
+        ),
     },
     "DESCRIPTION": {"type": "str", "required": True, "help": "One-line purpose"},
     "INSTALL_COMMANDS": {
@@ -116,11 +125,17 @@ TOKEN_POLICY: dict[str, dict] = {
         "help": "One command the README shows for running the project",
         "tune": True,
     },
+    # NONE is for a repository that is not published under a licence: an internal
+    # service, a work repo, a private tool. Every other value here is a real licence,
+    # so without it the only answers on offer were four ways to publish, and a private
+    # repository got an Apache-2.0 LICENSE it never chose -- a statement about the
+    # code, not an inconvenience. NONE writes no LICENSE, omits the OpenAPI licence
+    # block, and switches cargo-deny to its unpublished-crate policy.
     "SPDX_ID": {
         "type": "str",
-        "choices": ["Apache-2.0", "MIT", "MPL-2.0", "AGPL-3.0-only"],
+        "choices": ["Apache-2.0", "MIT", "MPL-2.0", "AGPL-3.0-only", "NONE"],
         "default": "Apache-2.0",
-        "help": "Licence. Materialised into LICENSE by a post-copy task",
+        "help": "Licence, or NONE for an unpublished repository. Writes LICENSE",
     },
     "CODEOWNER": {
         "type": "str",
@@ -142,7 +157,14 @@ TOKEN_POLICY: dict[str, dict] = {
         "type": "str",
         "default": "main",
         "help": "Branch CI listens on and the force-push guard protects",
-        "validator": "^[a-z0-9._/-]+$",
+        # Lowercase-only refused `Development`, which git is perfectly happy with and
+        # which some repositories actually use. The pattern exists to keep the value
+        # safe inside a workflow and a shell, not to have an opinion about case.
+        "validator": "^[A-Za-z0-9._/-]+$",
+        "rule": (
+            "be a branch name: letters, digits, dot, underscore, slash or dash, "
+            "with no spaces -- main, master, release/2.x"
+        ),
     },
     "JOB_TIMEOUT_MINUTES": {
         "type": "str",
@@ -399,11 +421,18 @@ EXTRA_VARS: dict[str, dict[str, dict]] = {
             "help": "src/ layout? (false for a flat layout)",
         }
     },
+    # Derived, not asked. It was the eleventh prompt every project answered, and no
+    # interview answer could make it do anything: its whole effect is to place
+    # .ci/members.json, whose contents are MONOREPO_MEMBERS -- a composed answer the
+    # interview deliberately never asks. So `yes` at that prompt could only produce a
+    # manifest naming nobody, which `validate` then reported as ANSWER_HAS_NO_EFFECT.
+    # It stays a real answer, so a preset and `--set` still write it and that warning
+    # still fires for a caller that sets it without members.
     "ci": {
         "IS_MONOREPO": {
             "type": "bool",
-            "default": False,
-            "help": "Monorepo? Writes .ci/members.json, which drives per-member CI jobs",
+            "derive": "@@ MONOREPO_MEMBERS not in ('', '[]', None) @@",
+            "help": "Per-member CI: true when MONOREPO_MEMBERS lists anybody",
         }
     },
 }
@@ -419,6 +448,8 @@ OPTIONAL_MAP: dict[str, str] = {
     "self-hosted forge": "FORGE_HOSTNAME",
     "dev server": "DEV_COMMAND",
     "REMOTE_EXISTS": "REPO_URL",
+    "licensed": "SPDX_ID != 'NONE'",
+    "unlicensed": "SPDX_ID == 'NONE'",
 }
 
 # Copier post-copy tasks per layer. These are why no wrapper script is needed for
@@ -455,6 +486,11 @@ TASKS: dict[str, list[dict]] = {
                 "@@ _copier_conf.src_path @@/tasks/native_init.py",
                 "rust",
                 "@@ 'lib' if RUST_LIBRARY else 'bin' @@",
+                # The licence, because `cargo init` writes no `license` field and
+                # cargo-deny falls back to reading the LICENSE file. With SPDX_ID=NONE
+                # there is no such file, and `cargo deny check licenses` then fails the
+                # crate itself as unlicensed unless the manifest says `publish = false`.
+                "@@ SPDX_ID @@",
             ],
         }
     ],
@@ -506,6 +542,7 @@ EXTRA_TOKENS: dict[str, list[str]] = {
     "governance": ["SPDX_ID", "ADRS"],
     # Referenced only by a _task command, so the body scanner cannot find them.
     "lang-ts": ["PROJECT_NAME", "OXLINT_VERSION", "TSGOLINT_VERSION", "KNIP_VERSION"],
+    "lang-rust": ["SPDX_ID"],
     "lang-go": ["PROJECT_NAME"],
     "lang-python": ["PROJECT_NAME"],
     # Referenced only by a destination path, so the body scanner cannot find it.
@@ -593,9 +630,14 @@ def question_block(name: str, spec: dict) -> dict:
         q["default"] = spec.get("default", "")
 
     if "validator" in spec:
+        # The message a validator prints is the whole of what a user gets, and it is
+        # the first refusal anybody meets: `PROJECT_NAME must match ^[a-z][a-z0-9-]+$`
+        # left them to read a regex and guess what to type instead. A `rule` says it in
+        # words with an example; the pattern stays the enforcer.
+        rule = spec.get("rule") or f"match {spec['validator']}"
         q["validator"] = (
             f"{{% if not ({name} | string | regex_search('{spec['validator']}')) %}}"
-            f"{name} must match {spec['validator']}{{% endif %}}"
+            f"{name} must {rule}{{% endif %}}"
         )
     return q
 
@@ -614,6 +656,33 @@ MONOREPO_EXCLUDE = """{% if not IS_MONOREPO %}
 {% endif %}
 """
 
+# Never placed, from any layer. Two of these are written *into* `templates/` after the
+# port by whatever ran there: importing `templates/<layer>/scripts/x.py` -- which the
+# suite does -- leaves `scripts/__pycache__/x.cpython-313.pyc` beside it, and Copier
+# then copied that bytecode into every scaffold. A fresh Rust repository carried a
+# `.pyc` compiled by whichever interpreter last ran the tests, and `plan` listed it as
+# a file to create. The port cannot prevent it, because it happens after the port; the
+# exclusion can, because it is evaluated at render time.
+JUNK_EXCLUDE: tuple[str, ...] = (
+    "__pycache__",
+    "*.pyc",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".DS_Store",
+)
+
+
+# Paths a layer places only when they are not already there. Copier overwrites by
+# default, and `plan` listed `justfile` twice over: once as a file it would overwrite,
+# and once as a path a generator "merged, your entries kept". The second was false --
+# the layer replaced the file and the generator then folded its import block into the
+# fresh copy, so a brownfield repository's own recipes were gone, and so were any a
+# user had added to a scaffold of their own before re-applying. The layer's justfile
+# carries no answer (zero @@ tokens), so nothing is re-derived by replacing it and
+# nothing is lost by keeping it: the import block is the only generated part, and the
+# generator owns that wherever the surrounding file came from.
+SKIP_IF_EXISTS: dict[str, list[str]] = {"just": ["justfile"]}
+
 
 def write_copier_yml(
     dst: Path, layer: str, tokens: set[str], destinations: set[str] | None = None
@@ -624,8 +693,10 @@ def write_copier_yml(
             "variable_end_string": "@@",
             "keep_trailing_newline": True,
         },
-        "_exclude": ["copier.yml", "tasks", "*.rej", "*.orig"],
+        "_exclude": ["copier.yml", "tasks", "*.rej", "*.orig", *JUNK_EXCLUDE],
     }
+    if layer in SKIP_IF_EXISTS:
+        cfg["_skip_if_exists"] = SKIP_IF_EXISTS[layer]
     dests = destinations or set()
     touches_forge = any(d.startswith((".github/", ".gitlab/", ".gitlab-ci")) for d in dests)
     if touches_forge:
@@ -649,7 +720,15 @@ def write_copier_yml(
 
     body = yaml.safe_dump(cfg, sort_keys=False, width=100)
     if questions:
-        body += "\n" + yaml.safe_dump(questions, sort_keys=True, width=100)
+        # Alphabetical, except that a derived default is emitted after the answers it
+        # reads. Copier resolves defaults in declaration order, and IS_MONOREPO sorts
+        # ahead of the MONOREPO_MEMBERS it derives from, where the reference would be
+        # undefined and `not in ('', '[]', None)` would quietly come out true -- which
+        # is `.ci/members.json` placed into every single-root project.
+        ordered = sorted(questions, key=lambda name: (is_derived(questions[name]), name))
+        body += "\n" + yaml.safe_dump(
+            {name: questions[name] for name in ordered}, sort_keys=False, width=100
+        )
     header = "# GENERATED by tools/port_assets.py -- do not hand-edit.\n"
     (dst / "copier.yml").write_text(header + body)
     return questions
@@ -664,6 +743,16 @@ def remap(layer: str, rel: str) -> str:
     return rel
 
 
+def is_junk(rel: Path) -> bool:
+    """A build artifact rather than an asset, wherever it sits in the tree.
+
+    The render-time exclusion above is what keeps these out of a scaffold. This keeps
+    them out of `templates/` in the first place, so the generated tree is a function of
+    the assets and not of whatever last ran inside them.
+    """
+    return any(fnmatch(part, pattern) for part in rel.parts for pattern in JUNK_EXCLUDE)
+
+
 def port_layer(src: Path, dst: Path, layer: str) -> tuple[int, int, set[str], set[str]]:
     rendered = verbatim = 0
     tokens: set[str] = set()
@@ -672,7 +761,7 @@ def port_layer(src: Path, dst: Path, layer: str) -> tuple[int, int, set[str], se
 
     for f in sorted(p for p in src.rglob("*") if p.is_file()):
         rel = f.relative_to(src)
-        if rel.name in skip:
+        if rel.name in skip or is_junk(rel):
             continue
         mapped = Path(remap(layer, rel.as_posix()))
         if rel.name.endswith(".template"):
@@ -748,6 +837,7 @@ def check_task_scripts_installed() -> None:
 from project_setup.catalog import (  # noqa: E402
     ALWAYS_ON,
     ANSWERS_FILE,
+    LAYER_PURPOSE,
     PIN_GATE,
     SELECTION,
     TUNE_GATE,
@@ -777,9 +867,10 @@ SELECTION_HELP = "Layers to include, beyond the seven every project gets"
 
 # Conditions beyond layer selection. A question whose own answer decides whether it
 # is meaningful is gated on that answer, not asked and then ignored.
-ASK_WHEN: dict[str, str] = {
-    "MONOREPO_MEMBERS": "IS_MONOREPO",
-}
+#
+# Empty since IS_MONOREPO became derived: it gated MONOREPO_MEMBERS, which `compose`
+# already keeps out of the interview, and the dependency now runs the other way.
+ASK_WHEN: dict[str, str] = {}
 
 # One question stands in for every tool-version question. Never asking them at all
 # was the wrong end of the trade: the pins are right for almost everybody, and the
@@ -847,13 +938,19 @@ def interview_order(declared: dict[str, dict[str, dict]]) -> list[str]:
     Copier evaluates `when:` in declaration order, so it also put gated questions
     ahead of the answers that gate them.
 
-    Within a layer, an EXTRA_VARS boolean comes before the tokens, which is what
-    puts IS_MONOREPO ahead of the MONOREPO_MEMBERS it gates.
+    Within a layer, an EXTRA_VARS boolean comes before the tokens -- except a derived
+    one, which has to come after the answer it reads: IS_MONOREPO is derived from the
+    MONOREPO_MEMBERS that TOKEN_POLICY declares.
     """
     layer_order = [n for n in ALWAYS_ON if n in declared] + sorted(
         n for n in declared if n not in ALWAYS_ON
     )
-    declaration = [name for extra in EXTRA_VARS.values() for name in extra] + list(TOKEN_POLICY)
+    extra = [(name, spec) for vars_ in EXTRA_VARS.values() for name, spec in vars_.items()]
+    declaration = (
+        [name for name, spec in extra if not spec.get("derive")]
+        + list(TOKEN_POLICY)
+        + [name for name, spec in extra if spec.get("derive")]
+    )
 
     first_owner: dict[str, int] = {}
     for index, layer in enumerate(layer_order):
@@ -969,10 +1066,14 @@ def build_interview(out: Path, declared: dict[str, dict[str, dict]]) -> int:
         questions[name] = dict(specs[name])
     # One multiselect, not ten yes/no prompts. Each WANT_<LAYER> is derived from it
     # below, so everything downstream still reads the key it always read.
+    #
+    # Labelled, because the list was ten bare directory names and `worktrunk` or
+    # `a11y` tells a first-time reader nothing about what selecting it does. Copier
+    # shows the key and records the value, so the answer is still the layer name.
     questions[SELECTION] = {
         "type": "str",
         "multiselect": True,
-        "choices": optional,
+        "choices": {f"{layer} -- {LAYER_PURPOSE[layer]}": layer for layer in optional},
         "default": [],
         "help": SELECTION_HELP,
     }

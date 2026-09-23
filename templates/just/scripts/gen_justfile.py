@@ -8,7 +8,10 @@ just has no glob import, so one line per fragment has to be written. Every line 
 that breaks every recipe in the file, including the ones that would still work.
 
 Only the block between the two markers is rewritten. Anything outside them survives,
-so a hand-written recipe in the root justfile is not lost.
+so a hand-written recipe in the root justfile is not lost. A justfile with no markers
+is somebody else's: the block is appended to it rather than refused, because the
+`just` layer leaves an existing justfile in place and this is what wires its
+fragments in.
 
 Deterministic: fragments sort by name, so two runs produce the same bytes.
 """
@@ -84,19 +87,25 @@ def main() -> int:
         return 3
 
     body = justfile.read_text()
+    count = len(fragments(dest))
     if BEGIN not in body or END not in body:
+        # A justfile this script did not write. The `just` layer no longer replaces an
+        # existing one -- doing so deleted a repository's own recipes while `plan`
+        # reported the file as "merged, your entries kept" -- so the import block has
+        # to be added to whatever is there. The end of the file is the one safe place:
+        # `import?` is position-independent in just, and everything already written
+        # keeps its meaning.
+        justfile.write_text(body.rstrip("\n") + "\n\n" + block(dest))
         print(
-            f"justfile has no '{BEGIN}' / '{END}' markers; refusing to guess where "
-            "the import block goes",
-            file=sys.stderr,
+            f"justfile had no import block; appended one for {count} fragment(s), "
+            "your recipes untouched"
         )
-        return 3
+        return 0
 
     head, _, rest = body.partition(BEGIN)
     _, _, tail = rest.partition(END + "\n")
     justfile.write_text(head + block(dest) + tail)
 
-    count = len(fragments(dest))
     print(f"justfile imports {count} fragment(s)")
     return 0
 

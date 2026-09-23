@@ -8,6 +8,11 @@ _exclude:
 - tasks
 - '*.rej'
 - '*.orig'
+- __pycache__
+- '*.pyc'
+- .pytest_cache
+- .ruff_cache
+- .DS_Store
 _tasks:
 - command:
   - '@@ _copier_python @@'
@@ -21,29 +26,30 @@ _tasks:
   when: '@@ ADRS not in ('''', ''[]'', None) @@'
 
 ADRS:
-  default: '[]'
-  help: JSON array of ADRs, one file written each; [] writes none
   type: str
+  help: JSON array of ADRs, one file written each; [] writes none
+  default: '[]'
 CODEOWNER:
-  default: '@TODO-owner'
+  type: str
   help: Owner or team for CODEOWNERS, e.g. @me or @org/team
   placeholder: '@TODO-owner'
-  type: str
+  default: '@TODO-owner'
 CODE_OF_CONDUCT_CONTACT:
-  default: ''
-  help: Reporting contact. Empty omits CODE_OF_CONDUCT.md
   type: str
+  help: Reporting contact. Empty omits CODE_OF_CONDUCT.md
+  default: ''
 SECURITY_CONTACT:
-  default: security@example.com
+  type: str
   help: Private security channel, or the forge advisory URL
   placeholder: security@example.com
-  type: str
+  default: security@example.com
 SPDX_ID:
+  type: str
+  help: Licence, or NONE for an unpublished repository. Writes LICENSE
   choices:
   - Apache-2.0
   - MIT
   - MPL-2.0
   - AGPL-3.0-only
+  - NONE
   default: Apache-2.0
-  help: Licence. Materialised into LICENSE by a post-copy task
-  type: str

@@ -97,11 +97,25 @@ def test_applying_twice_changes_nothing(tmp_path: Path):
 
 def test_overlapping_layers_fold_into_one_gitignore(scaffolded: Path):
     fragments = sorted(p.name for p in (scaffolded / ".gitignore.d").iterdir())
-    assert fragments == ["go", "os", "ts"]
+    assert fragments == ["go", "os", "scripts", "ts"]
     body = (scaffolded / ".gitignore").read_text()
     assert "BEGIN PROJECT-SETUP MANAGED BLOCK" in body
     for probe in ("Icon", "vendor/", "node_modules"):
         assert probe in body, probe
+
+
+def test_a_project_with_no_python_layer_still_ignores_its_own_bytecode(tmp_path: Path):
+    """Every project gets `scripts/*.py`, and two hooks there import a sibling module.
+
+    Importing writes bytecode beside the module, so the first commit in a fresh Rust
+    repository left `scripts/__pycache__/` untracked and unignored, where `git add -A`
+    picks it up. The Python layer ignores it; a project without that layer needs it
+    just as much, so the base layer owns the fragment.
+    """
+    scaffold(tmp_path, "rust-cli")
+    body = (tmp_path / ".gitignore").read_text()
+    assert "__pycache__/" in body
+    assert (tmp_path / "scripts/attribution_guard.py").is_file()
 
 
 def test_overlapping_layers_merge_into_one_precommit_config(scaffolded: Path):
@@ -210,10 +224,14 @@ def test_plan_names_every_file_it_would_overwrite(tmp_path: Path):
     result = place_layers(catalog, tmp_path, data, pretend=True, run_tasks=False, quiet=True)
 
     assert result.ok, [s.detail for s in result.placed if not s.ok]
-    assert result.files("overwrite") == ["README.md", "justfile"]
+    # The justfile is not on this list: the `just` layer skips an existing one, because
+    # replacing it deleted the repository's own recipes while `plan` reported the file
+    # as merged. The README is, and naming it is the whole point of the list.
+    assert result.files("overwrite") == ["README.md"]
     assert "CODEOWNERS" in result.files("create")
     # A dry run that writes something is worse than no dry run at all.
     assert (tmp_path / "README.md").read_text() == "hand written\n"
+    assert (tmp_path / "justfile").read_text() == "build:\n    go build ./...\n"
 
 
 def test_a_greenfield_plan_reports_no_overwrites(tmp_path: Path):
@@ -222,6 +240,31 @@ def test_a_greenfield_plan_reports_no_overwrites(tmp_path: Path):
     result = place_layers(catalog, tmp_path, data, pretend=True, run_tasks=False, quiet=True)
     assert result.files("overwrite") == []
     assert len(result.files("create")) > 20
+
+
+def test_bytecode_beside_a_layers_scripts_is_never_placed(tmp_path: Path):
+    """`templates/` is written to after the port, by whatever runs there.
+
+    This suite imports `templates/<layer>/scripts/*.py` by path, which leaves a
+    `__pycache__` beside them. Copier then copied that bytecode into every scaffold: a
+    fresh Rust repository carried a `.pyc` built by whichever interpreter last ran the
+    tests, and `plan` listed it as a file to create. Poison the layer the way the suite
+    does and assert nothing bytecode-shaped is placed.
+    """
+    poison = TEMPLATES / "steering" / "scripts" / "__pycache__"
+    poison.mkdir(exist_ok=True)
+    pyc = poison / "install_agents_index.cpython-313.pyc"
+    pyc.write_bytes(b"\xcb\x0c\r\n")
+    try:
+        catalog = load_catalog(TEMPLATES)
+        data = {**load_preset("minimal", PRESETS)[0], **IDENTITY}
+        result = place_layers(catalog, tmp_path, data, pretend=True, run_tasks=False, quiet=True)
+    finally:
+        pyc.unlink()
+        poison.rmdir()
+
+    assert result.ok, [s.detail for s in result.placed if not s.ok]
+    assert [p for p in result.files("create") if "__pycache__" in p or p.endswith(".pyc")] == []
 
 
 def test_task_output_is_kept_out_of_the_file_operation_list():
@@ -467,6 +510,27 @@ def test_two_fragments_disagreeing_is_still_a_hard_error(tmp_path: Path):
     assert "conflict" in merge.detail and "pinned" in merge.detail
 
 
+def test_a_repositorys_own_justfile_survives_and_gains_the_imports(tmp_path: Path):
+    """`plan` said "merged, your entries kept" about a file the layer overwrote.
+
+    The `just` layer used to place its justfile unconditionally, so a brownfield
+    repository's recipes were gone and the only warning it got claimed the opposite.
+    The layer's own justfile carries no answer, so skipping an existing one re-derives
+    nothing; the generator still owns the import block wherever the file came from.
+    """
+    (tmp_path / "justfile").write_text("test:\n    pytest -q\n\nrelease:\n    ./release.sh\n")
+
+    result = scaffold(tmp_path, "py-lib")
+
+    body = (tmp_path / "justfile").read_text()
+    assert "pytest -q" in body, "the repository's own recipe was replaced"
+    assert "./release.sh" in body
+    assert "import? '.just.d/python.just'" in body
+    assert "justfile" not in result.files("overwrite")
+    gen = next(s for s in result.generated if "gen_justfile" in s.name)
+    assert gen.ok and "appended" in gen.detail
+
+
 # --------------------------------------------------------------------------- tasks
 #
 # These run with tasks enabled, which is how a real apply works. They stay offline:
@@ -491,11 +555,82 @@ def scaffold_with_tasks(dest: Path, preset: str, extra: dict | None = None) -> o
     return result
 
 
+def test_a_degraded_task_is_reported_not_swallowed(tmp_path: Path, monkeypatch):
+    """`apply` reported a clean Rust scaffold with no Cargo.toml in it.
+
+    `cargo` was not on PATH, the task skipped as designed, and the skip went into a
+    captured log nothing printed: `place ok lang-rust`, `95 file(s) created`, exit 0.
+    Degrading is right -- a missing toolchain must not fail a scaffold -- so the run
+    still succeeds and the warning is what carries the missing manifest.
+    """
+    # Copier runs tasks through plumbum, which snapshots the environment when it is
+    # imported -- during collection, before any monkeypatch. So `setenv` alone changes
+    # nothing the task can see, and the scaffold gets a real cargo.
+    from plumbum import local
+
+    monkeypatch.setenv("PATH", "/nonexistent")
+    monkeypatch.setitem(local.env, "PATH", "/nonexistent")
+
+    result = scaffold_with_tasks(tmp_path, "rust-cli")
+
+    assert result.ok, "a missing toolchain must not fail the scaffold"
+    assert not (tmp_path / "Cargo.toml").exists()
+    messages = [message for _, message in result.warnings]
+    assert any("cargo" in m and "Cargo.toml" in m for m in messages), messages
+    assert any("git" in m for m in messages), messages
+
+
 def test_licence_is_materialised_and_the_pool_removed(tmp_path: Path):
     result = scaffold_with_tasks(tmp_path, "minimal", extra={"SPDX_ID": "MPL-2.0"})
     assert result.ok, [s.detail for s in result.placed if not s.ok]
     assert "Mozilla Public License" in (tmp_path / "LICENSE").read_text()
     assert not (tmp_path / "licenses").exists(), "unused licence texts were left behind"
+
+
+def test_a_project_can_state_no_licence_at_all(tmp_path: Path):
+    """Four choices were four ways to publish.
+
+    An internal service, a work repository or a private tool is published under none of
+    them, and `SPDX_ID` refused anything else -- so a private repository got an
+    Apache-2.0 LICENSE it never chose, which is a statement about the code rather than
+    an inconvenience.
+    """
+    result = scaffold_with_tasks(tmp_path, "minimal", extra={"SPDX_ID": "NONE"})
+
+    assert result.ok, [s.detail for s in result.placed if not s.ok]
+    assert not (tmp_path / "LICENSE").exists()
+    assert not (tmp_path / "licenses").exists(), "unused licence texts were left behind"
+    # A deliberate answer, so it is not a degradation.
+    assert result.warnings == []
+
+
+def test_an_unlicensed_rust_crate_passes_its_own_licence_gate(tmp_path: Path):
+    """`cargo deny check licenses` fails a crate it reads as unlicensed.
+
+    `cargo init` writes no `license` field, so cargo-deny falls back to the LICENSE
+    file -- which SPDX_ID=NONE does not write. Measured with cargo-deny 0.19:
+    `error[unlicensed]: <name> is unlicensed` unless the manifest marks the crate
+    unpublishable, which is what makes deny.toml's `[licenses.private]` block apply.
+    """
+    result = scaffold_with_tasks(tmp_path, "rust-cli", extra={"SPDX_ID": "NONE"})
+
+    assert result.ok, [s.detail for s in result.placed if not s.ok]
+    deny = (tmp_path / "deny.toml").read_text()
+    assert "[licenses.private]" in deny
+    assert "NONE" not in deny, "NONE is not a licence a dependency can carry"
+    manifest = tmp_path / "Cargo.toml"
+    if manifest.is_file():  # skipped when cargo is not installed
+        assert "publish = false" in manifest.read_text()
+
+
+def test_a_licensed_rust_crate_is_still_publishable(tmp_path: Path):
+    scaffold_with_tasks(tmp_path, "rust-cli", extra={"SPDX_ID": "MIT"})
+    deny = (tmp_path / "deny.toml").read_text()
+    assert "MIT" in deny
+    assert "[licenses.private]" not in deny
+    manifest = tmp_path / "Cargo.toml"
+    if manifest.is_file():
+        assert "publish" not in manifest.read_text()
 
 
 def test_git_is_initialised_once(tmp_path: Path):
@@ -554,7 +689,7 @@ def test_plan_names_the_files_a_generator_would_rewrite(tmp_path):
     were about to rewrite -- the three files such a repository cares most about.
     `plan` is documented as the only warning before an existing file is replaced.
     """
-    from project_setup.runner import generator_destinations
+    from project_setup.runner import MERGED, REPLACED, generator_destinations
 
     for name in (".gitignore", ".pre-commit-config.yaml", "AGENTS.md", "CLAUDE.md"):
         (tmp_path / name).write_text("hand written\n")
@@ -563,10 +698,28 @@ def test_plan_names_the_files_a_generator_would_rewrite(tmp_path):
 
     assert set(found) == {".gitignore", ".pre-commit-config.yaml", "AGENTS.md", "CLAUDE.md"}
     # The distinction a user needs in order to decide: merged, or replaced outright.
-    assert found[".pre-commit-config.yaml"] is True
-    assert found[".gitignore"] is True
-    assert found["AGENTS.md"] is True
-    assert found["CLAUDE.md"] is False
+    assert found[".pre-commit-config.yaml"] == MERGED
+    assert found[".gitignore"] == MERGED
+    assert found["AGENTS.md"] == MERGED
+    assert found["CLAUDE.md"] == REPLACED
+
+
+def test_a_hand_written_ci_caller_is_reported_as_left_alone(tmp_path):
+    """`plan` threatened a replacement that never happens.
+
+    `gen_caller.py` refuses a ci.yml it did not write, so a brownfield repository's own
+    caller survives -- and the plan said "replaced outright" about it, which is the one
+    line that would make somebody move the file first.
+    """
+    from project_setup.runner import LEFT_ALONE, REPLACED, generator_destinations
+
+    caller = tmp_path / ".github/workflows/ci.yml"
+    caller.parent.mkdir(parents=True)
+    caller.write_text("name: ci\non: [push]\n")
+    assert dict(generator_destinations(tmp_path, ["ci"]))[".github/workflows/ci.yml"] == LEFT_ALONE
+
+    caller.write_text("# Generated by scripts/gen_caller.py -- edit the wc-* workflows\nname: ci\n")
+    assert dict(generator_destinations(tmp_path, ["ci"]))[".github/workflows/ci.yml"] == REPLACED
 
 
 def test_a_greenfield_destination_reports_no_generator_rewrites(tmp_path):
@@ -590,12 +743,12 @@ def test_a_generator_whose_layer_is_not_placed_is_not_reported(tmp_path):
 
 def test_every_generator_declares_where_it_writes():
     """A generator with no declared destination is invisible to `plan` again."""
-    from project_setup.runner import GENERATOR_KEEPS_EXISTING, GENERATORS
+    from project_setup.runner import GENERATOR_DISPOSITION, GENERATORS
 
     for rel, _extra, destinations in GENERATORS:
         assert destinations, f"{rel} declares no destination"
         for relative in destinations:
-            assert relative in GENERATOR_KEEPS_EXISTING, f"{relative} has no merge/replace class"
+            assert relative in GENERATOR_DISPOSITION, f"{relative} has no disposition"
 
 
 def test_deselecting_a_layer_names_the_files_it_leaves_behind(tmp_path):

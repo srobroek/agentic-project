@@ -124,7 +124,15 @@ aside, `seed_selection` is the one place that translates: it converts supplied `
 the list's pre-selection and drops the booleans, because supplied data beats a rendered
 default and the interview would otherwise ignore every deselection the user made.
 
-MUST keep `PIN_GATE`, `TUNE_GATE` and `SELECTION` defined only in
+MUST label every layer choice with what the layer does, from `LAYER_PURPOSE`. The
+multiselect listed ten bare directory names, and `worktrunk`, `a11y` or `infra-aws-cdk`
+tells a first-time reader nothing about what selecting it does; `catalog` listed all
+seventeen the same way, with a question count. Copier shows a choice's key and records its
+value, so the answer is still the layer name. `LAYER_PURPOSE` lives beside `ALWAYS_ON` in
+`src/project_setup/catalog.py` for the same reason the gates do: the prompt labels and the
+`catalog` listing are two consumers of one line of prose.
+
+MUST keep `PIN_GATE`, `TUNE_GATE`, `SELECTION` and `LAYER_PURPOSE` defined only in
 `src/project_setup/catalog.py`, as `ALWAYS_ON` already is. `tools/port_assets.py` imports
 them. `PIN_GATE` was declared in both files and they agreed only by luck.
 
@@ -160,12 +168,29 @@ apply. Two *fragments* disagreeing is still a hard error — no answer can resol
 MUST report what a run replaced. `plan` parses Copier's own per-file lines and names every
 file it would overwrite; that is the only warning before Copier overwrites it.
 
+MUST NOT place a file a generator claims to merge. `plan` listed `justfile` twice: once as
+a file it would overwrite, and once as a path a generator "merged, your entries kept". The
+second was false — the `just` layer replaced the file and the generator then folded its
+import block into the fresh copy, so a brownfield repository's recipes were gone, and so
+were any a user had added to their own scaffold before re-applying. `SKIP_IF_EXISTS` in the
+port emits `_skip_if_exists` for those paths. It is only safe where the placed file carries
+no answer: the layer's justfile has zero `@@` tokens, so keeping an existing one re-derives
+nothing. `gen_justfile.py` appends its block to a justfile with no markers rather than
+refusing, because that is now the brownfield path.
+
 MUST declare every path a generator rewrites, as the third element of its `GENERATORS` row
-and a merge-or-replace class in `GENERATOR_KEEPS_EXISTING`. Copier places none of them —
+and a disposition in `GENERATOR_DISPOSITION`. Copier places none of them —
 they are folded from the `.d/` fragments afterwards — so its per-file lines cannot mention
 them and `plan` reported "2 existing file(s) would be overwritten" for a brownfield repo
 whose `.gitignore`, `.pre-commit-config.yaml` and `AGENTS.md` were all about to be
 rewritten as well. `test_every_generator_declares_where_it_writes` refuses a row without one.
+
+MUST report a third disposition, `left-alone`, for a path whose generator refuses to
+replace a file it did not write. `gen_caller.py` leaves a `ci.yml` with no generator marker
+where it is, so a plan that said "replaced outright" about a brownfield caller threatened a
+replacement that never happens — the one line that would make somebody move the file first.
+`HAND_OWNED_REFUSAL` names the generator, and the existing file's first line is the test,
+because that is where a generated file here names its generator.
 
 MUST make a generator's refusal reachable from where the user is standing. `run_generators`
 passes a generator nothing but the destination and its declared arguments, so
@@ -176,6 +201,22 @@ takes the same non-destructive default AGENTS.md already took — merge, and say
 folded in. Only a symlink, which is another tool's wiring rather than content, still
 refuses, and it names `python3 scripts/install_agents_index.py . --claude SKIP`, which is
 installed in the scaffolded repository and therefore runnable.
+
+MUST pass a generator the flag that keeps it from failing a render that must not fail.
+`gen_caller.py` documents `--keep-hand-owned` as being "for a render that must not fail",
+and `GENERATORS` did not pass it: a brownfield repository with its own CI workflow made the
+generator exit 3, which marked the whole apply FAIL and suppressed the placeholder report
+over a scaffold that was otherwise complete. Leaving somebody's CI alone is the correct
+outcome. The exit code stays 0 and the consequence is reported instead.
+
+MUST surface a step that degraded instead of failing. Tasks run inside Copier, which
+captures their output, so `apply` reported `place ok lang-rust`, `95 file(s) created` and
+exit 0 for a Rust repository with no `Cargo.toml` and no `src/`: `cargo` was absent, the
+task skipped exactly as designed, and the skip went into a log nothing printed. Degrading is
+the right trade; degrading invisibly is not. A task or generator marks one by printing
+`<name>: WARNING <what did not happen and what to do>`, `TASK_WARNING` collects it, and
+`apply` prints the list last, after the placeholder report. `--json` carries it as
+`warnings`, because a caller reading only `ok` saw a clean run.
 
 MUST evaluate a declared `validator:` in `validate`, not only at render time. `validate` is
 documented as the cheap check that writes nothing and the skill tells an agent to trust it,
@@ -225,6 +266,28 @@ know at setup time gets a `placeholder` in `TOKEN_POLICY`, which becomes both th
 Copier's own placeholder marker, and is reported by `validate` and at the end of `apply`.
 Blocking a scaffold on a production URL is the wrong trade: the value wanted is visibility.
 
+MUST say a refusal in words, and name what supplies the value. `MISSING_REQUIRED` read
+"required by layer(s) base and has no default. One-line purpose", which ran the help onto
+the end of a sentence and left the reader to work out that `--set` exists; a `validator:`
+printed `PROJECT_NAME must match ^[a-z][a-z0-9-]+$`, a regex with no example of a name that
+works. These two are the first refusals anybody meets. A `rule` in `TOKEN_POLICY` carries
+the sentence and the pattern stays the enforcer, so the two cannot disagree.
+
+MUST NOT leave Copier's `_`-prefixed bookkeeping in the recorded answers. The interview's
+answers file is meant to be committed and carried `_src_path`, an absolute path into the
+home directory of whichever machine ran it. Copier writes it for `copier update`, which this
+tool does not have, and `load_data` drops every `_` key on the way back in, so it was never
+read either. `drop_copier_bookkeeping` removes them.
+
+MUST let a repository state no licence. `SPDX_ID` offered four licences and nothing else, so
+an internal service or a work repo got an Apache-2.0 LICENSE it never chose — a statement
+about the code, not an inconvenience. `NONE` writes no LICENSE, drops the OpenAPI licence
+block, and switches `deny.toml` to `[licenses.private] ignore = true`. That block only
+applies to a crate the manifest marks unpublishable, so `native_init.py` writes
+`publish = false` for an unlicensed crate: measured with cargo-deny 0.19, without it
+`cargo deny check licenses` fails the crate itself as `error[unlicensed]`, because
+`cargo init` writes no `license` field and cargo-deny otherwise reads the LICENSE file.
+
 MUST NOT add a question for something a task can decide. `native_init.py` skips when the
 manifest exists and warns when the tool is absent, so `RUN_NATIVE_INIT` was deleted rather
 than defaulted.
@@ -232,9 +295,19 @@ than defaulted.
 MUST warn about an answer set that renders cleanly and then does nothing. `IS_MONOREPO`
 with an empty `MONOREPO_MEMBERS` wrote a member manifest naming nobody, which `gen_caller`
 read as "a monorepo with no members" and used to replace every language job with none at
-all. An empty member list is now the single-root case, as the question's own help says,
-and `validate` reports `ANSWER_HAS_NO_EFFECT`. A warning, not an error: the combination is
-legal and the user may be one answer from meaning it.
+all. An empty member list is the single-root case, and `validate` reports
+`ANSWER_HAS_NO_EFFECT`. A warning, not an error: the combination is legal and the user may
+be one answer from meaning it. `IS_MONOREPO` is no longer *asked*, because no interview
+answer could make it do anything — its whole effect needs `MONOREPO_MEMBERS`, which
+`compose` deliberately keeps out of the interview. It is derived from that list, so
+listing members is what makes a project a monorepo, and the warning still fires for a
+caller that sets the flag alone.
+
+MUST emit a derived question after the answers it reads, in a layer's `copier.yml` as well
+as in the interview. Copier resolves defaults in declaration order and the layer dump was
+alphabetical, which put `IS_MONOREPO` ahead of the `MONOREPO_MEMBERS` it now derives from:
+the reference would be undefined and `not in ('', '[]', None)` would quietly come out true,
+placing `.ci/members.json` into every single-root project.
 
 MUST reconcile what a native tool writes with what a layer owns. `bun init` drops a generic
 CLAUDE.md, its own `.gitignore` and a placeholder `index.ts`. The steering layer owns
@@ -245,6 +318,15 @@ but only for paths that did not exist before `bun init` ran.
 
 MUST exclude `node_modules`, `.git`, `target` and friends from any recursive scan. Native init
 populates them and third-party files legitimately contain `@@`.
+
+MUST exclude `__pycache__`, `*.pyc` and the editor and tool droppings in `JUNK_EXCLUDE` from
+every layer. `templates/` is written to *after* the port by whatever runs there: this suite
+imports `templates/<layer>/scripts/*.py` by path, which leaves a `__pycache__` beside them,
+and Copier copied that bytecode into every scaffold. A fresh Rust repository carried a `.pyc`
+built by whichever interpreter last ran the tests, and `plan` listed it as a file to create.
+The port cannot prevent it, because it happens after the port; a render-time exclusion can.
+A scaffolded repository also ignores `__pycache__/` itself, because two of its own hooks
+import a sibling module and the first commit left untracked bytecode in `scripts/`.
 
 ## Assets are vendored here
 

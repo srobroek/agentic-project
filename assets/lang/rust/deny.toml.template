@@ -18,7 +18,9 @@ unmaintained = "workspace"
 # A dependency carrying anything outside this list fails the build. Add to the
 # list deliberately rather than widening it to silence a failure.
 allow = [
+  # OPTIONAL BEGIN licensed -- the crate's own licence, when it has one
   "@@SPDX_ID@@",
+  # OPTIONAL END
   "Apache-2.0",
   "Apache-2.0 WITH LLVM-exception",
   "MIT",
@@ -29,6 +31,14 @@ allow = [
   "Zlib",
 ]
 confidence-threshold = 0.9
+# OPTIONAL BEGIN unlicensed -- this crate is not published under a licence
+
+# Without this, `cargo deny check licenses` fails on the workspace crate itself:
+# it carries no `license` field, which cargo-deny reads as unlicensed rather than
+# as private. The check still applies to every dependency.
+[licenses.private]
+ignore = true
+# OPTIONAL END
 
 [bans]
 # Two versions of one crate means both get compiled and linked. Usually a

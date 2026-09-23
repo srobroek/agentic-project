@@ -8,23 +8,28 @@ _exclude:
 - tasks
 - '*.rej'
 - '*.orig'
+- __pycache__
+- '*.pyc'
+- .pytest_cache
+- .ruff_cache
+- .DS_Store
 
 DEV_COMMAND:
-  default: ''
+  type: str
   help: Dev server command. Empty drops the worktree dev-server block
-  type: str
-FORGE_HOSTNAME:
   default: ''
-  help: Self-hosted forge host. Empty means the platform's public host
+FORGE_HOSTNAME:
   type: str
+  help: Self-hosted forge host. Empty means the platform's public host
+  default: ''
 FORGE_PLATFORM:
+  type: str
+  help: Only github and gitlab are supported; other forges are an explicit gap
   choices:
   - github
   - gitlab
   default: github
-  help: Only github and gitlab are supported; other forges are an explicit gap
-  type: str
 SETUP_COMMAND:
-  default: just setup
-  help: What a freshly created worktree runs to become usable
   type: str
+  help: What a freshly created worktree runs to become usable
+  default: just setup

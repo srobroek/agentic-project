@@ -68,6 +68,32 @@ def test_bare_answers_report_exactly_the_identity_gaps(catalog):
     assert missing == set(IDENTITY)
 
 
+def test_a_missing_answer_names_the_flag_that_supplies_it(catalog):
+    """It read "required by layer(s) base and has no default. One-line purpose".
+
+    The help ran onto the end of a sentence, and the one thing the reader needs -- how
+    to supply the value -- was not in it. This is the first error most users meet.
+    """
+    message = next(p.message for p in validate_data(catalog, {}) if p.key == "DESCRIPTION")
+    assert "--set DESCRIPTION=" in message
+    assert message.startswith("One-line purpose")
+
+
+def test_turning_off_an_always_on_layer_says_why_it_cannot(catalog):
+    """`WANT_CI: false` is neither a typo nor an unselected layer.
+
+    It read "no layer declares this; it will be ignored. Typo, or a layer you did not
+    select?", which sends somebody looking for a spelling mistake in the name of a
+    layer that exists and is applied to every project.
+    """
+    problems = validate_data(catalog, {**IDENTITY, "WANT_CI": False})
+    named = [p for p in problems if p.key == "WANT_CI"]
+
+    assert [p.code for p in named] == ["ALWAYS_ON_LAYER"]
+    assert "every project" in named[0].message
+    assert named[0].level == "warning"
+
+
 def test_identity_answers_satisfy_the_always_on_layers(catalog):
     problems = [p for p in validate_data(catalog, IDENTITY) if p.level == "error"]
     assert problems == []
@@ -300,7 +326,32 @@ def test_a_value_the_template_would_reject_is_an_error_not_a_clean_answer_set(ca
 
     assert [p.code for p in problems] == ["INVALID_VALUE"]
     assert problems[0].key == "PROJECT_NAME"
-    assert "^[a-z][a-z0-9-]+$" in problems[0].message
+    # The message is the whole of what a user gets, and it said only "must match
+    # ^[a-z][a-z0-9-]+$" -- a regex to decode, with no example of a name that works.
+    assert "^[a-z]" not in problems[0].message
+    assert "lowercase" in problems[0].message
+    assert "my-app" in problems[0].message
+
+
+def test_the_name_rule_takes_one_letter_and_refuses_a_trailing_dash(catalog):
+    """The old pattern had both ends wrong.
+
+    `^[a-z][a-z0-9-]+$` needed two characters, so the legitimate crate name `q` was
+    refused, and it ended anywhere, so the typo `my-app-` was accepted.
+    """
+    from project_setup.catalog import validate_data
+
+    def rejected(name: str) -> bool:
+        data = {"PROJECT_NAME": name, "DESCRIPTION": "y"}
+        return any(p.key == "PROJECT_NAME" for p in validate_data(catalog, data))
+
+    assert not rejected("q")
+    assert not rejected("my-app")
+    assert not rejected("api2")
+    assert rejected("my-app-")
+    assert rejected("My-App")
+    assert rejected("my_app")
+    assert rejected("2fast")
 
 
 def test_a_valid_value_passes_its_validator_silently(catalog):

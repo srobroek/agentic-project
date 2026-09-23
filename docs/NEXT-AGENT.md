@@ -12,7 +12,7 @@ Read `README.md` for what it is, `AGENTS.md` for the invariants, and
 
 | | |
 | --- | --- |
-| Repo | `/Users/sjors/personal/dev/project-setup` (6 commits, clean, **never pushed**) |
+| Repo | `/Users/sjors/personal/dev/project-setup` (17 commits, clean, **never pushed**) |
 | CLI | `project-setup`, already on PATH, editable install pointing at this repo |
 | OMP plugin | `@srobroek/project-setup@0.1.0`, symlinked, so edits are live |
 | Slash command | `/project-setup` |
@@ -24,7 +24,7 @@ Read `README.md` for what it is, `AGENTS.md` for the invariants, and
 
 ```sh
 just port                          # regenerate templates/ from assets/
-.venv/bin/python -m pytest -q      # 187 unit tests
+.venv/bin/python -m pytest -q      # 201 unit tests
 .venv/bin/python tools/e2e.py      # all 12 stacks, end to end, with tasks
 ```
 
@@ -152,11 +152,72 @@ survives. This repository has no ledger, so this list is the carrier.
    keeps out of the interview: more machinery, and a second string per token to drift.
    Check: the schema is reachable from `catalog --json` without lengthening any prompt.
 2. **`README.md`, `AGENTS.md`, `SKILL.md`, this file — `uvx slopvac` fails on all four, and
-   did so before any of this work.** Measured on the commit before it: the same 71.4 score
-   and the same failure classes, Unicode dashes and the `prose-format` budget. The em dash is
-   this repository's own markdown style, so the fix is a deliberate style change across every
-   document, not a patch to whichever paragraph was edited last. Check: `uvx slopvac` passes
-   on all four, and the Python comments still read the way they do now.
+   did so before any of this work.** Measured twice: 71.4, then 71.0 before the second
+   shake-out and 69.9 after it, the same failure classes both times — Unicode dashes and the
+   `prose-format` budget. The em dash is this repository's own markdown style, so the fix is a
+   deliberate style change across every document, not a patch to whichever paragraph was
+   edited last. Check: `uvx slopvac` passes on all four, and the Python comments still read
+   the way they do now.
+
+## What a second shake-out found, and fixed
+
+Driven again: the interview through a PTY, `/project-setup` headless against a greenfield
+directory and a brownfield Python repo on `master`, and `apply` with a PATH that has no
+`cargo`. Eight defects, each with a test named after its symptom.
+
+1. **A skipped task reported success.** With `cargo` absent, `apply` printed
+   `place ok lang-rust`, `95 file(s) created` and exit 0 for a Rust repository with no
+   `Cargo.toml` and no `src/`. Tasks run inside Copier, which captures their output, so the
+   skip went into a log nothing printed. Tasks now mark a degradation `WARNING`, `apply`
+   prints them last, and `--json` carries `warnings`.
+2. **Every scaffold carried a `.pyc`.** This suite imports `templates/<layer>/scripts/*.py`
+   by path, which leaves a `__pycache__` beside them; Copier then copied that bytecode into
+   the output, and `plan` listed it as a file to create. The headless agent noticed before
+   any of the checks did. `JUNK_EXCLUDE` excludes it at render time; `e2e.py` asserts it.
+3. **A fresh repository grew untracked bytecode.** Two hook scripts import a sibling module,
+   so the first commit wrote `scripts/__pycache__/` into a repository whose `.gitignore` did
+   not mention it unless the Python layer happened to be selected. The base layer owns the
+   fragment now.
+4. **`plan` lied about the justfile.** It listed the file twice, once as an overwrite and
+   once as "merged, your entries kept". The layer replaced it and the generator folded its
+   block into the fresh copy, so a brownfield repository's recipes were gone. The `just`
+   layer now declares `_skip_if_exists`, and `gen_justfile.py` appends its block to a
+   justfile with no markers.
+5. **A hand-owned CI workflow failed the apply.** `gen_caller.py` correctly refuses a
+   `ci.yml` it did not write, and `GENERATORS` did not pass the `--keep-hand-owned` flag the
+   script documents for exactly this caller: exit 3, `FAIL`, placeholder report suppressed,
+   over a scaffold that was otherwise complete. `plan` also promised to replace the file.
+   Three dispositions now, `left-alone` among them.
+6. **Two refusals were unreadable.** `MISSING_REQUIRED` ran the help onto the end of a
+   sentence and named no way to supply the value; a validator printed
+   `PROJECT_NAME must match ^[a-z][a-z0-9-]+$`. A `rule` in `TOKEN_POLICY` says it in words.
+   The pattern was wrong at both ends too: it refused the one-letter name `q` and accepted
+   the typo `my-app-`.
+7. **`IS_MONOREPO` was asked of everybody and could do nothing.** Its whole effect needs
+   `MONOREPO_MEMBERS`, which `compose` keeps out of the interview, so the only reachable
+   answer was the one `validate` then reported as `ANSWER_HAS_NO_EFFECT`. Derived from the
+   member list now; ten prompts, not eleven. A layer's `copier.yml` emits a derived question
+   after the answers it reads, because the dump was alphabetical.
+8. **The layer list was ten bare directory names** and `catalog` listed seventeen the same
+   way. `LAYER_PURPOSE` labels both.
+
+Two smaller ones: the interview recorded `_src_path`, an absolute path into the home
+directory of whichever machine ran it, into a file meant to be committed; and
+`gen_steering.py` said "wrote 8 of 9 steering file(s)", which reads as one file having failed
+when the ninth was already correct.
+
+Two judgement calls taken the other way:
+
+- **`SPDX_ID` takes `NONE`.** Four choices were four ways to publish, so an internal service
+  got an Apache-2.0 LICENSE it never chose. Measured while implementing it: `[licenses.private]
+  ignore = true` alone does not satisfy cargo-deny, because it only applies to a crate the
+  manifest marks unpublishable.
+- **`WANT_CI: false` gets its own code.** `ALWAYS_ON_LAYER` rather than `UNKNOWN_KEY`, which
+  sent somebody looking for a spelling mistake in the name of a layer that exists.
+
+Left alone deliberately: the always-on set is still not deselectable, and an agent asked to
+"decide everything and apply without waiting" still stops for plan approval. The second is
+the gate working; removing it would let a model overwrite files on its own judgement.
 
 ## Rules
 

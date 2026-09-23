@@ -23,6 +23,31 @@ ALWAYS_ON: tuple[str, ...] = (
     "steering",
 )
 
+# What each layer is for, in one line. The multiselect listed ten bare directory
+# names -- `worktrunk`, `a11y`, `infra-aws-cdk` -- and `catalog` listed seventeen of
+# them with a question count, so the one thing a user needs in order to choose was
+# the one thing neither said. Defined here and imported by tools/port_assets.py,
+# which turns them into the multiselect's labels: two copies would drift.
+LAYER_PURPOSE: dict[str, str] = {
+    "base": "editorconfig, gitattributes, mise, the managed .gitignore",
+    "governance": "LICENSE, CODEOWNERS, SECURITY, CONTRIBUTING, ADRs",
+    "hooks": "pre-commit, commit-msg and pre-push guards",
+    "just": "the task surface: setup, check, per-language recipes",
+    "ci": "the workflow graph, derived from the layers present",
+    "forge": "GitHub or GitLab: templates, policies, issue forms",
+    "steering": "docs/agents/ plus AGENTS.md and CLAUDE.md",
+    "release": "release-please: versioning, changelog, tags",
+    "worktrunk": "parallel-agent worktrees and their setup hooks",
+    "lang-go": "Go: golangci-lint, govulncheck, per-package tests",
+    "lang-python": "Python: uv, ruff, ty, pytest, nox",
+    "lang-ts": "TypeScript: bun, biome, oxlint, knip",
+    "lang-rust": "Rust: clippy, nextest, deny, machete, llvm-cov",
+    "api": "an OpenAPI contract, linted and diffed in CI",
+    "i18n": "Inlang and Paraglide message catalogues",
+    "a11y": "Playwright and axe scans of named routes",
+    "infra-aws-cdk": "AWS CDK in TypeScript, in its own subtree",
+}
+
 INTERVIEW = "_interview"
 ANSWERS_FILE = ".project-setup-answers.yml"
 
@@ -284,8 +309,24 @@ def validate_data(catalog: Catalog, data: dict) -> list[Problem]:
     known = catalog.all_question_names()
     want_names = {want_var(n) for n in catalog.optional_layers()}
 
+    always_on_wants = {want_var(n): n for n in ALWAYS_ON}
     for key in sorted(data):
         if key.startswith("_") or key in want_names or key in known or key in INTERVIEW_KEYS:
+            continue
+        # `WANT_CI: false` is not a typo and not an unselected layer: it is somebody
+        # trying to turn a layer off that is applied to every project. "no layer
+        # declares this" sent them looking for a spelling mistake.
+        if key in always_on_wants:
+            problems.append(
+                Problem(
+                    "warning",
+                    "ALWAYS_ON_LAYER",
+                    f"the {always_on_wants[key]} layer is applied to every project, so this "
+                    f"answer changes nothing. It cannot be deselected; a layer you do not "
+                    f"want the output of is a question for the layer, not an answer.",
+                    key,
+                )
+            )
             continue
         problems.append(
             Problem(
@@ -299,12 +340,17 @@ def validate_data(catalog: Catalog, data: dict) -> list[Problem]:
     for name, q in sorted(catalog.questions_for(layers).items()):
         if not q.required or name in data:
             continue
+        # The message a user meets first, so it names the flag that answers it. It read
+        # "required by layer(s) base and has no default. One-line purpose", which ran
+        # the help onto the end of a sentence and left the reader to work out that
+        # `--set` is how you supply it.
         problems.append(
             Problem(
                 "error",
                 "MISSING_REQUIRED",
-                f"required by layer(s) {_owners(catalog, name, layers)} and has no default"
-                + (f". {q.help}" if q.help else ""),
+                (f"{q.help}. " if q.help else "")
+                + f"No default: layer(s) {_owners(catalog, name, layers)} need it. "
+                + f"Supply it with --set {name}=<value>, a --data-file, or the interview.",
                 name,
             )
         )

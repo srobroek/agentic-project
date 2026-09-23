@@ -1,0 +1,11 @@
+# Bytecode from this repository's own scripts/ directory.
+#
+# Every project gets `scripts/*.py`, whatever its language: the generators and the
+# hook entry points. Two of those hooks import a sibling module -- attribution_guard
+# reads attribution_patterns, commit-msg-rewrite reads close_keywords -- and an import
+# writes bytecode next to the module. So the first commit in a fresh Rust, Go or
+# TypeScript repository left `scripts/__pycache__/` untracked and unignored, and a
+# `git add -A` committed it. The Python layer ignores this too; a project with no
+# Python layer needs it just as much.
+__pycache__/
+*.py[cod]

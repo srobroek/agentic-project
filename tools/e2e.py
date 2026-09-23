@@ -184,6 +184,19 @@ def check_preset(preset: str, workdir: Path) -> dict:
     if present:
         raise Failure(f"files that should have been excluded exist: {present}")
 
+    # 5b. nothing a build or an editor left behind. The suite imports
+    # `templates/<layer>/scripts/*.py` by path, which writes a `__pycache__` beside
+    # them, and Copier copied that bytecode into every scaffold until the layers
+    # excluded it. The assertion is cheap and the failure was invisible.
+    junk = [
+        str(p.relative_to(dest))
+        for p in dest.rglob("*")
+        if ours(p, dest)
+        and (p.name in ("__pycache__", ".DS_Store", ".pytest_cache", ".ruff_cache"))
+    ]
+    if junk:
+        raise Failure(f"build artifacts placed into the scaffold: {junk}")
+
     # 6. no empty directories
     empties = [
         str(p.relative_to(dest))
@@ -258,7 +271,7 @@ def main() -> int:
         print(
             f"\nall {len(names)} presets passed: "
             "validate, plan-writes-nothing, apply, no tokens, expected and forbidden "
-            "files, no empty dirs, idempotent re-apply, answers recorded"
+            "files, no build artifacts, no empty dirs, idempotent re-apply, answers recorded"
         )
 
     if args.keep:
