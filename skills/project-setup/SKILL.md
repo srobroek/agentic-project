@@ -178,16 +178,22 @@ placeholder instead of blocking the scaffold. `apply` lists them at the end.
 MUST offer to replace a placeholder, and MUST NOT refuse to scaffold because one is unset. A
 placeholder is a normal state for a new repository.
 
+MUST leave the declared placeholder in place when the user does not know the value. Do not
+substitute a stand-in of your own: `validate` recognises the declared string and nothing else,
+so writing `@owner` over `@TODO-owner` reports a clean answer set and ships a CODEOWNERS file
+naming nobody. `catalog --json` gives the exact placeholder per question.
+
 MUST run `validate --json` to discover what is missing rather than reasoning about the
-catalog's `required` flags. It reports `MISSING_REQUIRED`, `INVALID_CHOICE`, `UNKNOWN_KEY` and
-`PLACEHOLDER_IN_USE` for the layers actually selected, which is the only thing that matters.
+catalog's `required` flags. It reports `MISSING_REQUIRED`, `INVALID_CHOICE`, `UNKNOWN_KEY`,
+`PLACEHOLDER_IN_USE` and `ANSWER_HAS_NO_EFFECT` for the layers actually selected, which is the
+only thing that matters.
 
 ## Building the data file
 
 1. **Start from the chosen preset**, or from an empty file on the manual path. Copy it; do not
    restate it.
-2. **Add the four identity answers**: `PROJECT_NAME`, `DESCRIPTION`, `CODEOWNER`,
-   `SECURITY_CONTACT`.
+2. **Add the two identity answers** `PROJECT_NAME` and `DESCRIPTION`, and `CODEOWNER` and
+   `SECURITY_CONTACT` when the user knows them.
 3. **Set the layer selection**: `WANT_<LAYER>: true`. `catalog --json` lists the exact names.
 4. **Apply the customisations** the user asked for in round three.
 5. **Validate before writing anything.**

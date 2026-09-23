@@ -157,3 +157,25 @@ def test_nothing_is_appended_when_every_answer_was_recorded(tmp_path):
 
     assert preserve_unasked(answers, {"PROJECT_NAME": "my-app"}) == []
     assert answers.read_text() == before
+
+
+def test_a_truncated_answer_says_it_is_truncated():
+    """A silent cut at a fixed column reads as the whole value.
+
+    `mise install && go mod download && bun insta` looks like a runnable command,
+    and a cut JSON array looks like malformed JSON.
+    """
+    from project_setup.cli import answer_display
+
+    shown = answer_display("mise install && go mod download && bun install", width=20)
+    assert shown.endswith("\u2026")
+    assert len(shown) == 20
+    assert answer_display("short", width=20) == "short"
+
+
+def test_a_boolean_answer_prints_the_way_yaml_writes_it():
+    """These lines get copied into an answers file, where `False` is a string."""
+    from project_setup.cli import answer_display
+
+    assert answer_display(True) == "true"
+    assert answer_display(False) == "false"

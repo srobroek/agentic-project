@@ -18,6 +18,7 @@ import yaml
 from .catalog import (
     ANSWERS_FILE,
     Catalog,
+    Question,
     load_catalog,
     selected_layers,
     validate_data,
@@ -183,6 +184,9 @@ def cmd_catalog(args: argparse.Namespace, catalog: Catalog) -> int:
                             "default": q.default,
                             "choices": q.choices,
                             "help": q.help,
+                            # The exact string validate recognises as "still a gap".
+                            # Substituting another stand-in reports a clean answer set.
+                            "placeholder": q.placeholder or None,
                             # Computed from other answers at render time. Do not ask
                             # for it, and do not pass the expression through.
                             "derived": q.derived,
@@ -225,10 +229,19 @@ def cmd_presets(args: argparse.Namespace, catalog: Catalog) -> int:
             return 0
         print(f"{args.show} resolves to {len(data)} answers:\n")
         width = max((len(k) for k in data), default=0)
+        questions = catalog.questions_for(selected_layers(catalog, data))
+        pinned = []
         for key in sorted(data):
-            value = str(data[key]).replace("\n", " ")[:44]
-            print(f"  {key:<{width}}  {value:<44}  <- {origin.get(key, args.show)}")
+            note = "" if questions.get(key, Question(key)).asked else "  (pinned)"
+            if note:
+                pinned.append(key)
+            print(f"  {key:<{width}}  {answer_display(data[key]):<46}  <- {origin.get(key)}{note}")
         print(f"\nlayers: {', '.join(selected_layers(catalog, data))}")
+        if pinned:
+            print(
+                f"{len(pinned)} pinned answer(s) are not asked: a tool version Renovate bumps, "
+                f"or a derived value."
+            )
         return 0
 
     if args.json:
@@ -268,6 +281,23 @@ def cmd_presets(args: argparse.Namespace, catalog: Catalog) -> int:
             )
             print(f"  parts/{path.stem:<20}{', '.join(selects) or 'policy only'}")
     return 0
+
+
+ANSWER_WIDTH = 46
+
+
+def answer_display(value: object, width: int = ANSWER_WIDTH) -> str:
+    """One line for one answer, honest about what it is not showing.
+
+    A silent cut at a fixed column reads as the whole value: `mise install && go
+    mod download && bun insta` looks like a command somebody could run, and a
+    truncated JSON array looks like malformed JSON. Booleans print as YAML writes
+    them, because these lines get copied into an answers file.
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    text = " ".join(str(value).split())
+    return text if len(text) <= width else text[: width - 1] + "\u2026"
 
 
 def cmd_validate(args: argparse.Namespace, catalog: Catalog) -> int:

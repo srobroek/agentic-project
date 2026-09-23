@@ -187,6 +187,19 @@ def test_defaults_for_skips_a_derived_expression(catalog):
     assert all("@@" not in str(v) for v in defaults.values())
 
 
+def test_the_declared_placeholder_is_discoverable(catalog):
+    """`validate` recognises this exact string and no other.
+
+    A caller that substitutes its own stand-in -- `@owner` for `@TODO-owner` --
+    reports a clean answer set and ships a CODEOWNERS file naming nobody, so the
+    string itself has to be readable rather than guessable.
+    """
+    questions = catalog.questions_for(["governance", "forge"])
+    assert questions["CODEOWNER"].placeholder == "@TODO-owner"
+    problems = validate_data(catalog, {**IDENTITY, "CODEOWNER": "@TODO-owner"})
+    assert any(p.code == "PLACEHOLDER_IN_USE" and p.key == "CODEOWNER" for p in problems)
+
+
 def test_a_stack_is_only_a_composition_of_parts(catalog):
     from project_setup.cli import load_preset
 
