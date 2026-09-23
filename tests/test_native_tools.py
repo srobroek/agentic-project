@@ -7,6 +7,7 @@ layer shipped without wiring. Both are junk in a fresh repository; one was data 
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 
@@ -34,13 +35,13 @@ def test_bun_leftovers_are_removed_when_bun_created_them(native_init, tmp_path, 
     (tmp_path / "package.json").write_text('{"name": "wrong-name"}\n')
     (tmp_path / "CLAUDE.md").write_text("bun's generic agent file\n")
     (tmp_path / ".gitignore").write_text("node_modules\n")
-    (tmp_path / "index.ts").write_text('console.log("Hello via Bun!");')
+    (tmp_path / "bun.lock").write_text("{}\n")
 
     native_init._tidy_after_bun("my-app", pre_existing=set())
 
     assert not (tmp_path / "CLAUDE.md").exists()
     assert not (tmp_path / ".gitignore").exists()
-    assert not (tmp_path / "index.ts").exists()
+    assert not (tmp_path / "bun.lock").exists()
     assert '"name": "my-app"' in (tmp_path / "package.json").read_text()
 
 
@@ -70,6 +71,241 @@ def test_a_steering_symlink_is_left_alone(native_init, tmp_path, monkeypatch):
     native_init._tidy_after_bun("my-app", pre_existing=set())
 
     assert (tmp_path / "CLAUDE.md").is_symlink()
+
+
+# ------------------------------------------------------------------- python wiring
+
+
+def test_uv_leaves_no_second_interpreter_pin(native_init, tmp_path, monkeypatch):
+    """`.python-version` and .mise/conf.d/python.toml would drift apart."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".python-version").write_text("3.12\n")
+
+    native_init._tidy_after_uv(set())
+
+    assert not (tmp_path / ".python-version").exists()
+
+
+def test_an_interpreter_pin_the_repository_had_is_kept(native_init, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".python-version").write_text("3.11\n")
+
+    native_init._tidy_after_uv({".python-version"})
+
+    assert (tmp_path / ".python-version").read_text() == "3.11\n"
+
+
+def test_uvs_placeholder_function_is_emptied(native_init, tmp_path, monkeypatch):
+    """ruff rejects logic in `__init__`, so uv's own `hello()` failed `just check`."""
+    monkeypatch.chdir(tmp_path)
+    package = tmp_path / "src/my_app"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text('def hello() -> str:\n    return "Hello from my-app!"\n')
+
+    native_init._strip_uv_placeholder()
+
+    assert (package / "__init__.py").read_text() == '"""my_app."""\n'
+
+
+def test_a_real_init_module_is_left_alone(native_init, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    package = tmp_path / "src/my_app"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text('from .core import run\n\n__all__ = ["run"]\n')
+
+    native_init._strip_uv_placeholder()
+
+    assert "from .core import run" in (package / "__init__.py").read_text()
+
+
+def test_the_tools_the_recipes_call_are_declared(native_init, tmp_path, monkeypatch):
+    """`uv init` writes no dependency group, so `uv run ty` had nothing to run."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-app"\n')
+
+    native_init._declare_dev_tools()
+
+    manifest = (tmp_path / "pyproject.toml").read_text()
+    assert "[dependency-groups]" in manifest
+    for tool in ("ruff", "ty", "pytest", "deptry", "nox"):
+        assert f'"{tool}",' in manifest
+
+
+def test_an_existing_dependency_group_is_not_duplicated(native_init, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    before = '[project]\nname = "x"\n\n[dependency-groups]\ndev = ["pytest"]\n'
+    (tmp_path / "pyproject.toml").write_text(before)
+
+    native_init._declare_dev_tools()
+
+    assert (tmp_path / "pyproject.toml").read_text() == before
+
+
+def test_an_empty_test_run_is_not_left_to_fail_the_gate(native_init, tmp_path, monkeypatch):
+    """pytest exits 5 with nothing collected, and the layer's pytest.ini makes the
+    missing-testpaths warning an error, so a fresh scaffold was red either way."""
+    monkeypatch.chdir(tmp_path)
+    package = tmp_path / "src/my_app"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text('"""my_app."""\n')
+
+    native_init._seed_python_test()
+
+    assert "import my_app" in (tmp_path / "tests/test_smoke.py").read_text()
+
+
+def test_a_project_with_tests_gets_no_seeded_one(native_init, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    package = tmp_path / "src/my_app"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests/test_real.py").write_text("def test_x(): pass\n")
+
+    native_init._seed_python_test()
+
+    assert not (tmp_path / "tests/test_smoke.py").exists()
+
+
+# ----------------------------------------------------------------------- go wiring
+
+
+def test_go_gets_a_package_because_its_own_tool_writes_none(native_init, tmp_path, monkeypatch):
+    """`go mod init` writes no source: `go test ./...` exited 1 and golangci-lint 5."""
+    monkeypatch.chdir(tmp_path)
+
+    native_init._seed_go_package("my-app")
+
+    assert 'fmt.Println("my-app")' in (tmp_path / "main.go").read_text()
+
+
+def test_a_repository_that_already_has_go_sources_is_left_alone(native_init, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "cmd").mkdir()
+    (tmp_path / "cmd/serve.go").write_text("package main\n")
+
+    native_init._seed_go_package("my-app")
+
+    assert not (tmp_path / "main.go").exists()
+
+
+# ----------------------------------------------------------------------- ts wiring
+
+
+def test_the_ts_tools_are_pinned_into_the_manifest(native_init, tmp_path, monkeypatch):
+    """Without them `bunx biome` fell through to PATH, and oxlint refused to start
+    because `typeAware: true` needs oxlint-tsgolint."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "package.json").write_text('{"name": "my-app"}\n')
+
+    native_init._declare_ts_dev_tools("@biomejs/biome=2.4.1,oxlint-tsgolint=7.0.2002")
+
+    dev = json.loads((tmp_path / "package.json").read_text())["devDependencies"]
+    assert dev == {"@biomejs/biome": "2.4.1", "oxlint-tsgolint": "7.0.2002"}
+
+
+def test_a_version_the_project_already_chose_is_not_overwritten(native_init, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "package.json").write_text('{"devDependencies": {"oxlint": "1.0.0"}}\n')
+
+    native_init._declare_ts_dev_tools("oxlint=1.85.0")
+
+    dev = json.loads((tmp_path / "package.json").read_text())["devDependencies"]
+    assert dev == {"oxlint": "1.0.0"}
+
+
+def test_the_entry_point_bun_names_keeps_existing(native_init, tmp_path, monkeypatch):
+    """package.json names index.ts as the module. Deleting it broke tsc, bun test
+    and knip at once, so the contents are replaced instead."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "index.ts").write_text('console.log("Hello via Bun!");\n')
+
+    native_init._seed_ts_entry_point()
+
+    assert "Hello via Bun" not in (tmp_path / "index.ts").read_text()
+    assert "export function greet" in (tmp_path / "index.ts").read_text()
+    assert 'from "./index"' in (tmp_path / "index.test.ts").read_text()
+
+
+def test_a_written_entry_point_is_never_replaced(native_init, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "index.ts").write_text("export const handler = 1;\n")
+
+    native_init._seed_ts_entry_point()
+
+    assert (tmp_path / "index.ts").read_text() == "export const handler = 1;\n"
+    assert not (tmp_path / "index.test.ts").exists()
+
+
+def test_the_lockfile_bun_wrote_before_the_edits_is_dropped(native_init):
+    """`bun install --frozen-lockfile` failed on a scaffold nobody had touched."""
+    assert "bun.lock" in dict(native_init.BUN_LEFTOVERS)
+    assert "index.ts" not in dict(native_init.BUN_LEFTOVERS)
+
+
+# ------------------------------------------------------------------- layer wiring
+
+
+@pytest.mark.parametrize(
+    ("layer", "manifest"),
+    [
+        ("lang-python", "pyproject.toml"),
+        ("lang-go", "go.mod"),
+        ("lang-rust", "Cargo.toml"),
+        ("lang-ts", "package.json"),
+    ],
+)
+def test_every_language_layer_initialises_its_manifest(layer, manifest):
+    """python and go shipped no manifest and wired no task, so `just setup` failed:
+    "No `pyproject.toml` found" and "go: no modules specified"."""
+    import yaml
+
+    cfg = yaml.safe_load((TEMPLATES / layer / "copier.yml").read_text())
+    commands = [" ".join(t["command"]) for t in cfg.get("_tasks", [])]
+    assert any("native_init.py" in c for c in commands), f"{layer} runs no native init"
+    assert (TEMPLATES / layer / "tasks/native_init.py").is_file()
+
+
+def test_a_task_naming_an_uninstalled_script_fails_the_port():
+    """The command table and the install table are declared apart. Wiring one without
+    the other placed every file and then died with "can't open file"."""
+    port = load_module(REPO / "tools/port_assets.py", "port_task_check")
+    port.TASKS["probe-layer"] = [
+        {"command": ["@@ _copier_python @@", "@@ _copier_conf.src_path @@/tasks/nope.py"]}
+    ]
+    try:
+        with pytest.raises(SystemExit) as raised:
+            port.check_task_scripts_installed()
+        assert "tasks/nope.py" in str(raised.value)
+        assert "TASK_SCRIPTS" in str(raised.value)
+    finally:
+        del port.TASKS["probe-layer"]
+
+
+def test_the_shipped_biome_config_is_one_biome_accepts():
+    """`"preset": "none"` is not a biome key. It made biome refuse to start, which
+    nothing noticed because `bunx biome` could not resolve biome either."""
+    config = json.loads((TEMPLATES / "lang-ts/biome.json.jinja").read_text())
+    rules = config["linter"]["rules"]
+    assert "preset" not in rules
+    assert rules["recommended"] is False
+
+
+def test_the_type_checker_skips_the_plumbing_it_did_not_write():
+    """ty reported five errors in scripts/gen_caller.py in a fresh scaffold. ruff.toml
+    already exempts scripts/ for the same reason."""
+    config = (TEMPLATES / "lang-python/ty.toml.jinja").read_text()
+    assert 'exclude = ["scripts"]' in config
+
+
+def test_an_empty_nextest_run_is_not_a_failure():
+    """nextest exits 4 on an empty run and `cargo init --bin` writes no test."""
+    fragment = (TEMPLATES / "lang-rust/.just.d/rust.just").read_text()
+    invocations = [line for line in fragment.splitlines() if line.startswith("    cargo ")]
+    assert [
+        line for line in invocations if "nextest" in line and "--no-tests=pass" not in line
+    ] == []
+    assert len([line for line in invocations if "nextest" in line]) == 2
 
 
 # ----------------------------------------------------------------- aws cdk wiring

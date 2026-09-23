@@ -361,9 +361,31 @@ def preserve_unasked(answers_file: Path, supplied: dict) -> list[str]:
     return sorted(dropped)
 
 
+def unusable_dest(dest: Path) -> str | None:
+    """Why this destination cannot hold a repository, in a sentence.
+
+    `mkdir` raises FileExistsError for a file and NotADirectoryError for a path
+    under one, and Copier's traceback names pathlib internals rather than the
+    argument the user typed.
+    """
+    if dest.is_symlink() and not dest.is_dir():
+        return f"--dest {dest} is a symlink to something that is not a directory"
+    if dest.exists() and not dest.is_dir():
+        return f"--dest {dest} is a file, not a directory"
+    for parent in dest.parents:
+        if parent.exists():
+            if not parent.is_dir():
+                return f"--dest {dest} sits under {parent}, which is a file"
+            break
+    return None
+
+
 def cmd_interview(args: argparse.Namespace, catalog: Catalog) -> int:
     """Hand the questions to Copier's own prompt engine. No LLM involved."""
     dest = Path(args.dest)
+    if (problem := unusable_dest(dest)) is not None:
+        print(problem, file=sys.stderr)
+        return 1
     dest.mkdir(parents=True, exist_ok=True)
     supplied = load_data(args, catalog) if (args.preset or args.data_file or args.set) else {}
     copier.run_copy(
@@ -493,6 +515,9 @@ def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
         print("refusing to apply against an incomplete answer set", file=sys.stderr)
         return 1
     dest = Path(args.dest)
+    if (problem := unusable_dest(dest)) is not None:
+        print(problem, file=sys.stderr)
+        return 1
     dest.mkdir(parents=True, exist_ok=True)
     result = place_layers(
         catalog,

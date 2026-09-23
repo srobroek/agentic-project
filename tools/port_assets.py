@@ -190,6 +190,14 @@ TOKEN_POLICY: dict[str, dict] = {
     },
     "BUN_VERSION": {"type": "str", "default": "1.3.2", "pin": True, "help": "Bun"},
     "BIOME_VERSION": {"type": "str", "default": "2.4.1", "pin": True, "help": "Biome"},
+    "OXLINT_VERSION": {"type": "str", "default": "1.85.0", "pin": True, "help": "oxlint"},
+    "TSGOLINT_VERSION": {
+        "type": "str",
+        "default": "7.0.2002",
+        "pin": True,
+        "help": "oxlint-tsgolint, which oxlint's type-aware rules require",
+    },
+    "KNIP_VERSION": {"type": "str", "default": "6.38.0", "pin": True, "help": "knip"},
     "UV_VERSION": {"type": "str", "default": "0.9.8", "pin": True, "help": "uv"},
     "RUST_VERSION": {
         "type": "str",
@@ -457,6 +465,35 @@ TASKS: dict[str, list[dict]] = {
                 "@@ _copier_conf.src_path @@/tasks/native_init.py",
                 "ts",
                 "@@ PROJECT_NAME @@",
+                # `name=version` pairs, not `name@version`: a scoped package name
+                # ends in `@` beside the `@@` delimiter, which Jinja then parses as
+                # the start of an expression.
+                (
+                    "@biomejs/biome=@@ BIOME_VERSION @@,"
+                    "oxlint=@@ OXLINT_VERSION @@,"
+                    "oxlint-tsgolint=@@ TSGOLINT_VERSION @@,"
+                    "knip=@@ KNIP_VERSION @@"
+                ),
+            ],
+        }
+    ],
+    "lang-python": [
+        {
+            "command": [
+                "@@ _copier_python @@",
+                "@@ _copier_conf.src_path @@/tasks/native_init.py",
+                "py",
+                "@@ PROJECT_NAME @@:@@ 'src' if PY_SRC_LAYOUT else 'flat' @@:@@ PYTHON_VERSION @@",
+            ],
+        }
+    ],
+    "lang-go": [
+        {
+            "command": [
+                "@@ _copier_python @@",
+                "@@ _copier_conf.src_path @@/tasks/native_init.py",
+                "go",
+                "@@ PROJECT_NAME @@",
             ],
         }
     ],
@@ -467,7 +504,10 @@ TASKS: dict[str, list[dict]] = {
 # renders against an undefined variable.
 EXTRA_TOKENS: dict[str, list[str]] = {
     "governance": ["SPDX_ID", "ADRS"],
-    "lang-ts": ["PROJECT_NAME"],
+    # Referenced only by a _task command, so the body scanner cannot find them.
+    "lang-ts": ["PROJECT_NAME", "OXLINT_VERSION", "TSGOLINT_VERSION", "KNIP_VERSION"],
+    "lang-go": ["PROJECT_NAME"],
+    "lang-python": ["PROJECT_NAME"],
     # Referenced only by a destination path, so the body scanner cannot find it.
     "i18n": ["I18N_PROJECT_DIR"],
 }
@@ -485,6 +525,8 @@ TASK_SCRIPTS: dict[str, list[str]] = {
     "governance": ["materialise_license.py", "write_adrs.py"],
     "lang-rust": ["native_init.py"],
     "lang-ts": ["native_init.py"],
+    "lang-python": ["native_init.py"],
+    "lang-go": ["native_init.py"],
 }
 
 ASSETS_ROOT: list[Path] = []
@@ -675,6 +717,31 @@ def install_tasks(layer: str, dst: Path) -> None:
         if not src.is_file():
             raise SystemExit(f"FATAL {layer}: task asset missing: {src}")
         shutil.copy2(src, target_dir / name)
+
+
+TASK_REF = re.compile(r"src_path @@/tasks/([^\s'\"]+)")
+
+
+def check_task_scripts_installed() -> None:
+    """Refuse a `_task` that names a script the port never copies into the layer.
+
+    The two are declared apart -- TASKS names the command, TASK_SCRIPTS names what
+    gets installed -- so wiring one without the other produces a layer that places
+    its files and then dies with "can't open file", after writing them. Copier
+    reports it as a TaskError from a path inside templates/, which reads like a
+    corrupted checkout rather than a missing table entry.
+    """
+    for layer, tasks in TASKS.items():
+        installed = set(TASK_SCRIPTS.get(layer, [])) | set(TASK_ASSETS.get(layer, []))
+        for task in tasks:
+            for part in task["command"]:
+                for referenced in TASK_REF.findall(str(part)):
+                    if referenced not in installed:
+                        raise SystemExit(
+                            f"FATAL {layer}: a _task runs tasks/{referenced}, which the port "
+                            f"does not install. Add it to TASK_SCRIPTS[{layer!r}] "
+                            f"(or TASK_ASSETS for a data file)."
+                        )
 
 
 # Single-sourced from the package so the port and the CLI cannot disagree.
@@ -903,6 +970,7 @@ def main() -> int:
         raise SystemExit(f"FATAL: assets root not found: {assets}")
     ASSETS_ROOT.clear()
     ASSETS_ROOT.append(assets)
+    check_task_scripts_installed()
 
     rows = []
     declared: dict[str, dict[str, dict]] = {}

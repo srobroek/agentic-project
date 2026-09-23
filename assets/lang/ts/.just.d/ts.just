@@ -4,7 +4,13 @@
 [group('ts')]
 ts: ts-fmt ts-lint ts-types ts-test
 
-# Format and organise imports. biome owns this half of the split
+# Format and organise imports. biome owns this half of the split.
+#
+# `bunx` resolves node_modules/.bin before PATH, and native_init.py puts every tool
+# below in devDependencies, so each name resolves to the version package.json pins.
+# Without those entries `bunx biome` fell through to PATH and died on a mise shim
+# ("No version is set for shim: biome") in a repository that pinned the version two
+# files away.
 [group('ts')]
 ts-fmt:
     bunx biome check --write .

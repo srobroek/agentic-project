@@ -115,6 +115,7 @@ FILTERS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+
 def member_error(message: str) -> None:
     raise SystemExit(f"{MEMBERS_FILE}: {message}")
 
@@ -161,9 +162,7 @@ def member_capabilities(
         if not isinstance(member, dict):
             member_error("each member must be an object")
         name = member.get("name")
-        if not isinstance(name, str) or not re.fullmatch(
-            r"[A-Za-z0-9][A-Za-z0-9_-]*", name
-        ):
+        if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", name):
             member_error(f"member name must be job-safe: {name!r}")
         if name in names:
             member_error(f"duplicate member name {name!r}")
@@ -185,9 +184,7 @@ def member_capabilities(
                     member_error(f"duplicate generated job id {capability.job_name!r}")
                 job_ids.add(capability.job_name)
                 capabilities.append(capability)
-    return sorted(
-        capabilities, key=lambda item: (item.name, item.language, item.kind)
-    )
+    return sorted(capabilities, key=lambda item: (item.name, item.language, item.kind))
 
 
 HEADER = f"""\
@@ -268,8 +265,10 @@ def filter_paths(language: str, member_path: str | None = None) -> tuple[str, ..
             f".github/actions/setup-{language}/**",
             CALLER,
         )
-    scoped = FILTERS[language] if member_path == "." else tuple(
-        f"{member_path}/{pattern}" for pattern in FILTERS[language]
+    scoped = (
+        FILTERS[language]
+        if member_path == "."
+        else tuple(f"{member_path}/{pattern}" for pattern in FILTERS[language])
     )
     return (
         *scoped,
@@ -358,9 +357,7 @@ def changes_job(
     return "\n".join(lines)
 
 
-def language_job(
-    kind: str, language: str, capability: MemberCapability | None = None
-) -> str:
+def language_job(kind: str, language: str, capability: MemberCapability | None = None) -> str:
     name = f"{kind}-{language}" if capability is None else capability.job_name
     filter_name = language if capability is None else capability.filter_name
     lines = [
@@ -372,7 +369,6 @@ def language_job(
     if capability is not None:
         lines += ["    with:", f"      working-directory: {capability.path}"]
     return "\n".join(lines)
-
 
 
 def gate_job(needed: list[str]) -> str:
@@ -465,9 +461,11 @@ def caller(
             "jobs:",
         ]
     )
-    jobs = [changes_job(languages, capabilities)] if (
-        (languages and capabilities is None) or capabilities
-    ) else []
+    jobs = (
+        [changes_job(languages, capabilities)]
+        if ((languages and capabilities is None) or capabilities)
+        else []
+    )
     if capabilities is None:
         for language, kinds in languages.items():
             jobs += [language_job(kind, language) for kind in kinds]

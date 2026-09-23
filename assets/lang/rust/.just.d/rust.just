@@ -14,10 +14,14 @@ rust-fmt:
 rust-lint:
     cargo clippy --all-targets --all-features -- -D warnings
 
-# Test through nextest
+# Test through nextest.
+#
+# `--no-tests=pass` because nextest exits 4 on an empty run, and `cargo init --bin`
+# writes no test: a scaffold nobody has touched failed its own `just check`. Unlike
+# Python, a seeded test would prove nothing here that `cargo build` does not.
 [group('rust')]
 rust-test:
-    cargo nextest run --all-features
+    cargo nextest run --all-features --no-tests=pass
 
 # Supply chain: advisories, licences, bans, sources
 [group('rust')]
@@ -32,7 +36,7 @@ rust-machete:
 # Coverage
 [group('rust')]
 rust-cov:
-    cargo llvm-cov nextest --all-features --lcov --output-path lcov.info
+    cargo llvm-cov nextest --all-features --no-tests=pass --lcov --output-path lcov.info
 
 # Fetches into the shared cargo registry cache, so a warm run is 0.55s. `cargo build`
 # would also fetch, but this separates a network failure from a compile failure.

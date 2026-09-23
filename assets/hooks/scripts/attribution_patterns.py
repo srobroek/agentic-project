@@ -132,9 +132,9 @@ PATTERNS: list[tuple[str, str]] = [
     # commit messages and docs, where the phrase is the subject rather than a
     # signature.
     (
-        rf"(?:^|\n|\\n|-m\s+|--message[=\s]+)[\x20\t\"'*\#>\-\U0001F916]*"
-        rf"(?:ai|llm|agent|bot|machine)-"
-        rf"(?:assisted|generated|authored|written|committed)\b",
+        r"(?:^|\n|\\n|-m\s+|--message[=\s]+)[\x20\t\"'*\#>\-\U0001F916]*"
+        r"(?:ai|llm|agent|bot|machine)-"
+        r"(?:assisted|generated|authored|written|committed)\b",
         "an AI authorship qualifier",
     ),
     # The robot-emoji signature line, which several agents emit. Requires a
@@ -153,9 +153,7 @@ COMPILED = [
 # `git commit` where commit is the subcommand: the first non-option token. Global
 # options are allowed between git and commit, so `git -C path commit` fires while
 # `git log --grep commit` does not.
-GIT_COMMIT = re.compile(
-    r"(?:^|[\s/])git(?:\s+-[^\s]+(?:\s+[^-][^\s;&|]*)?)*\s+commit(?:$|\s)"
-)
+GIT_COMMIT = re.compile(r"(?:^|[\s/])git(?:\s+-[^\s]+(?:\s+[^-][^\s;&|]*)?)*\s+commit(?:$|\s)")
 
 ADVICE = (
     "The human is the sole author of record. Drop the agent trailer, signature "
@@ -206,8 +204,7 @@ def main() -> int:
                         "hookEventName": "PreToolUse",
                         "permissionDecision": "allow",
                         "additionalContext": (
-                            f"This git commit carries AI authorship attribution "
-                            f"({label}). {ADVICE}"
+                            f"This git commit carries AI authorship attribution ({label}). {ADVICE}"
                         ),
                     }
                 },
@@ -224,4 +221,4 @@ if __name__ == "__main__":
         raise
     except BaseException:
         # Fail open: an authorship nudge must never wedge a commit.
-        raise SystemExit(0)
+        raise SystemExit(0) from None

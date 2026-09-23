@@ -23,6 +23,12 @@ _exclude:
   {% endif %}
 
   '
+_tasks:
+- command:
+  - '@@ _copier_python @@'
+  - '@@ _copier_conf.src_path @@/tasks/native_init.py'
+  - py
+  - '@@ PROJECT_NAME @@:@@ ''src'' if PY_SRC_LAYOUT else ''flat'' @@:@@ PYTHON_VERSION @@'
 
 FORGE_PLATFORM:
   choices:
@@ -35,6 +41,11 @@ JOB_TIMEOUT_MINUTES:
   default: '15'
   help: Per-job CI timeout; a hung job holds a runner until it fires
   type: str
+PROJECT_NAME:
+  help: Repository name, lowercase with dashes
+  type: str
+  validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z][a-z0-9-]+$'')) %}PROJECT_NAME must
+    match ^[a-z][a-z0-9-]+${% endif %}'
 PYTHON_VERSION:
   default: '3.13'
   help: Python minor, e.g. 3.13. Sets requires-python and the ruff target

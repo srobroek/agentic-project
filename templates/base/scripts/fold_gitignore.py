@@ -6,6 +6,7 @@
 Every rule set is vendored in a fragment, one per subject, so this fetches nothing and
 takes no template argument: the same tree folds to the same block offline.
 """
+
 from __future__ import annotations
 
 import os
@@ -49,7 +50,9 @@ def write_managed(target: Path, block: str) -> None:
     if (target.exists() and not os.access(target, os.W_OK)) or (
         not target.exists() and not os.access(target.parent, os.W_OK)
     ):
-        raise SystemExit(f"conflict: cannot write {target.name} without overwriting brownfield content")
+        raise SystemExit(
+            f"conflict: cannot write {target.name} without overwriting brownfield content"
+        )
     if not target.exists():
         target.write_bytes(block.encode())
         return
@@ -83,7 +86,13 @@ def main() -> int:
     target = dest / ".gitignore"
     write_managed(target, managed_block(dest))
     counted = (
-        len([p for p in (dest / ".gitignore.d").iterdir() if p.is_file() and not p.name.startswith(".")])
+        len(
+            [
+                p
+                for p in (dest / ".gitignore.d").iterdir()
+                if p.is_file() and not p.name.startswith(".")
+            ]
+        )
         if (dest / ".gitignore.d").is_dir()
         else 0
     )

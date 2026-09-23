@@ -56,11 +56,14 @@ repos:
       - id: conventional-pre-commit
         stages: [commit-msg]
         groups: [quality]
-        # --force-scope only makes sense alongside an allowlist; without one it
-        # demands a scope while accepting any spelling of it. Keep exactly one of
-        # the two `args:` lines below.
+        # `--scopes` without `--force-scope`: COMMIT_SCOPES documents itself as the
+        # *allowed* scopes, and --force-scope made one mandatory. The first commit of
+        # a py-lib scaffold, `feat: initial scaffold`, was rejected with nothing but
+        # a link to conventionalcommits.org -- the required scope list lives in this
+        # file, two directories away from the error. A scope outside the list is still
+        # refused, which is what the answer asked for.
         # OPTIONAL BEGIN scope allowlist -- delete both lines when scopes stay unrestricted
-        args: ["--strict", "--force-scope", "--scopes", "@@COMMIT_SCOPES@@"]
+        args: ["--strict", "--scopes", "@@COMMIT_SCOPES@@"]
         # OPTIONAL END
         # OPTIONAL BEGIN no scope allowlist -- delete both lines when scopes are restricted
         args: ["--strict"]

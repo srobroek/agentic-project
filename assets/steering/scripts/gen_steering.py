@@ -57,7 +57,10 @@ QUALITY_COMMANDS = {
     "python": ("just python-lint", "ruff and ty"),
     "ts": ("just ts-lint", "biome for format and oxlint for type-aware rules"),
     "go": ("just go-lint", "golangci-lint on the v2 schema, with gosec and revive"),
-    "tofu": ("just tofu-lint", "tflint with the configured provider ruleset and trivy for misconfiguration"),
+    "tofu": (
+        "just tofu-lint",
+        "tflint with the configured provider ruleset and trivy for misconfiguration",
+    ),
 }
 
 TEST_DIRECTORIES = (

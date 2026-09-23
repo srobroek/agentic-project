@@ -44,14 +44,47 @@ GAP_FILLERS: dict[str, dict[str, str]] = {}
 
 # What each preset must produce. One probe per selected capability is enough to catch
 # a layer that silently stopped being placed.
+#
+# The manifest a native init writes is listed for every language, because two of them
+# shipped no manifest and wired no task at all: `just setup` failed on "No
+# `pyproject.toml` found" and "go: no modules specified" in presets this suite
+# reported as ok.
 EXPECTED: dict[str, list[str]] = {
     "minimal": ["LICENSE", "justfile", ".pre-commit-config.yaml", "AGENTS.md", "CLAUDE.md"],
-    "ts-service": ["tsconfig.json", "biome.json", ".just.d/ts.just", "renovate.json"],
-    "go-service": [".golangci.yml", ".just.d/go.just", ".github/workflows/ci.yml"],
-    "rust-cli": ["rustfmt.toml", "clippy.toml", "deny.toml", "rust-toolchain.toml"],
-    "py-lib": ["ruff.toml", "pytest.ini", ".just.d/python.just"],
-    "polyglot-service": [".golangci.yml", "tsconfig.json", ".config/wt.toml"],
-    "gitlab-service": [".gitlab-ci.yml", ".gitlab/ci/go.yml"],
+    "ts-service": [
+        "tsconfig.json",
+        "biome.json",
+        ".just.d/ts.just",
+        "renovate.json",
+        "package.json",
+        "index.ts",
+        "index.test.ts",
+    ],
+    "go-service": [
+        ".golangci.yml",
+        ".just.d/go.just",
+        ".github/workflows/ci.yml",
+        "go.mod",
+        "main.go",
+    ],
+    "rust-cli": [
+        "rustfmt.toml",
+        "clippy.toml",
+        "deny.toml",
+        "rust-toolchain.toml",
+        "Cargo.toml",
+        "src/main.rs",
+    ],
+    "py-lib": [
+        "ruff.toml",
+        "pytest.ini",
+        ".just.d/python.just",
+        "ty.toml",
+        "pyproject.toml",
+        "tests/test_smoke.py",
+    ],
+    "polyglot-service": [".golangci.yml", "tsconfig.json", ".config/wt.toml", "go.mod"],
+    "gitlab-service": [".gitlab-ci.yml", ".gitlab/ci/go.yml", "go.mod"],
     "monorepo": [".ci/members.json", ".just.d/go.just", ".just.d/ts.just"],
     "api-service": ["openapi.yaml", ".just.d/api.just"],
     "web-app": [

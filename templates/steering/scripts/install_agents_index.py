@@ -125,7 +125,6 @@ def install_link(index: Path, link: Path, decision: str | None) -> None:
         index.write_text(index_text + separator + "\n" + text.strip() + "\n")
         print("merged CLAUDE.md into AGENTS.md")
 
-
     link.unlink()
     link.symlink_to("AGENTS.md")
     print("CLAUDE.md -> AGENTS.md")
@@ -133,12 +132,11 @@ def install_link(index: Path, link: Path, decision: str | None) -> None:
 
 def install_index(index: Path, body: Path, decision: str | None) -> None:
     if index.is_symlink():
-        reason = (
-            f"AGENTS.md is a symlink to {index.readlink()}, which this layer does not own"
-        )
+        reason = f"AGENTS.md is a symlink to {index.readlink()}, which this layer does not own"
         if decision is None:
             raise SystemExit(
-                f"conflict: {reason}; rerun with --agents MERGE, --agents OVERWRITE, or --agents SKIP"
+                f"conflict: {reason}; rerun with --agents MERGE, --agents OVERWRITE, "
+                "or --agents SKIP"
             )
         if decision == "SKIP":
             print("AGENTS.md left as it is")

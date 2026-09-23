@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# VENDORED from srobroek/agentic-packages, packages/hooks-close-keywords/scripts/commit-msg-rewrite.py.
+# VENDORED from srobroek/agentic-packages,
+# packages/hooks-close-keywords/scripts/commit-msg-rewrite.py.
 #
 # Vendored rather than referenced because a prek `entry:` has to resolve inside this
 # repository. An installed package does not: it may live anywhere on the machine, or
@@ -33,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
     from close_keywords import normalize
-except Exception:  # noqa: BLE001
+except Exception:
     # A module-scope import failure is OUTSIDE the wrapper at the bottom of this
     # file, so an absent or unreadable engine exited 1 and pre-commit rejected the
     # commit -- for everyone with the hook installed, not just the author. The
@@ -79,4 +80,4 @@ if __name__ == "__main__":
         raise
     except BaseException:
         # Fail open: never block a commit over a message rewrite.
-        raise SystemExit(0)
+        raise SystemExit(0) from None

@@ -29,6 +29,8 @@ _tasks:
   - '@@ _copier_conf.src_path @@/tasks/native_init.py'
   - ts
   - '@@ PROJECT_NAME @@'
+  - '@biomejs/biome=@@ BIOME_VERSION @@,oxlint=@@ OXLINT_VERSION @@,oxlint-tsgolint=@@ TSGOLINT_VERSION
+    @@,knip=@@ KNIP_VERSION @@'
 
 BIOME_VERSION:
   default: 2.4.1
@@ -49,12 +51,24 @@ JOB_TIMEOUT_MINUTES:
   default: '15'
   help: Per-job CI timeout; a hung job holds a runner until it fires
   type: str
+KNIP_VERSION:
+  default: 6.38.0
+  help: knip
+  type: str
 NODE_VERSION:
   default: '24'
   help: Node major, for tools that need a Node runtime
+  type: str
+OXLINT_VERSION:
+  default: 1.85.0
+  help: oxlint
   type: str
 PROJECT_NAME:
   help: Repository name, lowercase with dashes
   type: str
   validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z][a-z0-9-]+$'')) %}PROJECT_NAME must
     match ^[a-z][a-z0-9-]+${% endif %}'
+TSGOLINT_VERSION:
+  default: 7.0.2002
+  help: oxlint-tsgolint, which oxlint's type-aware rules require
+  type: str

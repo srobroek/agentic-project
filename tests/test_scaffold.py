@@ -6,6 +6,7 @@ Tasks are disabled so the suite stays offline and does not depend on bun or carg
 from __future__ import annotations
 
 import hashlib
+import sys
 from pathlib import Path
 
 import pytest
@@ -52,6 +53,28 @@ def scaffolded(tmp_path: Path) -> Path:
     result = scaffold(tmp_path, "polyglot-service")
     assert result.ok, [s.detail for s in result.generated if not s.ok]
     return tmp_path
+
+
+def test_a_fresh_scaffold_passes_the_lint_gate_it_ships(tmp_path: Path):
+    """The first commit ran ruff over scripts/ and failed on eleven findings.
+
+    Those scripts are this repository's own plumbing, copied in, and the hook runs
+    with --fix: the first commit attempt both failed and rewrote them in place. The
+    scaffolder's own config is laxer than the one it ships, which is why nothing here
+    noticed.
+    """
+    import subprocess
+
+    scaffold(tmp_path, "py-lib")
+    ruff = Path(sys.executable).parent / "ruff"
+    for argv in (["check", "--no-cache"], ["format", "--check"]):
+        done = subprocess.run(
+            [str(ruff), *argv, "--config", str(tmp_path / "ruff.toml"), "scripts"],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+        )
+        assert done.returncode == 0, done.stdout + done.stderr
 
 
 def test_no_unresolved_tokens(scaffolded: Path):
@@ -356,6 +379,26 @@ def test_changing_a_merged_answer_re_derives_the_generated_file(tmp_path: Path):
     assert result.ok, [s.detail for s in result.generated if not s.ok]
     assert "totally,different" in config.read_text()
     assert "api,ci,deps" not in config.read_text()
+
+
+def test_declared_scopes_are_allowed_not_mandatory(tmp_path: Path):
+    """COMMIT_SCOPES documents itself as the *allowed* scopes.
+
+    `--force-scope` made one mandatory, so the first commit of a fresh scaffold --
+    `feat: initial scaffold` -- was rejected with nothing but a link to
+    conventionalcommits.org. Verified against the real hook afterwards: an unscoped
+    subject is accepted, a declared scope is accepted, an undeclared one is refused.
+    """
+    scaffold(tmp_path, "py-lib")
+    hooks = yaml.safe_load((tmp_path / ".pre-commit-config.yaml").read_text())
+    args = next(
+        hook["args"]
+        for repo in hooks["repos"]
+        for hook in repo["hooks"]
+        if hook["id"] == "conventional-pre-commit"
+    )
+    assert "--force-scope" not in args
+    assert args[args.index("--scopes") + 1] == "lib,docs,ci,deps"
 
 
 def test_replacing_a_generated_entry_is_reported_not_silent(tmp_path: Path):

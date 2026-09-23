@@ -335,6 +335,21 @@ BIOME_VERSION:
   help: Biome
   default: 2.4.1
   when: '@@ (WANT_LANG_TS) and PIN_TOOL_VERSIONS @@'
+OXLINT_VERSION:
+  type: str
+  help: oxlint
+  default: 1.85.0
+  when: '@@ (WANT_LANG_TS) and PIN_TOOL_VERSIONS @@'
+TSGOLINT_VERSION:
+  type: str
+  help: oxlint-tsgolint, which oxlint's type-aware rules require
+  default: 7.0.2002
+  when: '@@ (WANT_LANG_TS) and PIN_TOOL_VERSIONS @@'
+KNIP_VERSION:
+  type: str
+  help: knip
+  default: 6.38.0
+  when: '@@ (WANT_LANG_TS) and PIN_TOOL_VERSIONS @@'
 FORGE_HOSTNAME:
   type: str
   help: Self-hosted forge host. Empty means the platform's public host

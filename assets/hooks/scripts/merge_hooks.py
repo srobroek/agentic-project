@@ -100,7 +100,9 @@ def _merge_excludes(config: dict, fragment_excludes: list[str]) -> None:
             continue
         values.append(pattern)
     if values:
-        config["exclude"] = values[0] if len(values) == 1 else "|".join(f"(?:{value})" for value in values)
+        config["exclude"] = (
+            values[0] if len(values) == 1 else "|".join(f"(?:{value})" for value in values)
+        )
 
 
 def merge(fragments: list[Path], existing: dict | None = None) -> tuple[dict, list[str]]:
@@ -139,7 +141,7 @@ def merge(fragments: list[Path], existing: dict | None = None) -> tuple[dict, li
                 sources[url] = source
                 owned[url] = authoritative
                 for hook in hooks:
-                    hook_owned[(url, str(hook.get("id")))] = authoritative
+                    hook_owned[url, str(hook.get("id"))] = authoritative
                 continue
 
             current = repos[url]
@@ -171,15 +173,13 @@ def merge(fragments: list[Path], existing: dict | None = None) -> tuple[dict, li
                 sources[url] = source
 
             existing_hooks = current.setdefault("hooks", [])
-            positions = {
-                str(hook.get("id")): index for index, hook in enumerate(existing_hooks)
-            }
+            positions = {str(hook.get("id")): index for index, hook in enumerate(existing_hooks)}
             for hook in hooks:
                 hook_id = str(hook.get("id"))
                 if hook_id not in positions:
                     existing_hooks.append(hook)
                     positions[hook_id] = len(existing_hooks) - 1
-                    hook_owned[(url, hook_id)] = authoritative
+                    hook_owned[url, hook_id] = authoritative
                     continue
                 if existing_hooks[positions[hook_id]] == hook:
                     continue
@@ -191,7 +191,7 @@ def merge(fragments: list[Path], existing: dict | None = None) -> tuple[dict, li
                     f"{url}: {source} replaces hook {hook_id!r}, which {previous} defined"
                 )
                 existing_hooks[positions[hook_id]] = hook
-                hook_owned[(url, hook_id)] = True
+                hook_owned[url, hook_id] = True
 
     if existing is not None:
         add_entries(
@@ -200,7 +200,9 @@ def merge(fragments: list[Path], existing: dict | None = None) -> tuple[dict, li
             authoritative=False,
         )
         old_stages = existing.get("default_install_hook_types", [])
-        if not isinstance(old_stages, list) or any(not isinstance(stage, str) for stage in old_stages):
+        if not isinstance(old_stages, list) or any(
+            not isinstance(stage, str) for stage in old_stages
+        ):
             _conflict("'default_install_hook_types' must be a list of stage names")
     else:
         old_stages = []
@@ -226,7 +228,9 @@ def merge(fragments: list[Path], existing: dict | None = None) -> tuple[dict, li
     if unknown:
         _conflict(f"unknown hook stage(s): {', '.join(sorted(unknown))}")
     ordered_stages = [stage for stage in old_stages if stage in stages]
-    ordered_stages.extend(stage for stage in STAGE_ORDER if stage in stages and stage not in ordered_stages)
+    ordered_stages.extend(
+        stage for stage in STAGE_ORDER if stage in stages and stage not in ordered_stages
+    )
     config["default_install_hook_types"] = ordered_stages
     config["repos"] = [repos[url] for url in sorted(repos)]
     return config, warnings
@@ -268,10 +272,7 @@ def main() -> int:
     replaced = f", replaced {len(warnings)} existing entry(s)" if warnings else ""
     # Summary first: a caller that shows one line of a generator's output shows this
     # one, and the replacements it names are below it rather than instead of it.
-    print(
-        f"merged {len(fragments)} fragment(s) into .pre-commit-config.yaml "
-        f"({stages}){replaced}"
-    )
+    print(f"merged {len(fragments)} fragment(s) into .pre-commit-config.yaml ({stages}){replaced}")
     for warning in warnings:
         print(f"  replaced: {warning}")
     return 0
