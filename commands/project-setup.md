@@ -1,20 +1,24 @@
 ---
-description: Scaffold a repository from layered Copier templates, or add a layer to an existing one.
+description: Set up a repository from layered Copier templates, or add a layer to an existing one.
 ---
 
 Load `skill://project-setup` and follow it.
 
-Before anything else, decide whether you are needed at all. If this is a greenfield
-repository and a preset fits, give the user the single command and stop:
+Interview the user. Start by asking what they are building, then offer the presets that could
+fit alongside a fully manual path, and customise from there. A preset is the starting point of
+the conversation, not a replacement for it — you cannot know whether one fits until you have
+asked.
+
+Ask in rounds, never one question at a time, and ask only what the selected layers declare:
 
 ```
-project-setup presets
-project-setup apply --preset <name> --dest . \
-  --set PROJECT_NAME=<name> --set DESCRIPTION="<one line>" \
-  --set CODEOWNER=@<owner> --set SECURITY_CONTACT=<contact>
+project-setup presets --json      # the shapes, and the answers each carries
+project-setup catalog --json      # every layer, every question, types, choices, defaults
 ```
 
-Involve yourself only for: a brownfield repository, an answer that must be composed rather
-than chosen, or the work that follows the scaffold.
+Then `validate`, show the `plan`, and `apply` only once the user approves it.
+
+If the repository already has tracked files, read its committed configuration before asking
+anything.
 
 $ARGUMENTS

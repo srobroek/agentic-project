@@ -13,27 +13,6 @@ TRIGGER
 - authoring a new layer → `references/authoring.md`
 - an existing repo already set up, one tool to change → that tool's own skill
 
-## First, decide whether you are needed at all
-
-The scaffold is deterministic and runs without a model. Check this before doing anything:
-
-| Situation | What to do |
-| --- | --- |
-| Greenfield, fits a preset | **Tell the user the one command and stop.** Do not conduct an interview |
-| Greenfield, no matching preset | Compose a data file (below) |
-| Brownfield (tracked files exist) | Classify first, then compose a data file |
-| Answers that must be *composed*, not chosen | Compose a data file |
-| After the scaffold lands | Your real work begins: code, libraries, layout |
-
-MUST offer the no-agent path first when a preset fits. It is faster, reproducible, and
-costs nothing:
-
-```
-project-setup apply --preset ts-service --dest . \
-  --set PROJECT_NAME=my-app --set DESCRIPTION="..." \
-  --set CODEOWNER=@me --set SECURITY_CONTACT=security@example.com
-```
-
 ## Preflight
 
 The plugin ships the templates; the CLI is a Python package in the same repository.
@@ -54,27 +33,94 @@ uv tool install --editable "$PLUGIN" || (cd "$PLUGIN" && uv pip install -e .)
 MUST NOT proceed by hand when the CLI is missing. Copying template files yourself is the
 failure mode this plugin exists to remove.
 
-## Never ask a question the templates do not declare
+## Interview first, always
 
-The template layers are the question set. Read it, never invent it:
+Setting up a repository is a conversation. Conduct it — the templates make it short, they do
+not replace it. A preset is where the conversation *starts*, not a reason to skip it: you
+cannot know whether a preset fits until you have asked what the user is building.
+
+GATES
+ASK the shape before reading any answer back
+ASK the plan, before the first file is written
+ASK the licence, a published repository, a credential, a machine-global registration
+
+Two entry paths. Offer both in round two and let the user pick:
+
+| Path | When |
+| --- | --- |
+| **Preset, then customise** | a listed shape is close. Most projects |
+| **Manual** | nothing is close, or the user wants to see every layer |
+
+### Round 1 — what are you building?
+
+One open question, and the only genuinely open-ended one. Everything after it is bounded by
+the catalog.
+
+For a brownfield repository, read the committed configuration *before* asking anything; see
+the Brownfield section.
+
+### Round 2 — the shape
+
+Present the presets that could plausibly fit, each with the layers it selects and the notable
+choices it fixes, plus the manual path. Do not present all ten if two are relevant.
 
 ```
-project-setup catalog --json      # every layer, every question, types, choices, defaults
-project-setup presets --json      # standard shapes
+project-setup presets --json      # every shape and the answers it carries
+project-setup catalog --json      # every layer and every question it declares
 ```
 
-MUST NOT ask for a value that `catalog --json` does not list. If you believe a question is
-missing, the answer is a **missing layer**, not a missing question — say so.
+### Round 3 — customise
 
-MUST NOT ask for a value a preset already fixes. Presets exist to collapse the interview.
+**Preset path.** Read the preset's answers back grouped by topic, and ask what to change.
+These are defaults to confirm, not questions to ask one at a time. In the same round, ask for
+the four identity answers no preset can carry — `PROJECT_NAME`, `DESCRIPTION`, `CODEOWNER`,
+`SECURITY_CONTACT` — and for whatever the preset documents as a gap.
+
+**Manual path.** Show the layer catalog, always-on and opt-in separately, and take the
+selection. Then ask only the questions those layers declare, grouped by layer, each with its
+default and its permitted values.
+
+MUST ask in rounds. One question at a time turns a two-minute conversation into twenty.
+
+MUST offer, once, that the scaffold runs without a model, so the user can re-run or reproduce
+it themselves. It is a property worth knowing, not a reason for you to leave:
+
+```
+project-setup apply --preset <name> --dest . \
+  --set PROJECT_NAME=<name> --set DESCRIPTION="<one line>" \
+  --set CODEOWNER=@<owner> --set SECURITY_CONTACT=<contact>
+```
+
+### Round 4 — composed answers
+
+Only if the selected layers need them. See "Composed answers" below.
+
+### Round 5 — plan, then apply
+
+`validate`, then `plan`, then show the plan and wait. Apply only on approval.
+
+## What bounds the interview
+
+The template layers are the question set. Read it, never invent it.
+
+MUST NOT ask for a value that `catalog --json` does not list for a selected layer. If you
+believe a question is missing, the answer is a **missing layer**, not a missing question — say
+so rather than improvising a question.
+
+MUST NOT re-ask anything the user has already told you, in this conversation or in a
+`.project-setup-answers.yml` already in the repository. Read it back instead.
+
+MUST NOT ask for a tool version. They are pinned in the layers and Renovate bumps them.
 
 ## Building the data file
 
-1. **Start from the closest preset.** Copy it; do not restate it.
-2. **Add the four identity answers** no preset can carry: `PROJECT_NAME`, `DESCRIPTION`,
-   `CODEOWNER`, `SECURITY_CONTACT`.
-3. **Select layers** by setting `WANT_<LAYER>: true`. `catalog --json` lists the exact names.
-4. **Validate before writing anything.**
+1. **Start from the chosen preset**, or from an empty file on the manual path. Copy it; do not
+   restate it.
+2. **Add the four identity answers**: `PROJECT_NAME`, `DESCRIPTION`, `CODEOWNER`,
+   `SECURITY_CONTACT`.
+3. **Set the layer selection**: `WANT_<LAYER>: true`. `catalog --json` lists the exact names.
+4. **Apply the customisations** the user asked for in round three.
+5. **Validate before writing anything.**
 
 ```
 project-setup validate --data-file answers.yml --json
@@ -84,17 +130,20 @@ The response is structured. `MISSING_REQUIRED` names the question and the layers
 it. `INVALID_CHOICE` lists the permitted values. `UNKNOWN_KEY` means a typo or an unselected
 layer. Fix and re-validate; it writes nothing.
 
-5. **Show the plan and wait.** `plan` is a dry run and mutates nothing:
+6. **Show the plan and wait.** `plan` is a dry run and mutates nothing:
 
 ```
 project-setup plan --data-file answers.yml --dest . --json
 ```
 
-6. **Apply** only after the user approves the plan.
+7. **Apply** only after the user approves the plan.
 
 ```
 project-setup apply --data-file answers.yml --dest . --json
 ```
+
+8. **Then the work that matters**: the first real code, the libraries, the layout. The
+   scaffold is the floor, not the deliverable.
 
 ## Composed answers — the part only you can do
 
@@ -146,15 +195,15 @@ project-setup apply --data-file .project-setup-answers.yml --dest . \
   --set WANT_LANG_RUST=true --json
 ```
 
-## Gates
-
-ASK before the first file is written (the plan gate).
-ASK the licence, a published repository, a credential, or a machine-global registration.
-MUST NOT write a secret-shaped value into a file. Say the value is now in a transcript and
-must be rotated, and leave the setting a gap.
+Reuse the recorded answers and add only the selection. Changing an answer that feeds an
+already-merged file is refused rather than overwritten: `COMMIT_SCOPES` has been folded into
+`.pre-commit-config.yaml`, so a new value reports a conflict. To change one, delete the
+generated file and re-apply.
 
 ## Rules
 
+MUST NOT write a secret-shaped value into a file. Say the value now sits in a transcript and
+  has to be rotated, and leave that setting a gap.
 MUST run `validate` before `plan`, and `plan` before `apply`. Each is cheap and writes nothing.
 MUST report each command's own output. "Setup complete" in place of output hides a failure.
 NOT copying template files by hand. `apply` places them byte-exactly; you cannot.
