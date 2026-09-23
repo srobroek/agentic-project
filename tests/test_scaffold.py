@@ -544,3 +544,55 @@ def test_an_adr_without_a_decision_is_refused(tmp_path: Path):
     assert not result.ok
     detail = " ".join(s.detail for s in result.placed)
     assert "missing" in detail and "decision" in detail
+
+
+def test_plan_names_the_files_a_generator_would_rewrite(tmp_path):
+    """Copier places none of them, so Copier's own per-file lines never mention them.
+
+    A brownfield plan reported "2 existing file(s) would be overwritten" and stayed
+    silent about the .gitignore, .pre-commit-config.yaml and AGENTS.md the generators
+    were about to rewrite -- the three files such a repository cares most about.
+    `plan` is documented as the only warning before an existing file is replaced.
+    """
+    from project_setup.runner import generator_destinations
+
+    for name in (".gitignore", ".pre-commit-config.yaml", "AGENTS.md", "CLAUDE.md"):
+        (tmp_path / name).write_text("hand written\n")
+
+    found = dict(generator_destinations(tmp_path, ["base", "hooks", "just", "ci", "steering"]))
+
+    assert set(found) == {".gitignore", ".pre-commit-config.yaml", "AGENTS.md", "CLAUDE.md"}
+    # The distinction a user needs in order to decide: merged, or replaced outright.
+    assert found[".pre-commit-config.yaml"] is True
+    assert found[".gitignore"] is True
+    assert found["AGENTS.md"] is True
+    assert found["CLAUDE.md"] is False
+
+
+def test_a_greenfield_destination_reports_no_generator_rewrites(tmp_path):
+    from project_setup.runner import generator_destinations
+
+    assert generator_destinations(tmp_path, ["base", "hooks", "steering"]) == []
+
+
+def test_a_generator_whose_layer_is_not_placed_is_not_reported(tmp_path):
+    """The script only exists in the destination if its layer was placed."""
+    from project_setup.runner import generator_destinations
+
+    (tmp_path / "AGENTS.md").write_text("hand written\n")
+    (tmp_path / ".gitignore").write_text("build/\n")
+
+    # `steering` is always-on, so AGENTS.md is in scope whatever the layer list says;
+    # every generator here belongs to an always-on layer, which is the point.
+    found = dict(generator_destinations(tmp_path, ["base"]))
+    assert ".gitignore" in found
+
+
+def test_every_generator_declares_where_it_writes():
+    """A generator with no declared destination is invisible to `plan` again."""
+    from project_setup.runner import GENERATOR_KEEPS_EXISTING, GENERATORS
+
+    for rel, _extra, destinations in GENERATORS:
+        assert destinations, f"{rel} declares no destination"
+        for relative in destinations:
+            assert relative in GENERATOR_KEEPS_EXISTING, f"{relative} has no merge/replace class"

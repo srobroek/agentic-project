@@ -34,7 +34,14 @@ Or answer the prompts yourself — Copier owns the question set, so there is no 
 implementation to drift:
 
     project-setup interview --dest ../my-app
-    project-setup apply --data-file ../my-app/.project-setup-answers.yml --dest ../my-app
+
+It finishes by printing the rest of the pipeline with `--dest` and the answers path already
+filled in, because `apply` defaults `--dest` to the working directory and a command missing
+it scaffolds wherever you happen to be standing.
+
+    project-setup validate --data-file ../my-app/.project-setup-answers.yml --dest ../my-app
+    project-setup plan     --data-file ../my-app/.project-setup-answers.yml --dest ../my-app
+    project-setup apply    --data-file ../my-app/.project-setup-answers.yml --dest ../my-app
 
 ## Commands
 
@@ -42,15 +49,17 @@ implementation to drift:
 | --- | --- |
 | `catalog [--json]` | every layer and the questions it declares |
 | `presets [--json] [--show NAME]` | standard project shapes |
-| `interview --dest D` | ask the questions, write an answers file. No model |
-| `validate [--json]` | check an answer set. Writes nothing |
-| `plan --dest D [--json]` | dry run. Writes nothing, and names every file it would overwrite |
+| `interview --dest D` | ask the questions, write an answers file, print the next command. No model |
+| `validate [--json]` | check an answer set, including every declared validator. Writes nothing |
+| `plan --dest D [--json]` | dry run. Writes nothing, and names every file it would overwrite or fold into |
 | `apply --dest D [--json]` | scaffold, run tasks, run generators |
 
 Answer sources compose, later winning: `--preset`, then `--data-file`, then `--set KEY=VALUE`.
 
 `plan` is the only warning before an existing file is replaced, because Copier overwrites by
-default. It counts what it would create and lists what it would overwrite, by name:
+default. It counts what it would create, lists what it would overwrite by name, and lists
+separately the shared files the generators fold into — Copier never places those, so its own
+per-file output cannot mention them:
 
     61 file(s) to create, 3 to overwrite
 
@@ -58,6 +67,12 @@ default. It counts what it would create and lists what it would overwrite, by na
       CONTRIBUTING.md
       README.md
       justfile
+
+    4 existing path(s) a generator would rewrite:
+      .gitignore               merged, your entries kept
+      .pre-commit-config.yaml  merged, your entries kept
+      AGENTS.md                merged, your entries kept
+      CLAUDE.md                replaced outright
 
 ## Where the templates come from
 
@@ -148,7 +163,10 @@ layers own. A fresh scaffold of any stack passes its own `just setup` and `just 
 
 `FORGE_PLATFORM` is a single answer that swaps the entire CI surface: choose `gitlab` and every
 `.github/` file from every layer is excluded, the `.gitlab/ci` fragments are used instead, and
-`gen_caller.py` reports there is no caller to write.
+`gen_caller.py` reports there is no caller to write. Excluded, not deleted — so changing the
+answer in a repository that already has one forge's workflows leaves them in place and still
+triggering. `validate`, `plan` and `apply` all report that as `STALE_FORGE_SURFACE`, naming
+the files; removing somebody's CI is not this tool's call.
 
 ## Measured
 
@@ -158,7 +176,7 @@ layers own. A fresh scaffold of any stack passes its own `just setup` and `just 
 | Re-apply | byte-identical, 0 changes |
 | Unresolved tokens | 0 |
 | Empty directories | 0 |
-| Tests | 152 unit + 12 presets end to end |
+| Tests | 176 unit + 12 presets end to end |
 | Fresh scaffold | `just setup` and `just check` green, all four languages |
 
 CPU time rather than wall clock, because wall clock tracks machine load.

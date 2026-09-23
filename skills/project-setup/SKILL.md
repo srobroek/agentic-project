@@ -196,9 +196,11 @@ so writing `@owner` over `@TODO-owner` reports a clean answer set and ships a CO
 naming nobody. `catalog --json` gives the exact placeholder per question.
 
 MUST run `validate --json` to discover what is missing rather than reasoning about the
-catalog's `required` flags. It reports `MISSING_REQUIRED`, `INVALID_CHOICE`, `UNKNOWN_KEY`,
-`PLACEHOLDER_IN_USE` and `ANSWER_HAS_NO_EFFECT` for the layers actually selected, which is the
-only thing that matters.
+catalog's `required` flags. It reports `MISSING_REQUIRED`, `INVALID_CHOICE`, `INVALID_VALUE`,
+`UNKNOWN_KEY`, `PLACEHOLDER_IN_USE`, `ANSWER_HAS_NO_EFFECT`, `ANSWER_CONTRADICTS_REPO` and
+`STALE_FORGE_SURFACE` for the layers actually selected, which is the only thing that matters.
+`INVALID_VALUE` is a declared validator rejecting the value — `PROJECT_NAME` reaches a crate,
+module and package name, so it is the one most worth getting right before anything is written.
 
 ## Building the data file
 
@@ -215,8 +217,9 @@ project-setup validate --data-file answers.yml --json
 ```
 
 The response is structured. `MISSING_REQUIRED` names the question and the layers that need
-it. `INVALID_CHOICE` lists the permitted values. `UNKNOWN_KEY` means a typo or an unselected
-layer. Fix and re-validate; it writes nothing.
+it. `INVALID_CHOICE` lists the permitted values. `INVALID_VALUE` quotes the pattern the answer
+has to match. `UNKNOWN_KEY` means a typo or an unselected layer. Fix and re-validate; it
+writes nothing.
 
 6. **Show the plan and wait.** `plan` is a dry run and mutates nothing:
 
@@ -266,13 +269,19 @@ MUST read committed configuration before asking anything. Run
 `git rev-parse --is-inside-work-tree` and count tracked files: no repo or zero tracked files
 is greenfield.
 
-For an existing repo, `plan` names every file it would overwrite: `files.overwrite` in
-`--json`, a list under the summary otherwise. For each one, ask `KEEP | CHANGE | REMOVE` and
-name the consequence. Copier overwrites by default — the plan is your only warning.
+For an existing repo, `plan` names both lists. `files.overwrite` in `--json` (a list under the
+summary otherwise) is what Copier replaces outright: a `justfile` and a `README.md` are on it.
+`generator_targets` is the second list — the shared files the generators fold into after every
+layer, which Copier never places and therefore never mentions. `.gitignore`,
+`.pre-commit-config.yaml` and `AGENTS.md` are on that one, each with `keeps_existing`.
 
-Read that list rather than guessing from the layer set. A `justfile` and a `README.md` are on
-it; `.gitignore` and `AGENTS.md` are not, because generators fold those and keep what is
-already there.
+MUST read both lists rather than guessing from the layer set. For every entry, ask
+`KEEP | CHANGE | REMOVE` and name the consequence. Copier overwrites by default, and the plan
+is your only warning.
+
+`keeps_existing: true` means the generator merges and your entries survive; `false` means the
+path is replaced. A hand-written `CLAUDE.md` is folded into `AGENTS.md` and replaced by a
+symlink to it — nothing is lost, and the run says what it folded in.
 
 The `.d/` fragment layers are additive: a new fragment lands beside the existing ones and the
 generators fold it in, preserving text outside the managed markers.

@@ -284,3 +284,116 @@ def test_a_preset_cycle_is_refused(tmp_path):
     (tmp_path / "b.yml").write_text("_extends: [a]\n")
     with pytest.raises(SystemExit, match="cycle"):
         load_preset("a", tmp_path)
+
+
+def test_a_value_the_template_would_reject_is_an_error_not_a_clean_answer_set(catalog):
+    """`validate` reported OK and `apply` then died on the first layer.
+
+    The whole point of `validate` is to be the cheap check that writes nothing, so a
+    declared `validator:` it never evaluates makes it useless for the mistake most
+    likely to be made: PROJECT_NAME lands in a crate, module and package name.
+    """
+    from project_setup.catalog import validate_data
+
+    data = {"PROJECT_NAME": "Bad_Name", "DESCRIPTION": "y"}
+    problems = [p for p in validate_data(catalog, data) if p.level == "error"]
+
+    assert [p.code for p in problems] == ["INVALID_VALUE"]
+    assert problems[0].key == "PROJECT_NAME"
+    assert "^[a-z][a-z0-9-]+$" in problems[0].message
+
+
+def test_a_valid_value_passes_its_validator_silently(catalog):
+    from project_setup.catalog import validate_data
+
+    data = {"PROJECT_NAME": "good-name", "DESCRIPTION": "y", "DEFAULT_BRANCH": "trunk"}
+
+    assert [p for p in validate_data(catalog, data) if p.code == "INVALID_VALUE"] == []
+
+
+def test_a_validator_is_checked_for_a_selected_layer_only(catalog):
+    """I18N_PROJECT_DIR is declared by the i18n layer, which most projects omit."""
+    from project_setup.catalog import validate_data
+
+    base = {"PROJECT_NAME": "ok", "DESCRIPTION": "y", "I18N_PROJECT_DIR": "not a dir!"}
+    assert [p for p in validate_data(catalog, base) if p.code == "INVALID_VALUE"] == []
+
+    with_i18n = {**base, "WANT_I18N": True}
+    codes = [p.code for p in validate_data(catalog, with_i18n) if p.level == "error"]
+    assert "INVALID_VALUE" in codes
+
+
+def test_a_defaulted_answer_is_validated_too(catalog):
+    """DEFAULT_BRANCH defaults to `main`, and a default that fails is still a failure."""
+    from project_setup.catalog import Question, validate_data
+
+    questions = catalog.questions_for(["base"])
+    assert questions["PROJECT_NAME"].validator
+    assert Question("X").validator == ""
+    # `main` is the layer default and passes, so nothing is reported for it.
+    data = {"PROJECT_NAME": "ok", "DESCRIPTION": "y"}
+    assert [p for p in validate_data(catalog, data) if p.key == "DEFAULT_BRANCH"] == []
+
+
+def test_switching_forge_names_the_surface_the_switch_leaves_running(tmp_path):
+    """FORGE_EXCLUDE stops the other forge being written; nothing deletes it.
+
+    So a github project answered `gitlab` kept eight live GitHub workflow files,
+    still triggering on push, while gen_caller reported no caller to write.
+    """
+    from project_setup.catalog import repo_conflicts
+
+    (tmp_path / ".github/workflows").mkdir(parents=True)
+    (tmp_path / ".github/workflows/ci.yml").write_text("on: push\n")
+
+    problems = repo_conflicts(tmp_path, {"FORGE_PLATFORM": "gitlab"})
+
+    assert [p.code for p in problems] == ["STALE_FORGE_SURFACE"]
+    assert ".github/workflows" in problems[0].message
+    assert problems[0].level == "warning"
+
+
+def test_the_selected_forges_own_surface_is_not_stale(tmp_path):
+    from project_setup.catalog import repo_conflicts
+
+    (tmp_path / ".github/workflows").mkdir(parents=True)
+
+    assert repo_conflicts(tmp_path, {"FORGE_PLATFORM": "github"}) == []
+
+
+def test_switching_away_from_gitlab_names_its_surface_too(tmp_path):
+    from project_setup.catalog import repo_conflicts
+
+    (tmp_path / ".gitlab-ci.yml").write_text("stages: [test]\n")
+
+    problems = repo_conflicts(tmp_path, {"FORGE_PLATFORM": "github"})
+
+    assert [p.code for p in problems] == ["STALE_FORGE_SURFACE"]
+    assert ".gitlab-ci.yml" in problems[0].message
+
+
+def test_a_greenfield_destination_has_no_stale_forge_surface(tmp_path):
+    from project_setup.catalog import repo_conflicts
+
+    assert repo_conflicts(tmp_path, {"FORGE_PLATFORM": "gitlab"}) == []
+
+
+def test_an_error_is_printed_before_the_warnings_nobody_has_to_act_on(capsys):
+    """The one line that decides whether anything gets written came third of four."""
+    from project_setup.cli import main
+
+    code = main(
+        [
+            "validate",
+            "--preset",
+            "minimal",
+            "--set",
+            "PROJECT_NAME=Bad_Name",
+            "--set",
+            "DESCRIPTION=y",
+        ]
+    )
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.startswith("  ")]
+
+    assert code == 1
+    assert lines[0].strip().startswith("ERROR")

@@ -41,7 +41,7 @@ API_FAIL_SEVERITY:
   type: str
 API_SERVER_URL:
   default: https://api.example.com
-  help: Production endpoint. Unknown at setup time is normal. A placeholder is fine; replace before use.
+  help: Production endpoint. Unknown at setup time is normal
   placeholder: https://api.example.com
   type: str
 API_TITLE:
@@ -70,7 +70,7 @@ JOB_TIMEOUT_MINUTES:
   type: str
 ORG:
   default: TODO-org
-  help: Organisation or owner, used for the API contact. A placeholder is fine; replace before use.
+  help: Organisation or owner, used for the API contact
   placeholder: TODO-org
   type: str
 REPO_URL:

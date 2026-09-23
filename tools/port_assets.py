@@ -308,10 +308,7 @@ TOKEN_POLICY: dict[str, dict] = {
     "I18N_PROJECT_DIR": {
         "type": "str",
         "default": "project.inlang",
-        "help": (
-            "Where the Inlang project lives, relative to the repo root. "
-            "For a nested deployable use apps/web/project.inlang"
-        ),
+        "help": "Inlang project dir, repo-relative, e.g. apps/web/project.inlang",
         "validator": "^[A-Za-z0-9._/-]+$",
     },
     "I18N_PREPARE_COMMANDS": {
@@ -367,18 +364,12 @@ TOKEN_POLICY: dict[str, dict] = {
     "ADRS": {
         "type": "str",
         "default": "[]",
-        "help": (
-            "JSON array of ADRs, each {title, decision, rationale, alternatives, "
-            "consequences, confirmation}. Composed, not chosen. One file is written per entry"
-        ),
+        "help": "JSON array of ADRs, one file written each; [] writes none",
     },
     "MONOREPO_MEMBERS": {
         "type": "str",
         "default": "[]",
-        "help": (
-            "JSON array of monorepo members, each {name, path, capabilities}. "
-            "Composed, not chosen. '[]' is the single-root case"
-        ),
+        "help": "JSON array of {name, path, capabilities}; [] is single-root",
     },
 }
 
@@ -583,12 +574,12 @@ def question_block(name: str, spec: dict) -> dict:
     elif spec.get("derive"):
         q["default"] = spec["derive"]
     elif "placeholder" in spec:
+        # The prompt already shows the placeholder as the pre-filled default, and
+        # both `validate` and the end of `apply` name every one still in use. A
+        # sentence saying so a third time only pushed the informative half of the
+        # help past the terminal width, where prompt_toolkit cut it mid-word.
         q["placeholder"] = spec["placeholder"]
         q["default"] = spec["placeholder"]
-        existing = q.get("help", "").rstrip()
-        if existing and not existing.endswith((".", "!", "?")):
-            existing += "."
-        q["help"] = f"{existing} A placeholder is fine; replace before use.".strip()
     else:
         q["default"] = spec.get("default", "")
 
@@ -771,9 +762,7 @@ PIN_GATE = "PIN_TOOL_VERSIONS"
 PIN_GATE_SPEC: dict = {
     "type": "bool",
     "default": False,
-    "help": (
-        "Pin tool versions yourself? No keeps this template's stable set, which Renovate bumps"
-    ),
+    "help": "Choose tool versions yourself? No keeps the pinned set Renovate bumps",
 }
 
 
@@ -828,6 +817,39 @@ def is_derived(spec: dict) -> bool:
     return "@@" in str(spec.get("default", ""))
 
 
+# Copier prompts with "\U0001f3a4 " and then the help, on one line, and
+# prompt_toolkit truncates that line to the terminal width without a marker. On an
+# 80-column terminal 77 help characters survive, measured by driving the interview
+# through an 80-column PTY: `...which Renova` was the whole of `...which Renovate
+# bumps`. One column is left spare so the cursor does not sit in the last cell.
+PROMPT_DECORATION = 3
+MAX_HELP_CHARS = 80 - PROMPT_DECORATION - 1
+
+
+def _check_help_fits_a_prompt(questions: dict[str, dict]) -> None:
+    """Refuse help that an 80-column terminal would cut mid-word.
+
+    Truncation is silent, so the user does not know a sentence was lost: the ADRS
+    prompt ended at `...alternatives, consequen` and the version gate stopped at
+    `...which Renova`. Length is the only thing enforceable here, because Copier
+    offers no second field to put the overflow in.
+    """
+    over = {
+        name: len(spec["help"])
+        for name, spec in questions.items()
+        if spec.get("when") != "false" and len(str(spec.get("help", ""))) > MAX_HELP_CHARS
+    }
+    if over:
+        listed = "\n".join(f"    {name} is {width} chars" for name, width in sorted(over.items()))
+        raise SystemExit(
+            f"FATAL: {len(over)} asked question(s) have help longer than "
+            f"{MAX_HELP_CHARS} characters, which an 80-column prompt cuts mid-word:\n"
+            f"{listed}\n"
+            f"  Shorten the help in TOKEN_POLICY. Detail that does not fit belongs in\n"
+            f"  skills/project-setup/SKILL.md, which is where a composed answer is built."
+        )
+
+
 def _check_declaration_order(questions: dict[str, dict]) -> None:
     """Refuse a question that reads an answer Copier has not asked for yet.
 
@@ -879,10 +901,10 @@ def build_interview(out: Path, declared: dict[str, dict[str, dict]]) -> int:
         },
         "_answers_file": ANSWERS_FILE,
         "_exclude": ["copier.yml"],
-        "_message_after_copy": (
-            "Answers recorded in " + ANSWERS_FILE + ".\n"
-            "Run `project-setup apply --data-file " + ANSWERS_FILE + "` to scaffold."
-        ),
+        # Only the fact. The command belongs to the CLI, which is the only side that
+        # knows --dest: `apply --data-file .project-setup-answers.yml` pasted from
+        # anywhere but the destination applies to the wrong directory or not at all.
+        "_message_after_copy": "Answers recorded in " + ANSWERS_FILE + ".",
     }
 
     questions: dict[str, dict] = {}
@@ -943,6 +965,7 @@ def build_interview(out: Path, declared: dict[str, dict[str, dict]]) -> int:
         questions[name] = spec
 
     _check_declaration_order(questions)
+    _check_help_fits_a_prompt(questions)
 
     dst = out / "_interview"
     if dst.exists():

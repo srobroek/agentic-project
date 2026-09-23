@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import jinja2
 import yaml
 
 # Layers applied to every project. Everything else is opt-in via WANT_<LAYER>.
@@ -63,6 +64,10 @@ class Question:
     # caller offers that choice once instead of reading out sixteen pins. Machine
     # readable so an agent can check rather than remember a prose rule.
     pinned: bool = False
+    # Copier's own `validator:` expression. Read back so `validate` can refuse an
+    # answer set Copier would refuse at render time; without it `validate` reported
+    # a clean answer set and the first layer then died on PROJECT_NAME.
+    validator: str = ""
 
     @property
     def derived(self) -> bool:
@@ -153,6 +158,7 @@ def _parse_questions(
             derived_from=derived_from,
             asked=key not in never_asked,
             pinned=key in pinned,
+            validator=str(spec.get("validator", "")),
         )
     return out
 
@@ -287,7 +293,65 @@ def validate_data(catalog: Catalog, data: dict) -> list[Problem]:
                 )
             )
 
+    problems.extend(_failed_validators(catalog, data, layers))
+
     problems.extend(_inert_answers(data))
+    return problems
+
+
+def _validator_env() -> jinja2.Environment:
+    """A Jinja environment matching the one Copier renders a validator in.
+
+    `regex_search` comes from the Ansible filter extension Copier itself loads; the
+    delimiters come from the layers' own `_envops`. Built the same way here so a
+    validator either means the same thing in both places or fails loudly.
+    """
+
+    return jinja2.Environment(
+        variable_start_string="@@",
+        variable_end_string="@@",
+        keep_trailing_newline=True,
+        extensions=["jinja2_ansible_filters.AnsibleCoreFiltersExtension"],
+        autoescape=False,
+    )
+
+
+def _failed_validators(catalog: Catalog, data: dict, layers: list[str]) -> list[Problem]:
+    """Answers a declared `validator:` rejects.
+
+    Copier enforces these at render time, which made `validate` report a clean answer
+    set for `PROJECT_NAME=Bad_Name` and `apply` then fail on the very first layer.
+    `validate` exists to be the cheap check that writes nothing, so it has to know.
+
+    A validator renders to its message when it fails and to nothing when it passes.
+    An expression this cannot evaluate is reported rather than swallowed: silently
+    passing an unevaluated validator is the bug this function exists to remove.
+    """
+    questions = catalog.questions_for(layers)
+    checked = {name: q for name, q in questions.items() if q.validator and not q.derived}
+    if not checked:
+        return []
+    answers = {**catalog.defaults_for(layers), **{k: v for k, v in data.items()}}
+    env = _validator_env()
+    problems: list[Problem] = []
+    for name, q in sorted(checked.items()):
+        if answers.get(name) is None:
+            continue
+        try:
+            message = env.from_string(q.validator).render(**answers).strip()
+        except Exception as exc:  # noqa: BLE001 - an unevaluable validator is a finding
+            problems.append(
+                Problem(
+                    "warning",
+                    "VALIDATOR_NOT_CHECKED",
+                    f"could not evaluate this question's validator ({type(exc).__name__}: "
+                    f"{exc}), so Copier may still refuse the value at render time",
+                    name,
+                )
+            )
+            continue
+        if message:
+            problems.append(Problem("error", "INVALID_VALUE", message, name))
     return problems
 
 
@@ -317,10 +381,16 @@ def _inert_answers(data: dict) -> list[Problem]:
 def repo_conflicts(dest: Path, data: dict) -> list[Problem]:
     """Answers that contradict the repository they are about to be written into.
 
-    DEFAULT_BRANCH reaches the CI workflows and release-please, so `main` written into
-    a checkout on `master` produces a repository whose pipelines never trigger. The
-    scaffolder is standing in that checkout and can see the difference; a warning is
-    the right weight, because the user may be about to rename the branch.
+    The scaffolder is standing in that checkout and can see the difference, so it
+    reports it. A warning rather than an error in every case: the user may be one
+    rename or one `git rm` away from meaning exactly what they answered.
+    """
+    return _branch_conflict(dest, data) + _stale_forge_surface(dest, data)
+
+
+def _branch_conflict(dest: Path, data: dict) -> list[Problem]:
+    """DEFAULT_BRANCH reaches the CI workflows and release-please, so `main` written
+    into a checkout on `master` produces a repository whose pipelines never trigger.
     """
     head = dest / ".git/HEAD"
     if not head.is_file():
@@ -340,6 +410,49 @@ def repo_conflicts(dest: Path, data: dict) -> list[Problem]:
             f"CI triggers and release-please read this, so they would watch a branch that "
             f"does not exist. Set DEFAULT_BRANCH={branch}, or rename the branch.",
             "DEFAULT_BRANCH",
+        )
+    ]
+
+
+# The files each forge answer excludes. Selecting a forge swaps the CI surface for
+# everything about to be written -- but Copier excludes files, it does not delete
+# ones an earlier run already wrote.
+FORGE_SURFACE: dict[str, tuple[str, ...]] = {
+    "github": (".github/workflows",),
+    "gitlab": (".gitlab/ci", ".gitlab-ci.yml"),
+}
+
+
+def _stale_forge_surface(dest: Path, data: dict) -> list[Problem]:
+    """FORGE_PLATFORM changed, and the forge it turned off is still in the checkout.
+
+    `FORGE_EXCLUDE` stops the unselected forge's files being *written*; nothing
+    removes what a previous apply already wrote. So switching github to gitlab left
+    eight live GitHub workflow files in place, still triggering on push, while
+    `gen_caller` reported there was no caller to write. Naming the files is the whole
+    fix: deleting a user's CI is not this tool's call to make.
+    """
+    answered = str(data.get("FORGE_PLATFORM", ""))
+    if answered not in FORGE_SURFACE:
+        return []
+    stale = [
+        relative
+        for platform, paths in FORGE_SURFACE.items()
+        if platform != answered
+        for relative in paths
+        if (dest / relative).exists()
+    ]
+    if not stale:
+        return []
+    other = next(p for p in FORGE_SURFACE if p != answered)
+    return [
+        Problem(
+            "warning",
+            "STALE_FORGE_SURFACE",
+            f"FORGE_PLATFORM is {answered!r}, but {dest} still carries the {other} CI "
+            f"surface: {', '.join(stale)}. Those files are excluded from this run, not "
+            f"removed, and {other} keeps running them. Delete them to finish the switch.",
+            "FORGE_PLATFORM",
         )
     ]
 

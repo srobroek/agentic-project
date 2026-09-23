@@ -48,6 +48,5 @@ JOB_TIMEOUT_MINUTES:
   type: str
 MONOREPO_MEMBERS:
   default: '[]'
-  help: JSON array of monorepo members, each {name, path, capabilities}. Composed, not chosen. '[]' is
-    the single-root case
+  help: JSON array of {name, path, capabilities}; [] is single-root
   type: str

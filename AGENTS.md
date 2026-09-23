@@ -41,7 +41,12 @@ so an exact-file rule can override a directory rule.
 
 MUST gate forge-specific files through `FORGE_EXCLUDE`, not by splitting layers. Any layer that
 writes under `.github/` or `.gitlab/` automatically gains the `FORGE_PLATFORM` question and the
-exclusion block. Selecting the forge then swaps the whole CI surface in one answer.
+exclusion block. Selecting the forge then swaps the whole CI surface in one answer — for
+everything about to be written. An exclusion is not a deletion, so re-applying a repository
+with the other answer left the first forge's whole surface in place and still triggering,
+while `gen_caller` reported there was no caller to write. `_stale_forge_surface` names those
+files as `STALE_FORGE_SURFACE`. A warning, not a deletion: removing a user's CI is not this
+tool's call.
 
 MUST derive a value instead of asking for it when it is a pure function of another answer. Use
 `derive:` in `TOKEN_POLICY`, which emits a templated default -- `PYTHON_VERSION_NODOT` is
@@ -84,6 +89,15 @@ undefined, not an error. `_check_declaration_order` fails the port on one.
 MUST give every asked question `help`. Without it the prompt is the bare token name, so
 the interview asks `MAX_FILE_KB` and tells the user nothing. The port refuses.
 
+MUST keep every asked question's `help` inside `MAX_HELP_CHARS`. Copier prints the mic, a
+space and the help on one line, and prompt_toolkit truncates that line to the terminal
+width with no marker: at 80 columns the version gate read `...which Renova` and the ADRS
+prompt stopped at `...alternatives, consequen`. Nine always-asked questions were over.
+`_check_help_fits_a_prompt` fails the port. Copier has no second field for the overflow,
+so detail that does not fit belongs in `skills/project-setup/SKILL.md`, which is where a
+composed answer is assembled anyway. A `placeholder` question does not restate that it is
+a placeholder: the prompt pre-fills it, and `validate` and the end of `apply` both name it.
+
 MUST mark a tool version with `pin: True` in `TOKEN_POLICY`, which puts it behind the single
 `PIN_TOOL_VERSIONS` gate in `_interview` rather than in front of every user or out of reach
 of all of them. It reaches `catalog --json` as `"pinned": true`. A value derived from another
@@ -111,6 +125,29 @@ apply. Two *fragments* disagreeing is still a hard error — no answer can resol
 
 MUST report what a run replaced. `plan` parses Copier's own per-file lines and names every
 file it would overwrite; that is the only warning before Copier overwrites it.
+
+MUST declare every path a generator rewrites, as the third element of its `GENERATORS` row
+and a merge-or-replace class in `GENERATOR_KEEPS_EXISTING`. Copier places none of them —
+they are folded from the `.d/` fragments afterwards — so its per-file lines cannot mention
+them and `plan` reported "2 existing file(s) would be overwritten" for a brownfield repo
+whose `.gitignore`, `.pre-commit-config.yaml` and `AGENTS.md` were all about to be
+rewritten as well. `test_every_generator_declares_where_it_writes` refuses a row without one.
+
+MUST make a generator's refusal reachable from where the user is standing. `run_generators`
+passes a generator nothing but the destination and its declared arguments, so
+`install_agents_index.py` telling a user to "rerun with --claude MERGE" named a flag no
+`project-setup apply` could ever pass: the apply exited non-zero over a repository that was
+otherwise complete, with its placeholder report suppressed. A destination holding *content*
+takes the same non-destructive default AGENTS.md already took — merge, and say what was
+folded in. Only a symlink, which is another tool's wiring rather than content, still
+refuses, and it names `python3 scripts/install_agents_index.py . --claude SKIP`, which is
+installed in the scaffolded repository and therefore runnable.
+
+MUST evaluate a declared `validator:` in `validate`, not only at render time. `validate` is
+documented as the cheap check that writes nothing and the skill tells an agent to trust it,
+so reporting a clean answer set for `PROJECT_NAME=Bad_Name` and then dying on the first
+layer makes it useless for the mistake most likely to be made. An expression `validate`
+cannot evaluate is reported as `VALIDATOR_NOT_CHECKED`, never silently passed.
 
 MUST remove a native tool's leftovers by identity, not by filename. `native_init.py`
 records which paths existed before `bun init` ran and removes only what bun created; a

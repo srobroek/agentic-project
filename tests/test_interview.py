@@ -221,3 +221,89 @@ def test_a_boolean_answer_prints_the_way_yaml_writes_it():
 
     assert answer_display(True) == "true"
     assert answer_display(False) == "false"
+
+
+def test_no_prompt_is_cut_mid_word_by_an_eighty_column_terminal(interview):
+    """Copier prints the mic, a space, and the help on one line, and prompt_toolkit
+    truncates that line to the terminal width with no marker.
+
+    Measured by driving the interview through an 80-column PTY: 77 help characters
+    survived, so `...which Renovate bumps` reached the user as `...which Renova` and
+    the ADRS schema stopped at `...alternatives, consequen`. Nine always-asked
+    questions were over the line.
+    """
+    from port_assets import MAX_HELP_CHARS
+
+    over = {
+        name: len(spec["help"])
+        for name, spec in interview.items()
+        if is_asked(spec) and len(str(spec.get("help", ""))) > MAX_HELP_CHARS
+    }
+    assert over == {}
+
+
+def test_the_budget_matches_what_an_eighty_column_prompt_shows(interview):
+    """A constant nobody can re-derive drifts. 80 columns, less the mic and space."""
+    from port_assets import MAX_HELP_CHARS, PROMPT_DECORATION
+
+    assert PROMPT_DECORATION == 3
+    assert MAX_HELP_CHARS == 76
+
+
+def test_the_port_refuses_help_that_would_be_truncated():
+    from port_assets import MAX_HELP_CHARS, _check_help_fits_a_prompt
+
+    _check_help_fits_a_prompt({"OK": {"help": "x" * MAX_HELP_CHARS}})
+    # `when: false` is never prompted, so its help has no width to overflow.
+    _check_help_fits_a_prompt({"DERIVED": {"help": "x" * 200, "when": "false"}})
+
+    with pytest.raises(SystemExit) as raised:
+        _check_help_fits_a_prompt({"TOO_LONG": {"help": "x" * (MAX_HELP_CHARS + 1)}})
+    assert "TOO_LONG" in str(raised.value)
+    assert "TOKEN_POLICY" in str(raised.value)
+
+
+def test_a_placeholder_prompt_does_not_repeat_what_it_already_shows(interview):
+    """The prompt pre-fills the placeholder and both `validate` and the end of
+    `apply` name every one still in use. A third sentence saying so only pushed the
+    informative half of the help off the line.
+    """
+    assert interview["CODEOWNER"]["default"] == "@TODO-owner"
+    assert interview["CODEOWNER"]["placeholder"] == "@TODO-owner"
+    repeated = [
+        name
+        for name, spec in interview.items()
+        if "A placeholder is fine" in str(spec.get("help", ""))
+    ]
+    assert repeated == []
+
+
+def test_the_interview_hands_over_a_command_that_names_its_destination(interview):
+    """`apply --data-file .project-setup-answers.yml` defaults --dest to the working
+    directory, so the line the user copies scaffolded wherever they were standing.
+
+    The message Copier prints cannot know the destination; the CLI can, so the
+    command belongs there and the template message states only the fact.
+    """
+    cfg = yaml.safe_load(INTERVIEW.read_text())
+    assert "project-setup apply" not in cfg["_message_after_copy"]
+
+
+def test_the_handover_names_the_destination_and_the_whole_answers_path(tmp_path):
+    """Every verb, with --dest and the absolute answers file, ready to paste.
+
+    Relative to a destination the user is not standing in, the old line either
+    failed on a missing data file or -- with an answers file already in the working
+    directory -- scaffolded that repository instead.
+    """
+    from project_setup.cli import next_commands
+
+    dest = tmp_path / "somewhere else"
+    printed = next_commands(dest / ".project-setup-answers.yml", str(dest))
+
+    lines = [line for line in printed.splitlines() if "project-setup" in line]
+    assert [line.split()[1] for line in lines] == ["validate", "plan", "apply"]
+    for line in lines:
+        # Quoted, because a destination with a space in it is a single argument.
+        assert f"--dest '{dest}'" in line
+        assert f"--data-file '{dest / '.project-setup-answers.yml'}'" in line

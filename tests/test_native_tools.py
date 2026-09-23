@@ -358,3 +358,102 @@ def test_cdk_destination_stays_inside_the_repository(tmp_path):
     with pytest.raises(SystemExit):
         script.destination(root, os.sep + "absolute")
     assert script.destination(root, "infrastructure") == root / "infrastructure"
+
+
+# --------------------------------------------------- the agents index generator
+#
+# Every case below is a brownfield repository. `run_generators` calls this script
+# with the destination and nothing else, so a refusal that names `--claude` names a
+# recovery no `project-setup apply` user can reach: the apply exits non-zero with a
+# scaffolded repository behind it and its placeholder report suppressed.
+
+AGENTS_INDEX = TEMPLATES / "steering/scripts/install_agents_index.py"
+
+
+@pytest.fixture
+def agents_index():
+    return load_module(AGENTS_INDEX, "install_agents_index_under_test")
+
+
+def scaffolded(tmp_path: Path) -> Path:
+    body = tmp_path / "docs/agents/AGENTS.body.md"
+    body.parent.mkdir(parents=True)
+    body.write_text("# my-app\n\n## Read for\n\nthe generated body\n")
+    return body
+
+
+def test_a_hand_written_claude_md_is_merged_not_refused(agents_index, tmp_path):
+    """The whole apply used to fail here, and the fix it named was unreachable.
+
+    AGENTS.md already keeps hand-written text below the body, so refusing for
+    CLAUDE.md made the two destinations disagree for no reason a user could act on.
+    """
+    body = scaffolded(tmp_path)
+    (tmp_path / "CLAUDE.md").write_text("# CLAUDE.md\nHand written, load bearing.\n")
+
+    agents_index.install_index(tmp_path / "AGENTS.md", body, None)
+    agents_index.install_link(tmp_path / "AGENTS.md", tmp_path / "CLAUDE.md", None)
+
+    index = (tmp_path / "AGENTS.md").read_text()
+    assert "Hand written, load bearing." in index
+    assert "the generated body" in index
+    assert (tmp_path / "CLAUDE.md").readlink() == Path("AGENTS.md")
+
+
+def test_a_claude_md_symlink_elsewhere_still_refuses_but_names_a_runnable_command(
+    agents_index, tmp_path
+):
+    """A symlink is another tool's wiring, not content, so there is no safe default.
+
+    The refusal has to name something the user can actually run, and the script is
+    installed in the scaffolded repository precisely so that it can.
+    """
+    body = scaffolded(tmp_path)
+    (tmp_path / "other.md").write_text("another tool's file\n")
+    (tmp_path / "CLAUDE.md").symlink_to("other.md")
+    agents_index.install_index(tmp_path / "AGENTS.md", body, None)
+
+    with pytest.raises(SystemExit) as raised:
+        agents_index.install_link(tmp_path / "AGENTS.md", tmp_path / "CLAUDE.md", None)
+
+    message = str(raised.value)
+    assert "scripts/install_agents_index.py" in message
+    assert "--claude SKIP" in message
+    assert (tmp_path / "CLAUDE.md").readlink() == Path("other.md")
+
+
+def test_an_agents_md_symlink_refusal_names_a_runnable_command(agents_index, tmp_path):
+    body = scaffolded(tmp_path)
+    (tmp_path / "shared.md").write_text("shared instructions\n")
+    (tmp_path / "AGENTS.md").symlink_to("shared.md")
+
+    with pytest.raises(SystemExit) as raised:
+        agents_index.install_index(tmp_path / "AGENTS.md", body, None)
+
+    message = str(raised.value)
+    assert "scripts/install_agents_index.py" in message
+    assert "--agents SKIP" in message
+
+
+def test_bds_own_copy_of_agents_md_needs_no_merge(agents_index, tmp_path):
+    """Content AGENTS.md already carries is not a second authority."""
+    body = scaffolded(tmp_path)
+    agents_index.install_index(tmp_path / "AGENTS.md", body, None)
+    index_text = (tmp_path / "AGENTS.md").read_text()
+    (tmp_path / "CLAUDE.md").write_text(index_text)
+
+    agents_index.install_link(tmp_path / "AGENTS.md", tmp_path / "CLAUDE.md", None)
+
+    assert (tmp_path / "AGENTS.md").read_text() == index_text
+    assert (tmp_path / "CLAUDE.md").readlink() == Path("AGENTS.md")
+
+
+def test_skip_still_leaves_a_hand_written_claude_md_alone(agents_index, tmp_path):
+    body = scaffolded(tmp_path)
+    (tmp_path / "CLAUDE.md").write_text("mine\n")
+    agents_index.install_index(tmp_path / "AGENTS.md", body, None)
+
+    agents_index.install_link(tmp_path / "AGENTS.md", tmp_path / "CLAUDE.md", "SKIP")
+
+    assert (tmp_path / "CLAUDE.md").read_text() == "mine\n"
+    assert "mine" not in (tmp_path / "AGENTS.md").read_text()

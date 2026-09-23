@@ -22,12 +22,11 @@ _tasks:
 
 ADRS:
   default: '[]'
-  help: JSON array of ADRs, each {title, decision, rationale, alternatives, consequences, confirmation}.
-    Composed, not chosen. One file is written per entry
+  help: JSON array of ADRs, one file written each; [] writes none
   type: str
 CODEOWNER:
   default: '@TODO-owner'
-  help: Owner or team for CODEOWNERS, e.g. @me or @org/team. A placeholder is fine; replace before use.
+  help: Owner or team for CODEOWNERS, e.g. @me or @org/team
   placeholder: '@TODO-owner'
   type: str
 CODE_OF_CONDUCT_CONTACT:
@@ -36,7 +35,7 @@ CODE_OF_CONDUCT_CONTACT:
   type: str
 SECURITY_CONTACT:
   default: security@example.com
-  help: Private security channel, or the forge advisory URL. A placeholder is fine; replace before use.
+  help: Private security channel, or the forge advisory URL
   placeholder: security@example.com
   type: str
 SPDX_ID:

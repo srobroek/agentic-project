@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import sys
 from pathlib import Path
 
@@ -26,7 +27,13 @@ from .catalog import (
     validate_data,
     want_var,
 )
-from .runner import REPORTED_OPERATIONS, place_layers, prune_empty_dirs, run_generators
+from .runner import (
+    REPORTED_OPERATIONS,
+    generator_destinations,
+    place_layers,
+    prune_empty_dirs,
+    run_generators,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV_TEMPLATES = "PROJECT_SETUP_TEMPLATES"
@@ -333,7 +340,9 @@ def cmd_validate(args: argparse.Namespace, catalog: Catalog) -> int:
 
     print(f"layers:   {', '.join(layers)}")
     print(f"answered: {len(data)} keys")
-    for p in problems:
+    # Errors first. Grouped by check, the one line that decides whether anything gets
+    # written arrived after two placeholder warnings nobody has to act on.
+    for p in sorted(problems, key=lambda p: p.level != "error"):
         print(f"  {p}")
     if errors:
         print(f"\n{len(errors)} error(s). Nothing would be written.")
@@ -404,7 +413,25 @@ def cmd_interview(args: argparse.Namespace, catalog: Catalog) -> int:
     print(f"\nanswers: {written}")
     if kept:
         print(f"kept {len(kept)} supplied answer(s) the interview does not ask: {', '.join(kept)}")
+    print(next_commands(written, args.dest))
     return 0
+
+
+def next_commands(answers_file: Path, dest: str) -> str:
+    """The rest of the pipeline, with every argument filled in.
+
+    Copier's own closing message cannot name the destination, and the command it
+    printed without one -- `apply --data-file .project-setup-answers.yml` -- reads
+    the answers file of whatever directory the user is standing in and scaffolds
+    there, because `apply` defaults `--dest` to the working directory. Quoted,
+    because a destination with a space in it is one argument.
+    """
+    data = shlex.quote(str(answers_file))
+    where = shlex.quote(dest)
+    return "\nnext:\n" + "\n".join(
+        f"  project-setup {verb:<8} --data-file {data} --dest {where}"
+        for verb in ("validate", "plan", "apply")
+    )
 
 
 def _files_report(result) -> None:
@@ -421,14 +448,27 @@ def _files_report(result) -> None:
         if result.pretend
         else f"{len(created)} {noun}"
     )
-    if not overwritten:
+    if overwritten:
+        verb = "would be overwritten" if result.pretend else "overwritten"
+        print(f"\n{len(overwritten)} existing file(s) {verb}:")
+        for path in overwritten:
+            print(f"  {path}")
+        if result.pretend:
+            print("\n  Copier overwrites by default. Commit or move anything you want to keep.")
+
+    if not result.pretend:
         return
-    verb = "would be overwritten" if result.pretend else "overwritten"
-    print(f"\n{len(overwritten)} existing file(s) {verb}:")
-    for path in overwritten:
-        print(f"  {path}")
-    if result.pretend:
-        print("\n  Copier overwrites by default. Commit or move anything you want to keep.")
+    # Copier places none of these, so none of them appear above. They are folded from
+    # the `.d/` fragments after every layer, which is exactly why a plan that only
+    # parsed Copier's output stayed silent about a brownfield .pre-commit-config.yaml.
+    generated = generator_destinations(result.dest, result.layers)
+    if not generated:
+        return
+    width = max(len(path) for path, _ in generated)
+    print(f"\n{len(generated)} existing path(s) a generator would rewrite:")
+    for path, keeps in generated:
+        how = "merged, your entries kept" if keeps else "replaced outright"
+        print(f"  {path:<{width}}  {how}")
 
 
 def _report(result, *, json_out: bool, verb: str) -> int:
@@ -453,6 +493,11 @@ def _report(result, *, json_out: bool, verb: str) -> int:
                     "files": {
                         operation: result.files(operation) for operation in REPORTED_OPERATIONS
                     },
+                    # Copier places none of these, so `files` cannot report them.
+                    "generator_targets": [
+                        {"path": path, "keeps_existing": keeps}
+                        for path, keeps in generator_destinations(result.dest, result.layers)
+                    ],
                     "generated": [
                         {
                             "script": s.name,

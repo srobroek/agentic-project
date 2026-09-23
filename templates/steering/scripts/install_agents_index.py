@@ -13,17 +13,23 @@ A relative target keeps the link valid inside a linked worktree and after a clon
 Idempotent, and non-destructive: an AGENTS.md that already carries the body is left
 alone, so a beads block appended after the first render survives.
 
-A CLAUDE.md whose content AGENTS.md does not already carry is hand-owned project
-instruction, and a symlink pointing anywhere else is another tool's wiring. Replacing
-either would lose it, so this returns `conflict` until the plan states the class for
-that destination:
+A hand-written CLAUDE.md is content, and it is merged into AGENTS.md by default, the
+same way a hand-written AGENTS.md is kept below the body. Nothing is lost and the run
+says what it folded in. Refusing instead made the two destinations disagree for no
+reason, and the recovery was out of reach: `run_generators` passes no flags, so
+`project-setup apply` could never state a class. `--claude` still overrides:
 
     MERGE       append the existing text to AGENTS.md, then link CLAUDE.md
     OVERWRITE   drop the existing text and link CLAUDE.md; the plan states the loss
     SKIP        leave CLAUDE.md exactly as it is, and install only AGENTS.md
 
-A CLAUDE.md that is bd's own copy of AGENTS.md needs no decision: AGENTS.md carries
-every line of it, so the link loses nothing.
+A CLAUDE.md that is bd's own copy of AGENTS.md needs no decision either: AGENTS.md
+carries every line of it, so the link loses nothing.
+
+A *symlink* is not content, it is another tool's wiring, and there is no
+non-destructive default for it. That one still returns `conflict`, naming the command
+to run by hand -- the script is installed at `scripts/install_agents_index.py` in the
+scaffolded repository, so the recovery is reachable from where the user is standing.
 
 An AGENTS.md that is already a symlink is another tool's wiring. Writing through it
 would mutate the target rather than a regular file in the destination root. That
@@ -110,9 +116,20 @@ def install_link(index: Path, link: Path, decision: str | None) -> None:
         print("CLAUDE.md left as it is; AGENTS.md is installed beside it")
         return
 
+    # A regular CLAUDE.md is content, and merging it loses nothing: AGENTS.md already
+    # keeps the hand-written text it finds there, so refusing here only made the two
+    # destinations disagree. `run_generators` passes no flags, so a refusal named a
+    # recovery no `project-setup apply` user could reach.
+    if decision is None and not carried and not link.is_symlink():
+        decision = "MERGE"
+
     if decision is None and not carried:
         raise SystemExit(
-            f"conflict: {reason}; rerun with --claude MERGE, --claude OVERWRITE, or --claude SKIP"
+            f"conflict: {reason}. Choose the class and run it yourself, from the "
+            f"repository root:\n"
+            f"    python3 scripts/install_agents_index.py . --claude SKIP\n"
+            f"  SKIP keeps the symlink; MERGE folds its text into AGENTS.md and "
+            f"repoints it; OVERWRITE drops the text."
         )
 
     if decision == "MERGE" and not carried and text.strip():
@@ -123,7 +140,7 @@ def install_link(index: Path, link: Path, decision: str | None) -> None:
         index_text = index.read_text()
         separator = "" if index_text.endswith("\n") else "\n"
         index.write_text(index_text + separator + "\n" + text.strip() + "\n")
-        print("merged CLAUDE.md into AGENTS.md")
+        print("merged the existing CLAUDE.md into AGENTS.md; nothing was dropped")
 
     link.unlink()
     link.symlink_to("AGENTS.md")
@@ -135,8 +152,11 @@ def install_index(index: Path, body: Path, decision: str | None) -> None:
         reason = f"AGENTS.md is a symlink to {index.readlink()}, which this layer does not own"
         if decision is None:
             raise SystemExit(
-                f"conflict: {reason}; rerun with --agents MERGE, --agents OVERWRITE, "
-                "or --agents SKIP"
+                f"conflict: {reason}. Choose the class and run it yourself, from the "
+                f"repository root:\n"
+                f"    python3 scripts/install_agents_index.py . --agents SKIP\n"
+                f"  SKIP keeps the symlink; MERGE replaces it with a file holding the "
+                f"body then the previous target text; OVERWRITE keeps only the body."
             )
         if decision == "SKIP":
             print("AGENTS.md left as it is")

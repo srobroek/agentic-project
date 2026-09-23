@@ -72,14 +72,35 @@ def capture_fds() -> Iterator[Path]:
 # Order matters: gen_caller reads members.json, gen_steering reads the whole tree.
 # Some generators need more than the destination. gen_caller writes an `on: push`
 # branch list, so a wrong branch means a workflow that never runs and reports nothing.
-GENERATORS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("scripts/fold_gitignore.py", ()),
-    ("scripts/merge_hooks.py", ()),
-    ("scripts/gen_justfile.py", ()),
-    ("scripts/gen_caller.py", ("--default-branch", "{DEFAULT_BRANCH}")),
-    ("scripts/gen_steering.py", ()),
-    ("scripts/install_agents_index.py", ()),
+# The third element is every path the generator rewrites. Copier never places these
+# -- they are folded from the `.d/` fragments afterwards -- so Copier's own per-file
+# lines never mention them, and `plan` reported "2 files would be overwritten" for a
+# brownfield repository whose .gitignore, .pre-commit-config.yaml and AGENTS.md were
+# all about to be rewritten as well. `plan` is documented as the only warning before
+# an existing file is replaced, so it has to name these too.
+GENERATORS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
+    ("scripts/fold_gitignore.py", (), (".gitignore",)),
+    ("scripts/merge_hooks.py", (), (".pre-commit-config.yaml",)),
+    ("scripts/gen_justfile.py", (), ("justfile",)),
+    (
+        "scripts/gen_caller.py",
+        ("--default-branch", "{DEFAULT_BRANCH}"),
+        (".github/workflows/ci.yml",),
+    ),
+    ("scripts/gen_steering.py", (), ("docs/agents",)),
+    ("scripts/install_agents_index.py", (), ("AGENTS.md", "CLAUDE.md")),
 )
+# Whether a generator keeps what it finds or replaces the whole file, which is the
+# part a brownfield user needs in order to decide.
+GENERATOR_KEEPS_EXISTING = {
+    ".gitignore": True,
+    ".pre-commit-config.yaml": True,
+    "justfile": True,
+    "AGENTS.md": True,
+    ".github/workflows/ci.yml": False,
+    "CLAUDE.md": False,
+    "docs/agents": False,
+}
 # Copier announces one line per file it touches. Parsing them is what lets `plan`
 # answer the only question a brownfield user has: what of mine gets replaced?
 # `conflict` precedes `overwrite` for the same path, so `overwrite` is the signal.
@@ -248,12 +269,42 @@ def generator_args(extra: tuple[str, ...], answers: dict) -> list[str]:
     return out
 
 
+def generator_destinations(dest: Path, layers: list[str]) -> list[tuple[str, bool]]:
+    """Existing paths a generator will rewrite, and whether it keeps what it finds.
+
+    A generator only runs when the layer that owns its script was placed, so the
+    answer depends on the selected layers rather than on the templates as a whole.
+    Reported by `plan`, which is the one warning a brownfield user gets and which
+    Copier's own per-file lines cannot supply: Copier never touches these paths.
+    """
+    from .catalog import ALWAYS_ON
+
+    owners = {
+        "scripts/fold_gitignore.py": "base",
+        "scripts/merge_hooks.py": "hooks",
+        "scripts/gen_justfile.py": "just",
+        "scripts/gen_caller.py": "ci",
+        "scripts/gen_steering.py": "steering",
+        "scripts/install_agents_index.py": "steering",
+    }
+    found: list[tuple[str, bool]] = []
+    for rel, _extra, destinations in GENERATORS:
+        owner = owners.get(rel)
+        if owner is not None and owner not in layers and owner not in ALWAYS_ON:
+            continue
+        for relative in destinations:
+            path = dest / relative
+            if path.is_symlink() or path.exists():
+                found.append((relative, GENERATOR_KEEPS_EXISTING.get(relative, False)))
+    return found
+
+
 def run_generators(
     dest: Path, result: RunResult, *, data: dict | None = None, quiet: bool = True
 ) -> RunResult:
     """Run each generator that the placed layers actually installed."""
     answers = data or {}
-    for rel, extra in GENERATORS:
+    for rel, extra, _destinations in GENERATORS:
         script = dest / rel
         if not script.is_file():
             continue

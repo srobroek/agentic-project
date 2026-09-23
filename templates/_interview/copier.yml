@@ -6,9 +6,7 @@ _envops:
 _answers_file: .project-setup-answers.yml
 _exclude:
 - copier.yml
-_message_after_copy: 'Answers recorded in .project-setup-answers.yml.
-
-  Run `project-setup apply --data-file .project-setup-answers.yml` to scaffold.'
+_message_after_copy: Answers recorded in .project-setup-answers.yml.
 
 PROJECT_NAME:
   type: str
@@ -61,7 +59,7 @@ WANT_INFRA_AWS_CDK:
 PIN_TOOL_VERSIONS:
   type: bool
   default: false
-  help: Pin tool versions yourself? No keeps this template's stable set, which Renovate bumps
+  help: Choose tool versions yourself? No keeps the pinned set Renovate bumps
 INSTALL_COMMANDS:
   type: str
   help: What a fresh clone runs to install dependencies; shown in the README
@@ -81,12 +79,12 @@ SPDX_ID:
   default: Apache-2.0
 CODEOWNER:
   type: str
-  help: Owner or team for CODEOWNERS, e.g. @me or @org/team. A placeholder is fine; replace before use.
+  help: Owner or team for CODEOWNERS, e.g. @me or @org/team
   placeholder: '@TODO-owner'
   default: '@TODO-owner'
 SECURITY_CONTACT:
   type: str
-  help: Private security channel, or the forge advisory URL. A placeholder is fine; replace before use.
+  help: Private security channel, or the forge advisory URL
   placeholder: security@example.com
   default: security@example.com
 CODE_OF_CONDUCT_CONTACT:
@@ -95,8 +93,7 @@ CODE_OF_CONDUCT_CONTACT:
   default: ''
 ADRS:
   type: str
-  help: JSON array of ADRs, each {title, decision, rationale, alternatives, consequences, confirmation}.
-    Composed, not chosen. One file is written per entry
+  help: JSON array of ADRs, one file written each; [] writes none
   default: '[]'
 DEFAULT_BRANCH:
   type: str
@@ -138,8 +135,7 @@ FORGE_PLATFORM:
   default: github
 MONOREPO_MEMBERS:
   type: str
-  help: JSON array of monorepo members, each {name, path, capabilities}. Composed, not chosen. '[]' is
-    the single-root case
+  help: JSON array of {name, path, capabilities}; [] is single-root
   default: '[]'
   when: '@@ IS_MONOREPO @@'
 BUN_VERSION:
@@ -174,7 +170,7 @@ AXE_PLAYWRIGHT_VERSION:
   when: '@@ (WANT_A11Y) and PIN_TOOL_VERSIONS @@'
 ORG:
   type: str
-  help: Organisation or owner, used for the API contact. A placeholder is fine; replace before use.
+  help: Organisation or owner, used for the API contact
   placeholder: TODO-org
   default: TODO-org
   when: '@@ (WANT_API) @@'
@@ -198,7 +194,7 @@ API_DESCRIPTION:
   when: 'false'
 API_SERVER_URL:
   type: str
-  help: Production endpoint. Unknown at setup time is normal. A placeholder is fine; replace before use.
+  help: Production endpoint. Unknown at setup time is normal
   placeholder: https://api.example.com
   default: https://api.example.com
   when: '@@ (WANT_API) @@'
@@ -228,14 +224,13 @@ LOCALES_JSON:
   when: '@@ (WANT_I18N) @@'
 INLANG_MESSAGE_FORMAT_MODULE_URL:
   type: str
-  help: Inlang message-format plugin module URL; pin the version you want. A placeholder is fine; replace
-    before use.
+  help: Inlang message-format plugin module URL; pin the version you want
   placeholder: https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js
   default: https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js
   when: '@@ (WANT_I18N) @@'
 I18N_PROJECT_DIR:
   type: str
-  help: Where the Inlang project lives, relative to the repo root. For a nested deployable use apps/web/project.inlang
+  help: Inlang project dir, repo-relative, e.g. apps/web/project.inlang
   default: project.inlang
   validator: '{% if not (I18N_PROJECT_DIR | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}I18N_PROJECT_DIR
     must match ^[A-Za-z0-9._/-]+${% endif %}'
