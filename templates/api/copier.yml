@@ -49,9 +49,11 @@ API_TITLE:
   type: str
 API_VERSION:
   default: 0.1.0
+  help: Version of your contract, not of OpenAPI
   type: str
 DEFAULT_BRANCH:
   default: main
+  help: Branch CI listens on and the force-push guard protects
   type: str
   validator: '{% if not (DEFAULT_BRANCH | string | regex_search(''^[a-z0-9._/-]+$'')) %}DEFAULT_BRANCH
     must match ^[a-z0-9._/-]+${% endif %}'
@@ -64,6 +66,7 @@ FORGE_PLATFORM:
   type: str
 JOB_TIMEOUT_MINUTES:
   default: '15'
+  help: Per-job CI timeout; a hung job holds a runner until it fires
   type: str
 ORG:
   default: TODO-org

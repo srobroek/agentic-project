@@ -5,8 +5,9 @@
 
 Unlike the unit tests, this shells out to the installed `project-setup` command with
 tasks enabled, so it covers the path a user or an agent actually takes: validate,
-plan, apply, re-apply. Offline by default -- RUN_NATIVE_INIT is forced off so no
-toolchain download is required.
+plan, apply, re-apply. Native toolchain init is not a question and is not suppressed:
+each branch skips when its manifest exists and warns when its tool is absent, so the
+run needs no toolchain but uses one when it is there.
 """
 
 from __future__ import annotations

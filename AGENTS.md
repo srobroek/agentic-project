@@ -68,9 +68,45 @@ its raw text. The answers that carry JSON -- `ADRS`, `MONOREPO_MEMBERS`, `LOCALE
 `A11Y_*_JSON` pair -- would otherwise be parsed into Python objects and render as a Python repr
 with single quotes, landing in the file as invalid JSON.
 
-MUST capture fds 1 and 2 around `copier.run_copy`, not `sys.stdout`. Tasks are subprocesses
-that inherit the real descriptors. Without the fd-level capture a failing task reports only
-"returned non-zero exit status 1" and its actual message is lost.
+MUST capture fds 1 and 2 **and** `sys.stdout`/`sys.stderr` around `copier.run_copy`. Tasks
+are subprocesses that inherit the real descriptors, so without the fd dup a failing task
+reports only "returned non-zero exit status 1" and its actual message is lost. Copier's own
+per-file announcements go through `print()`, which resolves `sys.stdout` at call time —
+under pytest that is a capture object that never touches fd 1, so the fd dup alone loses
+every line and the parsed file list comes back empty exactly where it is tested.
+
+MUST keep the interview's declaration order meaningful. `interview_order` asks identity,
+then the layer selection, then each layer's own questions. Alphabetical order asked
+`PROJECT_NAME` last of 24 and put gated questions ahead of the answers that gate them;
+Copier evaluates `when:` in declaration order and a forward reference is silently
+undefined, not an error. `_check_declaration_order` fails the port on one.
+
+MUST give every asked question `help`. Without it the prompt is the bare token name, so
+the interview asks `MAX_FILE_KB` and tells the user nothing. The port refuses.
+
+MUST mark a question the interview should not ask with `ask: False`, not by leaving it
+asked. A pinned tool version is Renovate's to bump and a derived value is computed, so
+both get `when: false` in `_interview`: not asked, still settable with `--set`. The flag
+reaches `catalog --json` as `"asked": false`, so a caller can check rather than remember.
+
+MUST resolve a generator argument against the catalog defaults, not the raw answers.
+Copier applies a layer's default itself; `run_generators` assembles its arguments outside
+Copier, so an unanswered `DEFAULT_BRANCH` aborted a half-written scaffold with a KeyError.
+
+MUST let a fragment own what it declares when folding into a shared file. The fragment is
+generated from a layer and an answer, so the layer owns that entry: a changed answer has
+to land, and a brownfield repository that happens to share one hook id must not fail the
+apply. Two *fragments* disagreeing is still a hard error — no answer can resolve it.
+
+MUST report what a run replaced. `plan` parses Copier's own per-file lines and names every
+file it would overwrite; that is the only warning before Copier overwrites it.
+
+MUST remove a native tool's leftovers by identity, not by filename. `native_init.py`
+records which paths existed before `bun init` ran and removes only what bun created; a
+filename check deleted a brownfield repository's own `CLAUDE.md`.
+
+MUST wire a script a layer ships to a task that runs it. `init_aws_cdk.py` shipped with no
+caller, so `just aws-cdk-synth` and `just check` failed on a directory nothing created.
 
 ## Adding a layer
 
@@ -111,9 +147,19 @@ MUST NOT add a question for something a task can decide. `native_init.py` skips 
 manifest exists and warns when the tool is absent, so `RUN_NATIVE_INIT` was deleted rather
 than defaulted.
 
-MUST reconcile what a native tool writes with what a layer owns. `bun init` drops its own
-CLAUDE.md, which the steering layer owns and refuses to overwrite -- that failed an otherwise
-clean apply until `native_init.py` removed it and set the package name from `PROJECT_NAME`.
+MUST warn about an answer set that renders cleanly and then does nothing. `IS_MONOREPO`
+with an empty `MONOREPO_MEMBERS` wrote a member manifest naming nobody, which `gen_caller`
+read as "a monorepo with no members" and used to replace every language job with none at
+all. An empty member list is now the single-root case, as the question's own help says,
+and `validate` reports `ANSWER_HAS_NO_EFFECT`. A warning, not an error: the combination is
+legal and the user may be one answer from meaning it.
+
+MUST reconcile what a native tool writes with what a layer owns. `bun init` drops a generic
+CLAUDE.md, its own `.gitignore` and a placeholder `index.ts`. The steering layer owns
+CLAUDE.md and refuses to overwrite one it did not write, which failed an otherwise clean
+apply; the `.gitignore` would be adopted as unmanaged text above the generated block
+forever. `native_init.py` removes all three and sets the package name from `PROJECT_NAME` --
+but only for paths that did not exist before `bun init` ran.
 
 MUST exclude `node_modules`, `.git`, `target` and friends from any recursive scan. Native init
 populates them and third-party files legitimately contain `@@`.
@@ -138,8 +184,12 @@ shell is the shell itself, and the working directory is the user's target reposi
 
 ## Verifying a change
 
-    just port ../omp-plugins/project-setup/skills/project-setup/assets
-    just catalog
-    just e2e            # every preset: validate, plan, apply, re-apply, assertions
-    just omp-link       # link and health-check the plugin
-    just omp-verify     # read the skill and rule back through OMP
+    just port          # regenerate templates/ from the vendored assets/
+    just check         # ruff, format, and the unit suite
+    just e2e           # every preset: validate, plan, apply, re-apply, assertions
+    just omp-link      # link and health-check the plugin
+    just omp-verify    # read the skill and rule back through OMP
+
+A change that breaks `just e2e` is a regression. The interview has no automated TTY driver:
+drive `project-setup interview --dest <tmp>` by hand when you change the question set, and
+check what it asks first.

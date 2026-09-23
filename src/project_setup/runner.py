@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -23,27 +24,44 @@ from .catalog import Catalog, selected_layers
 
 @contextlib.contextmanager
 def capture_fds() -> Iterator[Path]:
-    """Capture everything written to fds 1 and 2, including from subprocesses.
+    """Capture output from fds 1 and 2 *and* from `sys.stdout`/`sys.stderr`.
+
+    Both halves are needed, for different writers:
 
     Copier runs tasks as subprocesses that inherit the real file descriptors, so
-    contextlib.redirect_stdout cannot see them. Without this, a failing task reports
-    only "returned non-zero exit status 1" and the reason is lost -- which is the
-    difference between an agent that can fix the problem and one that cannot.
+    `contextlib.redirect_stdout` cannot see them. Without the fd-level dup a failing
+    task reports only "returned non-zero exit status 1" and its actual message is
+    lost -- the difference between an agent that can fix the problem and one that
+    cannot.
+
+    Copier's own per-file announcements go through `print()`, which resolves
+    `sys.stdout` at call time. Under pytest that is a capture object that does not
+    write to fd 1 at all, so the fd dup alone silently misses every line and the
+    parsed file list comes back empty in exactly the place it is tested.
+
+    Both sinks open the same file with O_APPEND, so writes from either side land at
+    the end instead of overwriting each other.
     """
     sys.stdout.flush()
     sys.stderr.flush()
     saved_out, saved_err = os.dup(1), os.dup(2)
+    saved_stdout, saved_stderr = sys.stdout, sys.stderr
     tmp = Path(tempfile.mkstemp(prefix="project-setup-", suffix=".log")[1])
-    sink = os.open(tmp, os.O_WRONLY)
+    sink = os.open(tmp, os.O_WRONLY | os.O_APPEND)
+    stream = tmp.open("a", buffering=1)
     try:
         os.dup2(sink, 1)
         os.dup2(sink, 2)
+        sys.stdout = sys.stderr = stream
         yield tmp
     finally:
+        stream.flush()
+        sys.stdout, sys.stderr = saved_stdout, saved_stderr
         sys.stdout.flush()
         sys.stderr.flush()
         os.dup2(saved_out, 1)
         os.dup2(saved_err, 2)
+        stream.close()
         for fd in (sink, saved_out, saved_err):
             os.close(fd)
 
@@ -62,6 +80,13 @@ GENERATORS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("scripts/gen_steering.py", ()),
     ("scripts/install_agents_index.py", ()),
 )
+# Copier announces one line per file it touches. Parsing them is what lets `plan`
+# answer the only question a brownfield user has: what of mine gets replaced?
+# `conflict` precedes `overwrite` for the same path, so `overwrite` is the signal.
+# The operation word arrives wrapped in colour even into a pipe, so strip first.
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+OPERATION = re.compile(r"^\s*(create|overwrite|identical|skip|remove|conflict)\s+(\S.*)$")
+REPORTED_OPERATIONS = ("overwrite", "create")
 
 
 @dataclass
@@ -70,6 +95,33 @@ class StepResult:
     ok: bool
     detail: str = ""
     seconds: float = 0.0
+    # {operation: paths}, parsed out of Copier's own per-file announcements.
+    files: dict[str, list[str]] = field(default_factory=dict)
+
+
+def split_operations(output: str) -> tuple[dict[str, list[str]], str]:
+    """Separate Copier's per-file lines from everything else a layer printed.
+
+    The remainder is a task's own message, which is the part worth echoing; the
+    file lines are worth counting.
+    """
+    files: dict[str, list[str]] = {}
+    rest: list[str] = []
+    for raw in output.splitlines():
+        line = ANSI.sub("", raw)
+        if line.startswith("Copying from template version"):
+            # Copier's own banner. The version is always None here: layers are
+            # plain directories, not tagged template repositories.
+            continue
+        found = OPERATION.match(line)
+        if found is None:
+            rest.append(line)
+            continue
+        paths = files.setdefault(found.group(1), [])
+        path = found.group(2).strip()
+        if path not in paths:
+            paths.append(path)
+    return files, "\n".join(rest).strip()
 
 
 @dataclass
@@ -87,6 +139,15 @@ class RunResult:
     @property
     def seconds(self) -> float:
         return sum(s.seconds for s in self.placed + self.generated)
+
+    def files(self, operation: str) -> list[str]:
+        """Every path the placed layers reported under one Copier operation."""
+        seen: list[str] = []
+        for step in self.placed:
+            for path in step.files.get(operation, ()):
+                if path not in seen:
+                    seen.append(path)
+        return sorted(seen)
 
 
 def place_layers(
@@ -114,22 +175,31 @@ def place_layers(
                     defaults=True,
                     overwrite=True,
                     pretend=pretend,
-                    quiet=True,
+                    # Copier names every file it touches; place_layers parses those
+                    # lines back out so plan can report what it would replace.
+                    quiet=False,
                     # Templates are bundled in this repo, so tasks are ours to trust.
                     unsafe=run_tasks,
                     skip_tasks=not run_tasks,
                 )
             except Exception as exc:  # noqa: BLE001 - surfaced verbatim to the caller
                 error = f"{type(exc).__name__}: {exc}"
-        output = log.read_text().strip()
+        captured = log.read_text().strip()
         log.unlink(missing_ok=True)
+        files, output = split_operations(captured)
         if not quiet and output:
             print("\n".join(f"  {line}" for line in output.splitlines()))
         # The task's own message is the useful part; Copier's TaskError only says
         # that the exit status was non-zero.
         detail = "\n".join(part for part in (output, error) if part)
         result.placed.append(
-            StepResult(name, not error, detail=detail, seconds=time.perf_counter() - started)
+            StepResult(
+                name,
+                not error,
+                detail=detail,
+                seconds=time.perf_counter() - started,
+                files=files,
+            )
         )
         if error:
             break
@@ -156,6 +226,28 @@ def prune_empty_dirs(dest: Path) -> list[str]:
     return removed
 
 
+def generator_args(extra: tuple[str, ...], answers: dict) -> list[str]:
+    """Fill a generator's argument template from the effective answer set.
+
+    A missing answer is named rather than raised as a KeyError: the value exists,
+    it is just defaulted by a layer instead of supplied, and the caller is expected
+    to have merged the catalog defaults in first.
+    """
+    out: list[str] = []
+    for arg in extra:
+        if "{" not in arg:
+            out.append(arg)
+            continue
+        try:
+            out.append(arg.format(**answers))
+        except KeyError as exc:
+            raise SystemExit(
+                f"generator argument {arg!r} needs answer {exc.args[0]}, which is neither "
+                f"supplied nor defaulted by any selected layer"
+            ) from exc
+    return out
+
+
 def run_generators(
     dest: Path, result: RunResult, *, data: dict | None = None, quiet: bool = True
 ) -> RunResult:
@@ -165,7 +257,7 @@ def run_generators(
         script = dest / rel
         if not script.is_file():
             continue
-        args = [a.format(**answers) if "{" in a else a for a in extra]
+        args = generator_args(extra, answers)
         started = time.perf_counter()
         proc = subprocess.run(
             [sys.executable, str(script), str(dest), *args],

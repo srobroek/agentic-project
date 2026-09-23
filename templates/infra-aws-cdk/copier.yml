@@ -28,6 +28,9 @@ AWS_CDK_DEST_SHELL:
   default: infrastructure
   help: Repo-relative CDK destination, shell-quoted
   type: str
+AWS_CDK_VERSION:
+  default: 2.1142.0
+  type: str
 FORGE_PLATFORM:
   choices:
   - github

@@ -44,6 +44,7 @@ IS_MONOREPO:
   type: bool
 JOB_TIMEOUT_MINUTES:
   default: '15'
+  help: Per-job CI timeout; a hung job holds a runner until it fires
   type: str
 MONOREPO_MEMBERS:
   default: '[]'

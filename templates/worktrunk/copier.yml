@@ -26,4 +26,5 @@ FORGE_PLATFORM:
   type: str
 SETUP_COMMAND:
   default: just setup
+  help: What a freshly created worktree runs to become usable
   type: str

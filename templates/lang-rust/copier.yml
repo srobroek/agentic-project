@@ -51,6 +51,7 @@ FORGE_PLATFORM:
   type: str
 JOB_TIMEOUT_MINUTES:
   default: '15'
+  help: Per-job CI timeout; a hung job holds a runner until it fires
   type: str
 RUST_LIBRARY:
   default: true

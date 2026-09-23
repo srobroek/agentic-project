@@ -1,14 +1,19 @@
 set unstable := true
 
+# Every recipe runs the project interpreter explicitly. `python3` resolves to the
+# venv only in a shell where mise is active, which `just` cannot assume: the first
+# documented command failing on a fresh clone is a bad first impression.
+python := ".venv/bin/python"
+
 # Install the toolchain and the package in editable mode.
 setup:
     mise install
     uv pip install -e ".[dev]" || uv pip install -e .
     uv pip install pytest ruff
 
-# Re-port the asset layers from the omp-plugins source of truth.
+# Re-port the asset layers from the vendored source of truth.
 port ASSETS="./assets":
-    python3 tools/port_assets.py "{{ ASSETS }}" templates
+    {{ python }} tools/port_assets.py "{{ ASSETS }}" templates
 
 # List every template layer and the questions it declares.
 catalog:
@@ -23,16 +28,16 @@ apply PRESET DEST:
     project-setup apply --preset "{{ PRESET }}" --dest "{{ DEST }}"
 
 check:
-    ruff check src tools
-    ruff format --check src tools
-    pytest
+    {{ python }} -m ruff check src tools tests
+    {{ python }} -m ruff format --check src tools tests
+    {{ python }} -m pytest
 
 test:
-    pytest -v
+    {{ python }} -m pytest -v
 
 # Full end-to-end check: drive the real CLI over every preset.
 e2e:
-    .venv/bin/python tools/e2e.py
+    {{ python }} tools/e2e.py
 
 # Link this directory into OMP for local development.
 omp-link:

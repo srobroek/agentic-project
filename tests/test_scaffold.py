@@ -13,7 +13,13 @@ import yaml
 
 from project_setup.catalog import load_catalog
 from project_setup.cli import load_preset
-from project_setup.runner import place_layers, prune_empty_dirs, run_generators
+from project_setup.runner import (
+    generator_args,
+    place_layers,
+    prune_empty_dirs,
+    run_generators,
+    split_operations,
+)
 
 TEMPLATES = Path(__file__).resolve().parents[1] / "templates"
 PRESETS = Path(__file__).resolve().parents[1] / "presets"
@@ -148,6 +154,65 @@ def test_members_json_only_exists_for_a_monorepo(tmp_path: Path):
     assert not (tmp_path / ".ci/members.json").exists()
 
 
+def test_a_bare_answer_set_needs_no_preset_to_reach_the_generators(tmp_path: Path):
+    """The two documented required answers really are the only two required.
+
+    `--default-branch` is a generator argument assembled outside Copier, so an
+    unanswered DEFAULT_BRANCH used to raise KeyError and abort a half-written
+    scaffold. The layer default has to be resolved before the argument is filled.
+    """
+    catalog = load_catalog(TEMPLATES)
+    result = place_layers(catalog, tmp_path, dict(IDENTITY), run_tasks=False, quiet=True)
+    assert result.ok, [s.detail for s in result.placed if not s.ok]
+    prune_empty_dirs(tmp_path)
+    run_generators(tmp_path, result, data={**catalog.defaults_for(result.layers), **IDENTITY})
+    assert result.ok, [s.detail for s in result.generated if not s.ok]
+    assert "branches: [main]" in (tmp_path / ".github/workflows/ci.yml").read_text()
+
+
+def test_a_missing_generator_argument_names_the_answer(tmp_path: Path):
+    """A generator argument that cannot be filled says which answer is absent."""
+    with pytest.raises(SystemExit) as raised:
+        generator_args(("--default-branch", "{DEFAULT_BRANCH}"), {})
+    assert "DEFAULT_BRANCH" in str(raised.value)
+
+
+def test_plan_names_every_file_it_would_overwrite(tmp_path: Path):
+    """Copier overwrites by default, so the plan is the only warning a user gets."""
+    (tmp_path / "README.md").write_text("hand written\n")
+    (tmp_path / "justfile").write_text("build:\n    go build ./...\n")
+
+    catalog = load_catalog(TEMPLATES)
+    data = {**load_preset("go-service", PRESETS)[0], **IDENTITY}
+    result = place_layers(catalog, tmp_path, data, pretend=True, run_tasks=False, quiet=True)
+
+    assert result.ok, [s.detail for s in result.placed if not s.ok]
+    assert result.files("overwrite") == ["README.md", "justfile"]
+    assert "CODEOWNERS" in result.files("create")
+    # A dry run that writes something is worse than no dry run at all.
+    assert (tmp_path / "README.md").read_text() == "hand written\n"
+
+
+def test_a_greenfield_plan_reports_no_overwrites(tmp_path: Path):
+    catalog = load_catalog(TEMPLATES)
+    data = {**load_preset("minimal", PRESETS)[0], **IDENTITY}
+    result = place_layers(catalog, tmp_path, data, pretend=True, run_tasks=False, quiet=True)
+    assert result.files("overwrite") == []
+    assert len(result.files("create")) > 20
+
+
+def test_task_output_is_kept_out_of_the_file_operation_list():
+    """A task's own message is the part worth echoing; file lines are worth counting."""
+    files, rest = split_operations(
+        "\nCopying from template version None\n"
+        "\x1b[33m\x1b[1m overwrite\x1b[39m\x1b[0m  README.md\n"
+        "\x1b[32m\x1b[1m    create\x1b[39m\x1b[0m  LICENSE\n"
+        "materialise_license: wrote LICENSE from MIT\n"
+    )
+    assert files == {"overwrite": ["README.md"], "create": ["LICENSE"]}
+    assert rest == "materialise_license: wrote LICENSE from MIT"
+
+
 def test_monorepo_members_reach_the_manifest(tmp_path: Path):
     import json
 
@@ -264,26 +329,88 @@ def test_hand_written_work_survives_a_later_layer(tmp_path: Path):
     assert (tmp_path / ".golangci.yml").is_file()
 
 
-def test_changing_a_merged_answer_is_refused_not_silently_applied(tmp_path: Path):
-    """Documents a real constraint rather than hiding it.
+def test_changing_a_merged_answer_re_derives_the_generated_file(tmp_path: Path):
+    """COMMIT_SCOPES feeds a hook that is already folded into the generated config.
 
-    COMMIT_SCOPES feeds a hook definition that merge_hooks.py has already folded
-    into .pre-commit-config.yaml. Re-applying with a different value is a semantic
-    change to an existing hook, and the generator refuses it instead of
-    overwriting. Recovery is to delete the generated file and re-run.
+    The fragment is generated from the layer and the answer, so the layer owns that
+    hook: a second apply with a new value has to land it. This used to be refused,
+    which made the only recovery deleting the generated file by hand.
     """
     scaffold(tmp_path, "go-service")
+    config = tmp_path / ".pre-commit-config.yaml"
+    assert "api,ci,deps" in config.read_text()
+
     result = scaffold(tmp_path, "go-service", extra={"COMMIT_SCOPES": "totally,different"})
 
-    conflicts = [s for s in result.generated if not s.ok]
-    assert conflicts, "expected merge_hooks.py to refuse a changed hook definition"
-    assert "conflict" in conflicts[0].detail
+    assert result.ok, [s.detail for s in result.generated if not s.ok]
+    assert "totally,different" in config.read_text()
+    assert "api,ci,deps" not in config.read_text()
 
-    # The documented recovery path.
-    (tmp_path / ".pre-commit-config.yaml").unlink()
-    recovered = scaffold(tmp_path, "go-service", extra={"COMMIT_SCOPES": "totally,different"})
-    assert recovered.ok, [s.detail for s in recovered.generated if not s.ok]
-    assert "totally,different" in (tmp_path / ".pre-commit-config.yaml").read_text()
+
+def test_replacing_a_generated_entry_is_reported_not_silent(tmp_path: Path):
+    scaffold(tmp_path, "go-service")
+    result = scaffold(tmp_path, "go-service", extra={"COMMIT_SCOPES": "changed"})
+    merge = next(s for s in result.generated if "merge_hooks" in s.name)
+    assert "replaced" in merge.detail
+    assert "conventional-pre-commit" in merge.detail
+
+
+def test_a_brownfield_hook_config_survives_and_only_shared_ids_are_replaced(tmp_path: Path):
+    """A repo with its own pre-commit config used to fail the whole apply.
+
+    One shared hook id was enough: the existing definition and the fragment's
+    differed, and the generator refused rather than deciding who owns it.
+    """
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        "repos:\n"
+        "  - repo: https://github.com/astral-sh/ruff-pre-commit\n"
+        "    rev: v0.5.0\n"
+        "    hooks:\n"
+        "      - id: ruff\n"
+        "  - repo: builtin\n"
+        "    hooks:\n"
+        "      - id: trailing-whitespace\n"
+        '        args: ["--mine"]\n'
+    )
+
+    result = scaffold(tmp_path, "go-service")
+    assert result.ok, [s.detail for s in result.generated if not s.ok]
+
+    merged = yaml.safe_load(config.read_text())
+    entries = {entry["repo"]: entry for entry in merged["repos"]}
+
+    # No fragment declares ruff-pre-commit, so it is the repository's own and is kept.
+    assert entries["https://github.com/astral-sh/ruff-pre-commit"]["rev"] == "v0.5.0"
+    # A fragment does declare trailing-whitespace, so the layer's definition wins.
+    builtin = {hook["id"]: hook for hook in entries["builtin"]["hooks"]}
+    assert "--mine" not in str(builtin["trailing-whitespace"])
+
+
+def test_two_fragments_disagreeing_is_still_a_hard_error(tmp_path: Path):
+    """A template bug, which no answer can resolve, stays a refusal."""
+    scaffold(tmp_path, "go-service")
+    fragment = tmp_path / ".pre-commit.d/zz-conflicting.yaml"
+    fragment.write_text(
+        "repos:\n"
+        "  - repo: https://github.com/crate-ci/typos\n"
+        "    rev: v0.0.0-not-the-pinned-one\n"
+        "    hooks:\n"
+        "      - id: typos\n"
+    )
+    result = run_generators(
+        tmp_path,
+        place_layers(
+            load_catalog(TEMPLATES),
+            tmp_path,
+            {**load_preset("go-service", PRESETS)[0], **IDENTITY},
+            run_tasks=False,
+        ),
+        data={**load_preset("go-service", PRESETS)[0], **IDENTITY},
+    )
+    merge = next(s for s in result.generated if "merge_hooks" in s.name)
+    assert not merge.ok
+    assert "conflict" in merge.detail and "pinned" in merge.detail
 
 
 # --------------------------------------------------------------------------- tasks

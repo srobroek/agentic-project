@@ -6,10 +6,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
+from pathlib import Path
 
 VERSION = re.compile(r"^[1-9][0-9]*\.[0-9]+\.[0-9]+$")
 NAME = re.compile(r"^[A-Za-z][A-Za-z0-9-]*$")
@@ -32,6 +33,25 @@ def destination(root: Path, value: str) -> Path:
     if resolved.exists():
         raise SystemExit(f"destination already exists: {raw}")
     return resolved
+
+
+# What `cdk init` writes because its template is an npm package, and this is not one.
+# Removed so a fresh repository does not ship a publish rule for an app nobody
+# publishes.
+LEFTOVERS: tuple[str, ...] = (".npmignore",)
+
+
+def run(command: list[str], *, cwd: Path, what: str) -> None:
+    """Run a native tool, and say which one failed rather than raising a traceback."""
+    if shutil.which(command[0]) is None:
+        raise SystemExit(f"{command[0]} is not on PATH, so {what} cannot run")
+    result = subprocess.run(command, cwd=cwd, check=False)
+    if result.returncode != 0:
+        raise SystemExit(
+            f"{what} failed (exit {result.returncode}): {' '.join(command)}\n"
+            f"  Its own output is above. A version that does not exist is the usual "
+            f"cause; pick one the registry lists."
+        )
 
 
 def main() -> None:
@@ -57,8 +77,14 @@ def main() -> None:
             "typescript",
             "--generate-only",
         ]
-        subprocess.run(command, cwd=work, check=True)
-        subprocess.run(["bun", "install"], cwd=work, check=True)
+        run(command, cwd=work, what=f"cdk init with aws-cdk@{args.cdk_version}")
+        run(["bun", "install"], cwd=work, what="bun install for the generated app")
+        removed = []
+        for name in LEFTOVERS:
+            leftover = work / name
+            if leftover.is_file():
+                leftover.unlink()
+                removed.append(name)
         os.replace(work, dest)
 
     print(
@@ -67,6 +93,7 @@ def main() -> None:
                 "cdk_version": args.cdk_version,
                 "destination": str(dest.relative_to(root)),
                 "generated": True,
+                "removed": removed,
             },
             sort_keys=True,
         )

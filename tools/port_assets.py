@@ -104,8 +104,16 @@ TOKEN_POLICY: dict[str, dict] = {
         "validator": "^[a-z][a-z0-9-]+$",
     },
     "DESCRIPTION": {"type": "str", "required": True, "help": "One-line purpose"},
-    "INSTALL_COMMANDS": {"type": "str", "default": "mise install && just setup"},
-    "USAGE_EXAMPLE": {"type": "str", "default": "just dev"},
+    "INSTALL_COMMANDS": {
+        "type": "str",
+        "default": "mise install && just setup",
+        "help": "What a fresh clone runs to install dependencies; shown in the README",
+    },
+    "USAGE_EXAMPLE": {
+        "type": "str",
+        "default": "just dev",
+        "help": "One command the README shows for running the project",
+    },
     "SPDX_ID": {
         "type": "str",
         "choices": ["Apache-2.0", "MIT", "MPL-2.0", "AGPL-3.0-only"],
@@ -130,10 +138,19 @@ TOKEN_POLICY: dict[str, dict] = {
     "DEFAULT_BRANCH": {
         "type": "str",
         "default": "main",
+        "help": "Branch CI listens on and the force-push guard protects",
         "validator": "^[a-z0-9._/-]+$",
     },
-    "JOB_TIMEOUT_MINUTES": {"type": "str", "default": "15"},
-    "MAX_FILE_KB": {"type": "str", "default": "512"},
+    "JOB_TIMEOUT_MINUTES": {
+        "type": "str",
+        "default": "15",
+        "help": "Per-job CI timeout; a hung job holds a runner until it fires",
+    },
+    "MAX_FILE_KB": {
+        "type": "str",
+        "default": "512",
+        "help": "Largest file the added-large-files hook accepts",
+    },
     "HOOK_EXCLUDE_PATTERNS": {
         "type": "str",
         "default": "",
@@ -145,19 +162,19 @@ TOKEN_POLICY: dict[str, dict] = {
         "help": "Allowed commit scopes, comma separated. Empty leaves scopes unrestricted",
     },
     # Versions are pinned, not resolved at run time. Renovate owns the bumps.
-    "GO_VERSION": {"type": "str", "default": "1.26"},
-    "GOLANGCI_LINT_VERSION": {"type": "str", "default": "2.7.1"},
-    "GOVULNCHECK_VERSION": {"type": "str", "default": "1.1.4"},
-    "NODE_VERSION": {"type": "str", "default": "24"},
-    "BUN_VERSION": {"type": "str", "default": "1.3.2"},
-    "BIOME_VERSION": {"type": "str", "default": "2.4.1"},
-    "UV_VERSION": {"type": "str", "default": "0.9.8"},
-    "RUST_VERSION": {"type": "str", "default": "1.93.0"},
-    "CARGO_NEXTEST_VERSION": {"type": "str", "default": "0.9.104"},
-    "CARGO_DENY_VERSION": {"type": "str", "default": "0.19.1"},
-    "CARGO_MACHETE_VERSION": {"type": "str", "default": "0.9.1"},
-    "CARGO_LLVM_COV_VERSION": {"type": "str", "default": "0.6.20"},
-    "PYTHON_VERSION": {"type": "str", "default": "3.13"},
+    "GO_VERSION": {"type": "str", "default": "1.26", "ask": False},
+    "GOLANGCI_LINT_VERSION": {"type": "str", "default": "2.7.1", "ask": False},
+    "GOVULNCHECK_VERSION": {"type": "str", "default": "1.1.4", "ask": False},
+    "NODE_VERSION": {"type": "str", "default": "24", "ask": False},
+    "BUN_VERSION": {"type": "str", "default": "1.3.2", "ask": False},
+    "BIOME_VERSION": {"type": "str", "default": "2.4.1", "ask": False},
+    "UV_VERSION": {"type": "str", "default": "0.9.8", "ask": False},
+    "RUST_VERSION": {"type": "str", "default": "1.93.0", "ask": False},
+    "CARGO_NEXTEST_VERSION": {"type": "str", "default": "0.9.104", "ask": False},
+    "CARGO_DENY_VERSION": {"type": "str", "default": "0.19.1", "ask": False},
+    "CARGO_MACHETE_VERSION": {"type": "str", "default": "0.9.1", "ask": False},
+    "CARGO_LLVM_COV_VERSION": {"type": "str", "default": "0.6.20", "ask": False},
+    "PYTHON_VERSION": {"type": "str", "default": "3.13", "ask": False},
     # Derived rather than asked: 3.13 -> 313. Copier renders the default as Jinja.
     "PYTHON_VERSION_NODOT": {
         "type": "str",
@@ -175,7 +192,11 @@ TOKEN_POLICY: dict[str, dict] = {
         "default": "",
         "help": "Self-hosted forge host. Empty means the platform's public host",
     },
-    "SETUP_COMMAND": {"type": "str", "default": "just setup"},
+    "SETUP_COMMAND": {
+        "type": "str",
+        "default": "just setup",
+        "help": "What a freshly created worktree runs to become usable",
+    },
     "DEV_COMMAND": {
         "type": "str",
         "default": "",
@@ -192,7 +213,11 @@ TOKEN_POLICY: dict[str, dict] = {
         "help": "Remote URL. Empty drops the blocks that reference it",
     },
     "API_TITLE": {"type": "str", "derive": "@@ PROJECT_NAME @@"},
-    "API_VERSION": {"type": "str", "default": "0.1.0"},
+    "API_VERSION": {
+        "type": "str",
+        "default": "0.1.0",
+        "help": "Version of your contract, not of OpenAPI",
+    },
     "API_DESCRIPTION": {"type": "str", "derive": "@@ DESCRIPTION @@"},
     "API_SERVER_URL": {
         "type": "str",
@@ -210,7 +235,11 @@ TOKEN_POLICY: dict[str, dict] = {
         "derive": "origin/@@ DEFAULT_BRANCH @@",
         "help": "Git ref the contract diff compares against",
     },
-    "BASE_LOCALE": {"type": "str", "default": "en"},
+    "BASE_LOCALE": {
+        "type": "str",
+        "default": "en",
+        "help": "Locale the source messages are authored in",
+    },
     "LOCALES_JSON": {
         "type": "str",
         "default": '["en"]',
@@ -245,6 +274,9 @@ TOKEN_POLICY: dict[str, dict] = {
         "default": "infrastructure",
         "help": "Repo-relative CDK destination, shell-quoted",
     },
+    # Pinned like every other tool version: `just aws-cdk-init` passes it to the
+    # native CDK CLI, which refuses anything but an exact stable release.
+    "AWS_CDK_VERSION": {"type": "str", "default": "2.1142.0", "ask": False},
     "A11Y_SURFACES_JSON": {
         "type": "str",
         "default": "[]",
@@ -260,8 +292,8 @@ TOKEN_POLICY: dict[str, dict] = {
         "default": "",
         "help": "Dependency and fixture setup before Playwright starts, indented four spaces",
     },
-    "PLAYWRIGHT_VERSION": {"type": "str", "default": "1.56.0"},
-    "AXE_PLAYWRIGHT_VERSION": {"type": "str", "default": "4.11.0"},
+    "PLAYWRIGHT_VERSION": {"type": "str", "default": "1.56.0", "ask": False},
+    "AXE_PLAYWRIGHT_VERSION": {"type": "str", "default": "4.11.0", "ask": False},
     "ADRS": {
         "type": "str",
         "default": "[]",
@@ -591,6 +623,90 @@ def want_var(layer: str) -> str:
     return "WANT_" + layer.upper().replace("-", "_")
 
 
+# The interview asks identity first. A question set that opens with a11y Playwright
+# fixtures and asks the repository's name last is technically complete and unusable;
+# these two are what the user came to answer.
+IDENTITY_FIRST: tuple[str, ...] = ("PROJECT_NAME", "DESCRIPTION")
+
+# Conditions beyond layer selection. A question whose own answer decides whether it
+# is meaningful is gated on that answer, not asked and then ignored.
+ASK_WHEN: dict[str, str] = {
+    "MONOREPO_MEMBERS": "IS_MONOREPO",
+}
+
+# Every variable an interview question may reference in a `when:` or a derived
+# default without being a question itself.
+INTERVIEW_BUILTINS: frozenset[str] = frozenset({"_copier_conf", "_copier_operation"})
+
+# Jinja filters and literals that appear inside an expression and are not answers.
+_NOT_A_QUESTION = re.compile(r"\|\s*\w+|'[^']*'|\"[^\"]*\"")
+_IDENTIFIER = re.compile(r"\b[A-Z][A-Z0-9_]*\b")
+
+
+def references(expression: str) -> set[str]:
+    """Answer names an interview expression reads."""
+    return set(_IDENTIFIER.findall(_NOT_A_QUESTION.sub(" ", expression)))
+
+
+def interview_order(declared: dict[str, dict[str, dict]]) -> list[str]:
+    """The order the interview asks in: identity, selection, then layer by layer.
+
+    Alphabetical order was the bug. It buried PROJECT_NAME behind every A-, B- and
+    C-prefixed token and separated a question from the layer it belongs to, and
+    Copier evaluates `when:` in declaration order, so it also put gated questions
+    ahead of the answers that gate them.
+
+    Within a layer, an EXTRA_VARS boolean comes before the tokens, which is what
+    puts IS_MONOREPO ahead of the MONOREPO_MEMBERS it gates.
+    """
+    layer_order = [n for n in ALWAYS_ON if n in declared] + sorted(
+        n for n in declared if n not in ALWAYS_ON
+    )
+    declaration = [name for extra in EXTRA_VARS.values() for name in extra] + list(TOKEN_POLICY)
+
+    first_owner: dict[str, int] = {}
+    for index, layer in enumerate(layer_order):
+        for name in declared.get(layer, {}):
+            first_owner.setdefault(name, index)
+
+    rank = {name: index for index, name in enumerate(declaration)}
+    names = [n for n in first_owner if n not in IDENTITY_FIRST]
+    names.sort(key=lambda n: (first_owner[n], rank.get(n, len(rank)), n))
+    return [n for n in IDENTITY_FIRST if n in first_owner] + names
+
+
+def is_derived(spec: dict) -> bool:
+    """A default carrying the delimiter is a Jinja expression over other answers."""
+    return "@@" in str(spec.get("default", ""))
+
+
+def _check_declaration_order(questions: dict[str, dict]) -> None:
+    """Refuse a question that reads an answer Copier has not asked for yet.
+
+    Copier evaluates `when:` and renders a default in declaration order, so a
+    forward reference is not an error there -- it silently evaluates to undefined.
+    A gate that reads undefined is a question asked when it should not be, or
+    skipped when it should not be, with nothing on screen to say so.
+    """
+    seen: set[str] = set()
+    for name, spec in questions.items():
+        expressions = [str(spec.get("when", ""))]
+        if is_derived(spec):
+            expressions.append(str(spec["default"]))
+        for expression in expressions:
+            for referenced in sorted(references(expression)):
+                if referenced in seen or referenced in INTERVIEW_BUILTINS:
+                    continue
+                if referenced not in questions:
+                    continue
+                raise SystemExit(
+                    f"FATAL {name}: reads {referenced}, which the interview asks later. "
+                    f"Copier evaluates in declaration order, so the reference would be "
+                    f"undefined. Reorder via EXTRA_VARS/TOKEN_POLICY declaration order."
+                )
+        seen.add(name)
+
+
 def build_interview(out: Path, declared: dict[str, dict[str, dict]]) -> int:
     """Generate templates/_interview: the single, bounded question set.
 
@@ -622,21 +738,49 @@ def build_interview(out: Path, declared: dict[str, dict[str, dict]]) -> int:
     }
 
     questions: dict[str, dict] = {}
+    # Identity, then the shape, then the questions the shape implies. A user who
+    # typed the command already knows the first two; nothing else is answerable
+    # until the layer selection exists, because the selection is what gates it.
+    for name in IDENTITY_FIRST:
+        questions[name] = dict(specs[name])
     for layer in optional:
         questions[want_var(layer)] = {
             "type": "bool",
             "default": False,
             "help": f"Include the {layer} layer?",
         }
-    for name in sorted(specs):
+    for name in interview_order(declared):
+        if name in questions:
+            continue
         spec = dict(specs[name])
-        gating = [want_var(layer) for layer in owners[name] if layer not in ALWAYS_ON]
-        if gating and len(gating) == len(owners[name]):
-            spec["when"] = "@@ " + " or ".join(sorted(gating)) + " @@"
+        conditions = [want_var(layer) for layer in owners[name] if layer not in ALWAYS_ON]
+        gating = (
+            ["(" + " or ".join(sorted(conditions)) + ")"]
+            if conditions and len(conditions) == len(owners[name])
+            else []
+        )
+        if name in ASK_WHEN:
+            gating.append(ASK_WHEN[name])
+        if gating:
+            spec["when"] = "@@ " + " and ".join(gating) + " @@"
             # A gated question must have a default, or an unselected layer would
             # make Copier demand an answer it will never use.
             spec.setdefault("default", "")
+        if not TOKEN_POLICY.get(name, {}).get("ask", True) or is_derived(spec):
+            # Not a setup-time decision: a pinned tool version that Renovate bumps,
+            # or a value computed from another answer. `when: false` keeps the
+            # default in force and the value settable with --set, while taking the
+            # question out of the conversation.
+            spec["when"] = "false"
+        if spec.get("when") != "false" and not spec.get("help"):
+            raise SystemExit(
+                f"FATAL {name}: an asked question needs `help`. Without it the prompt is "
+                f"the bare token name, which tells a user nothing. Add help to "
+                f"TOKEN_POLICY[{name!r}], or mark it `ask: False` if it is a pin."
+            )
         questions[name] = spec
+
+    _check_declaration_order(questions)
 
     dst = out / "_interview"
     if dst.exists():

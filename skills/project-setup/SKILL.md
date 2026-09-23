@@ -1,6 +1,6 @@
 ---
 name: project-setup
-description: Scaffolds a repository from layered Copier templates. Use when setting up a new project, or adding a capability layer to an existing one. The templates own the questions; you only choose layers and supply answers.
+description: Scaffolds a repository from layered Copier templates. Use when setting up a new project, or adding a capability layer to an existing one.
 ---
 
 # Project Setup
@@ -157,7 +157,9 @@ so rather than improvising a question.
 MUST NOT re-ask anything the user has already told you, in this conversation or in a
 `.project-setup-answers.yml` already in the repository. Read it back instead.
 
-MUST NOT ask for a tool version. They are pinned in the layers and Renovate bumps them.
+MUST NOT ask a question `catalog --json` marks `"asked": false`. Twenty are: every pinned
+tool version, and every value derived from another answer. The interview does not ask them
+either. If a user names a version, pass it with `--set`; it still overrides.
 
 MUST NOT ask a question the catalog marks `derived`. Those are computed from other answers at
 render time; `derived_from` shows the expression, which is not a value to pass through.
@@ -165,7 +167,7 @@ render time; `derived_from` shows the expression, which is not a value to pass t
 MUST NOT ask the user to decide something a task already decides. Native toolchain init is
 not a question: `cargo init`, `bun init` and `uv init` each skip when their manifest already
 exists and warn when the tool is absent, so the right thing happens per language without
-anybody choosing.
+anybody choosing. `bun init`'s own leftovers are removed by the task, not by you.
 
 ### Two answers are required; everything else has a value
 
@@ -246,9 +248,13 @@ MUST read committed configuration before asking anything. Run
 `git rev-parse --is-inside-work-tree` and count tracked files: no repo or zero tracked files
 is greenfield.
 
-For an existing repo, `plan --json` shows what each layer would overwrite. For every file
-that already exists and would be replaced, ask `KEEP | CHANGE | REMOVE` and name the
-consequence. Copier overwrites by default — the plan is your only warning.
+For an existing repo, `plan` names every file it would overwrite: `files.overwrite` in
+`--json`, a list under the summary otherwise. For each one, ask `KEEP | CHANGE | REMOVE` and
+name the consequence. Copier overwrites by default — the plan is your only warning.
+
+Read that list rather than guessing from the layer set. A `justfile` and a `README.md` are on
+it; `.gitignore` and `AGENTS.md` are not, because generators fold those and keep what is
+already there.
 
 The `.d/` fragment layers are additive: a new fragment lands beside the existing ones and the
 generators fold it in, preserving text outside the managed markers.
@@ -263,10 +269,12 @@ project-setup apply --data-file .project-setup-answers.yml --dest . \
   --set WANT_LANG_RUST=true --json
 ```
 
-Reuse the recorded answers and add only the selection. Changing an answer that feeds an
-already-merged file is refused rather than overwritten: `COMMIT_SCOPES` has been folded into
-`.pre-commit-config.yaml`, so a new value reports a conflict. To change one, delete the
-generated file and re-apply.
+Reuse the recorded answers and add only the selection.
+
+Changing an answer that already fed a generated file re-derives it. `COMMIT_SCOPES` is folded
+into `.pre-commit-config.yaml`; a new value replaces that hook and `merge_hooks.py` reports
+which entry it replaced. Anything no fragment declares is left alone, so a repository's own
+hooks survive. Report the replacement line — it is the confirmation the change landed.
 
 ## Rules
 

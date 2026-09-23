@@ -154,6 +154,39 @@ def test_native_init_is_not_a_question(catalog):
     assert "RUN_NATIVE_INIT" not in catalog.all_question_names()
 
 
+def test_a_monorepo_flag_without_members_is_a_warning(catalog):
+    """The combination renders cleanly and then lints and tests nothing.
+
+    `.ci/members.json` with an empty members array used to replace every language
+    job with no job at all. Silence was the wrong answer, and so is a refusal: the
+    user may be one answer away from meaning it.
+    """
+    problems = validate_data(catalog, {**IDENTITY, "IS_MONOREPO": True})
+    inert = [p for p in problems if p.code == "ANSWER_HAS_NO_EFFECT"]
+    assert len(inert) == 1
+    assert inert[0].level == "warning"
+    assert inert[0].key == "MONOREPO_MEMBERS"
+    assert [p for p in problems if p.level == "error"] == []
+
+
+def test_a_monorepo_flag_with_members_is_silent(catalog):
+    data = {
+        **IDENTITY,
+        "IS_MONOREPO": True,
+        "MONOREPO_MEMBERS": '[{"name": "api", "path": "services/api", '
+        '"capabilities": {"go": ["lint"]}}]',
+    }
+    assert [p for p in validate_data(catalog, data) if p.code == "ANSWER_HAS_NO_EFFECT"] == []
+
+
+def test_defaults_for_skips_a_derived_expression(catalog):
+    """A derived default is a Jinja expression, never a value to hand onward."""
+    defaults = catalog.defaults_for(["hooks", "ci", "lang-python"])
+    assert defaults["DEFAULT_BRANCH"] == "main"
+    assert "PYTHON_VERSION_NODOT" not in defaults
+    assert all("@@" not in str(v) for v in defaults.values())
+
+
 def test_a_stack_is_only_a_composition_of_parts(catalog):
     from project_setup.cli import load_preset
 

@@ -26,6 +26,7 @@ _exclude:
 
 DEFAULT_BRANCH:
   default: main
+  help: Branch CI listens on and the force-push guard protects
   type: str
   validator: '{% if not (DEFAULT_BRANCH | string | regex_search(''^[a-z0-9._/-]+$'')) %}DEFAULT_BRANCH
     must match ^[a-z0-9._/-]+${% endif %}'

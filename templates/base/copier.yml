@@ -19,6 +19,7 @@ DESCRIPTION:
   type: str
 INSTALL_COMMANDS:
   default: mise install && just setup
+  help: What a fresh clone runs to install dependencies; shown in the README
   type: str
 PROJECT_NAME:
   help: Repository name, lowercase with dashes
@@ -27,4 +28,5 @@ PROJECT_NAME:
     match ^[a-z][a-z0-9-]+${% endif %}'
 USAGE_EXAMPLE:
   default: just dev
+  help: One command the README shows for running the project
   type: str

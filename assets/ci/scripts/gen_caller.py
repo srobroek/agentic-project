@@ -147,6 +147,12 @@ def member_capabilities(
         member_error(f"cannot read valid JSON ({exc})")
     if not isinstance(document, dict) or not isinstance(document.get("members"), list):
         member_error("expected an object with a members array")
+    if not document["members"]:
+        # An empty array is the single-root case, which MONOREPO_MEMBERS documents.
+        # Reading it as "a monorepo with no members" replaced every language job
+        # with nothing, so a repository that set the flag and not the list got a
+        # CI file that lints and tests no code, and said so nowhere.
+        return None
 
     capabilities: list[MemberCapability] = []
     names: set[str] = set()

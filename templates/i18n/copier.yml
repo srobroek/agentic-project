@@ -26,6 +26,7 @@ _exclude:
 
 BASE_LOCALE:
   default: en
+  help: Locale the source messages are authored in
   type: str
 FORGE_PLATFORM:
   choices:

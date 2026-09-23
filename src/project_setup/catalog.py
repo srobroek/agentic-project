@@ -52,6 +52,10 @@ class Question:
     # other answers. Reported separately so a reader cannot mistake the expression
     # for a literal value to pass through.
     derived_from: str = ""
+    # False for a question the interview deliberately never asks: a pinned tool
+    # version, or a value derived from another answer. Machine-readable so an agent
+    # can check instead of remembering a prose rule. Still settable with --set.
+    asked: bool = True
 
     @property
     def derived(self) -> bool:
@@ -92,6 +96,19 @@ class Catalog:
             merged.update(self.layers[name].questions)
         return merged
 
+    def defaults_for(self, layers: list[str]) -> dict[str, object]:
+        """The literal default of every question the given layers declare.
+
+        Copier applies these itself at render time, but a generator argument is
+        assembled outside Copier and still has to know the effective value. A
+        derived default is skipped: it is a Jinja expression, not a value.
+        """
+        return {
+            name: q.default
+            for name, q in self.questions_for(layers).items()
+            if q.default is not None and not q.derived
+        }
+
     def all_question_names(self) -> set[str]:
         names: set[str] = set()
         for layer in self.layers.values():
@@ -99,7 +116,7 @@ class Catalog:
         return names
 
 
-def _parse_questions(cfg: dict) -> dict[str, Question]:
+def _parse_questions(cfg: dict, never_asked: frozenset[str] = frozenset()) -> dict[str, Question]:
     out: dict[str, Question] = {}
     for key, spec in cfg.items():
         if key.startswith("_"):
@@ -123,13 +140,35 @@ def _parse_questions(cfg: dict) -> dict[str, Question]:
             when=str(spec.get("when", "")),
             placeholder=str(spec.get("placeholder", "")),
             derived_from=derived_from,
+            asked=key not in never_asked,
         )
     return out
+
+
+def _never_asked(templates_dir: Path) -> frozenset[str]:
+    """Questions the generated interview pins out of the conversation.
+
+    `when: false` is how the interview says "not a setup-time decision". Reading it
+    back here is what lets `catalog --json` tell a caller which questions not to ask,
+    instead of leaving that as a rule to remember.
+    """
+    cfg_path = templates_dir / INTERVIEW / "copier.yml"
+    if not cfg_path.is_file():
+        return frozenset()
+    cfg = yaml.safe_load(cfg_path.read_text()) or {}
+    return frozenset(
+        key
+        for key, spec in cfg.items()
+        if not key.startswith("_")
+        and isinstance(spec, dict)
+        and str(spec.get("when", "")).strip().lower() in ("false", "no")
+    )
 
 
 def load_catalog(templates_dir: Path) -> Catalog:
     if not templates_dir.is_dir():
         raise FileNotFoundError(f"templates directory not found: {templates_dir}")
+    never_asked = _never_asked(templates_dir)
     layers: dict[str, Layer] = {}
     for child in sorted(templates_dir.iterdir()):
         if not child.is_dir() or child.name == INTERVIEW:
@@ -141,7 +180,7 @@ def load_catalog(templates_dir: Path) -> Catalog:
         layers[child.name] = Layer(
             name=child.name,
             path=child,
-            questions=_parse_questions(cfg),
+            questions=_parse_questions(cfg, never_asked),
             has_tasks=bool(cfg.get("_tasks")),
         )
     if not layers:
@@ -234,7 +273,32 @@ def validate_data(catalog: Catalog, data: dict) -> list[Problem]:
                     name,
                 )
             )
+
+    problems.extend(_inert_answers(data))
     return problems
+
+
+def _inert_answers(data: dict) -> list[Problem]:
+    """Answers that are accepted, render cleanly, and then do nothing.
+
+    A warning rather than an error: the combination is legal and a user mid-setup
+    may well be about to supply the other half. Saying nothing is the wrong trade,
+    because the failure is invisible until CI runs and reports no jobs.
+    """
+    if not data.get("IS_MONOREPO"):
+        return []
+    members = str(data.get("MONOREPO_MEMBERS", "[]")).strip()
+    if members not in ("", "[]"):
+        return []
+    return [
+        Problem(
+            "warning",
+            "ANSWER_HAS_NO_EFFECT",
+            "IS_MONOREPO is set but MONOREPO_MEMBERS lists nobody, so .ci/members.json "
+            "names no member and CI stays single-root. Add members, or drop IS_MONOREPO.",
+            "MONOREPO_MEMBERS",
+        )
+    ]
 
 
 def _owners(catalog: Catalog, question: str, layers: list[str]) -> str:

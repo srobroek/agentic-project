@@ -44,10 +44,20 @@ implementation to drift:
 | `presets [--json] [--show NAME]` | standard project shapes |
 | `interview --dest D` | ask the questions, write an answers file. No model |
 | `validate [--json]` | check an answer set. Writes nothing |
-| `plan --dest D [--json]` | dry run. Writes nothing |
+| `plan --dest D [--json]` | dry run. Writes nothing, and names every file it would overwrite |
 | `apply --dest D [--json]` | scaffold, run tasks, run generators |
 
 Answer sources compose, later winning: `--preset`, then `--data-file`, then `--set KEY=VALUE`.
+
+`plan` is the only warning before an existing file is replaced, because Copier overwrites by
+default. It counts what it would create and lists what it would overwrite, by name:
+
+    61 file(s) to create, 3 to overwrite
+
+    3 existing file(s) would be overwritten:
+      CONTRIBUTING.md
+      README.md
+      justfile
 
 ## Where the templates come from
 
@@ -125,8 +135,10 @@ blocking the scaffold, and `apply` lists them when it finishes:
 | --- | --- |
 | `base` `governance` `hooks` `just` `ci` `forge` `steering` | `release` `worktrunk` `api` `i18n` `a11y` `infra-aws-cdk` `lang-go` `lang-python` `lang-ts` `lang-rust` |
 
-58 distinct questions across all layers, but only the selected layers' questions are asked, and
-only four are ever required: `PROJECT_NAME`, `DESCRIPTION`, `CODEOWNER`, `SECURITY_CONTACT`.
+58 distinct questions across all layers, but only the selected layers' questions are asked,
+only two are ever required — `PROJECT_NAME` and `DESCRIPTION` — and 20 are never asked at all:
+a pinned tool version is Renovate's to bump and a derived value is computed from another
+answer. `catalog --json` marks each of those `"asked": false`; `--set` still overrides them.
 
 `FORGE_PLATFORM` is a single answer that swaps the entire CI surface: choose `gitlab` and every
 `.github/` file from every layer is excluded, the `.gitlab/ci` fragments are used instead, and
@@ -136,11 +148,11 @@ only four are ever required: `PROJECT_NAME`, `DESCRIPTION`, `CODEOWNER`, `SECURI
 
 | | |
 | --- | --- |
-| 14 layers + 6 generators + tasks | **4.9 s CPU** |
+| 17 layers + 6 generators + tasks | **4.9 s CPU** |
 | Re-apply | byte-identical, 0 changes |
 | Unresolved tokens | 0 |
 | Empty directories | 0 |
-| Tests | 51 unit + 10 presets end to end |
+| Tests | 90 unit + 12 presets end to end |
 
 CPU time rather than wall clock, because wall clock tracks machine load.
 
@@ -159,12 +171,15 @@ just omp-link          # omp plugin link . && omp plugin doctor
 | Command | `commands/project-setup.md` | `/project-setup` |
 | Rule | `rules/project-setup-no-handcopy.md` | `rule://project-setup-no-handcopy` |
 
-The plugin is named `project-setup` rather than `project-setup` because OMP deduplicates
-capability names across all sources and keeps the first match. The older
-`project-setup@srobroek-omp` plugin still claims that name; once it is retired this can take it.
+Every capability name is prefixed `project-setup`, because OMP deduplicates capability names
+across all configured sources and keeps the first match: a shared name silently hides one
+plugin.
 
 ## Regenerating the templates
 
-    just port ../omp-plugins/project-setup/skills/project-setup/assets
+    just port
 
-`templates/` is generated. Edit the assets or `tools/port_assets.py`, never the output.
+`assets/` is the source of truth and is vendored here; `templates/` is generated from it.
+Edit the assets or `tools/port_assets.py`, never the output. The port fails loudly rather
+than emitting a question that renders blank: an undeclared token, an unmapped optional
+block, an asked question with no help text, or a question that reads an answer asked later.

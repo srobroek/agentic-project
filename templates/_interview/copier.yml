@@ -10,6 +10,14 @@ _message_after_copy: 'Answers recorded in .project-setup-answers.yml.
 
   Run `project-setup apply --data-file .project-setup-answers.yml` to scaffold.'
 
+PROJECT_NAME:
+  type: str
+  help: Repository name, lowercase with dashes
+  validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z][a-z0-9-]+$'')) %}PROJECT_NAME must
+    match ^[a-z][a-z0-9-]+${% endif %}'
+DESCRIPTION:
+  type: str
+  help: One-line purpose
 WANT_RELEASE:
   type: bool
   default: false
@@ -50,257 +58,14 @@ WANT_INFRA_AWS_CDK:
   type: bool
   default: false
   help: Include the infra-aws-cdk layer?
-A11Y_PREPARE_COMMANDS:
-  type: str
-  help: Dependency and fixture setup before Playwright starts, indented four spaces
-  default: ''
-  when: '@@ WANT_A11Y @@'
-A11Y_SURFACES_JSON:
-  type: str
-  help: JSON array of {name, baseURL, routes}. '[]' records axe scanning as a gap
-  default: '[]'
-  when: '@@ WANT_A11Y @@'
-A11Y_WEB_SERVERS_JSON:
-  type: str
-  help: JSON array of Playwright {command, url, cwd} objects
-  default: '[]'
-  when: '@@ WANT_A11Y @@'
-ADRS:
-  type: str
-  help: JSON array of ADRs, each {title, decision, rationale, alternatives, consequences, confirmation}.
-    Composed, not chosen. One file is written per entry
-  default: '[]'
-API_BASELINE_REF:
-  type: str
-  help: Git ref the contract diff compares against
-  default: origin/@@ DEFAULT_BRANCH @@
-  when: '@@ WANT_API @@'
-API_DESCRIPTION:
-  type: str
-  default: '@@ DESCRIPTION @@'
-  when: '@@ WANT_API @@'
-API_FAIL_SEVERITY:
-  type: str
-  help: vacuum lint severity that fails the gate
-  choices:
-  - error
-  - warn
-  - info
-  default: warn
-  when: '@@ WANT_API @@'
-API_SERVER_URL:
-  type: str
-  help: Production endpoint. Unknown at setup time is normal. A placeholder is fine; replace before use.
-  placeholder: https://api.example.com
-  default: https://api.example.com
-  when: '@@ WANT_API @@'
-API_TITLE:
-  type: str
-  default: '@@ PROJECT_NAME @@'
-  when: '@@ WANT_API @@'
-API_VERSION:
-  type: str
-  default: 0.1.0
-  when: '@@ WANT_API @@'
-AWS_CDK_DEST_SHELL:
-  type: str
-  help: Repo-relative CDK destination, shell-quoted
-  default: infrastructure
-  when: '@@ WANT_INFRA_AWS_CDK @@'
-AXE_PLAYWRIGHT_VERSION:
-  type: str
-  default: 4.11.0
-  when: '@@ WANT_A11Y @@'
-BASE_LOCALE:
-  type: str
-  default: en
-  when: '@@ WANT_I18N @@'
-BIOME_VERSION:
-  type: str
-  default: 2.4.1
-  when: '@@ WANT_LANG_TS @@'
-BUN_VERSION:
-  type: str
-  default: 1.3.2
-  when: '@@ WANT_A11Y or WANT_LANG_TS @@'
-CARGO_DENY_VERSION:
-  type: str
-  default: 0.19.1
-  when: '@@ WANT_LANG_RUST @@'
-CARGO_LLVM_COV_VERSION:
-  type: str
-  default: 0.6.20
-  when: '@@ WANT_LANG_RUST @@'
-CARGO_MACHETE_VERSION:
-  type: str
-  default: 0.9.1
-  when: '@@ WANT_LANG_RUST @@'
-CARGO_NEXTEST_VERSION:
-  type: str
-  default: 0.9.104
-  when: '@@ WANT_LANG_RUST @@'
-CODEOWNER:
-  type: str
-  help: Owner or team for CODEOWNERS, e.g. @me or @org/team. A placeholder is fine; replace before use.
-  placeholder: '@TODO-owner'
-  default: '@TODO-owner'
-CODE_OF_CONDUCT_CONTACT:
-  type: str
-  help: Reporting contact. Empty omits CODE_OF_CONDUCT.md
-  default: ''
-COMMIT_SCOPES:
-  type: str
-  help: Allowed commit scopes, comma separated. Empty leaves scopes unrestricted
-  default: ''
-DEFAULT_BRANCH:
-  type: str
-  default: main
-  validator: '{% if not (DEFAULT_BRANCH | string | regex_search(''^[a-z0-9._/-]+$'')) %}DEFAULT_BRANCH
-    must match ^[a-z0-9._/-]+${% endif %}'
-DESCRIPTION:
-  type: str
-  help: One-line purpose
-DEV_COMMAND:
-  type: str
-  help: Dev server command. Empty drops the worktree dev-server block
-  default: ''
-  when: '@@ WANT_WORKTRUNK @@'
-FORGE_HOSTNAME:
-  type: str
-  help: Self-hosted forge host. Empty means the platform's public host
-  default: ''
-  when: '@@ WANT_WORKTRUNK @@'
-FORGE_PLATFORM:
-  type: str
-  help: Only github and gitlab are supported; other forges are an explicit gap
-  choices:
-  - github
-  - gitlab
-  default: github
-GOLANGCI_LINT_VERSION:
-  type: str
-  default: 2.7.1
-  when: '@@ WANT_LANG_GO @@'
-GOVULNCHECK_VERSION:
-  type: str
-  default: 1.1.4
-  when: '@@ WANT_LANG_GO @@'
-GO_VENDOR:
-  type: bool
-  help: Commit vendor/?
-  default: false
-  when: '@@ WANT_LANG_GO @@'
-GO_VERSION:
-  type: str
-  default: '1.26'
-  when: '@@ WANT_LANG_GO @@'
-HOOK_EXCLUDE_PATTERNS:
-  type: str
-  help: Paths excluded from hooks, joined with \|. Empty drops the block
-  default: ''
-I18N_CHECK_COMMANDS:
-  type: str
-  help: Recurring completeness commands, one per deployable, indented four spaces
-  default: ''
-  when: '@@ WANT_I18N @@'
-I18N_PREPARE_COMMANDS:
-  type: str
-  help: Catalog preparation commands, indented four spaces
-  default: ''
-  when: '@@ WANT_I18N @@'
-I18N_PROJECT_DIR:
-  type: str
-  help: Where the Inlang project lives, relative to the repo root. For a nested deployable use apps/web/project.inlang
-  default: project.inlang
-  validator: '{% if not (I18N_PROJECT_DIR | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}I18N_PROJECT_DIR
-    must match ^[A-Za-z0-9._/-]+${% endif %}'
-  when: '@@ WANT_I18N @@'
-INLANG_MESSAGE_FORMAT_MODULE_URL:
-  type: str
-  help: Inlang message-format plugin module URL; pin the version you want. A placeholder is fine; replace
-    before use.
-  placeholder: https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js
-  default: https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js
-  when: '@@ WANT_I18N @@'
 INSTALL_COMMANDS:
   type: str
+  help: What a fresh clone runs to install dependencies; shown in the README
   default: mise install && just setup
-IS_MONOREPO:
-  type: bool
-  help: Monorepo? Writes .ci/members.json, which drives per-member CI jobs
-  default: false
-JOB_TIMEOUT_MINUTES:
+USAGE_EXAMPLE:
   type: str
-  default: '15'
-LOCALES_JSON:
-  type: str
-  help: JSON array of shipped locales, including the base locale
-  default: '["en"]'
-  when: '@@ WANT_I18N @@'
-MAX_FILE_KB:
-  type: str
-  default: '512'
-MONOREPO_MEMBERS:
-  type: str
-  help: JSON array of monorepo members, each {name, path, capabilities}. Composed, not chosen. '[]' is
-    the single-root case
-  default: '[]'
-NODE_VERSION:
-  type: str
-  default: '24'
-  when: '@@ WANT_LANG_TS @@'
-ORG:
-  type: str
-  help: Organisation or owner, used for the API contact. A placeholder is fine; replace before use.
-  placeholder: TODO-org
-  default: TODO-org
-  when: '@@ WANT_API @@'
-PLAYWRIGHT_VERSION:
-  type: str
-  default: 1.56.0
-  when: '@@ WANT_A11Y @@'
-PROJECT_NAME:
-  type: str
-  help: Repository name, lowercase with dashes
-  validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z][a-z0-9-]+$'')) %}PROJECT_NAME must
-    match ^[a-z][a-z0-9-]+${% endif %}'
-PYTHON_VERSION:
-  type: str
-  default: '3.13'
-  when: '@@ WANT_LANG_PYTHON @@'
-PYTHON_VERSION_NODOT:
-  type: str
-  help: Derived from PYTHON_VERSION; override only if you must
-  default: '@@ PYTHON_VERSION | replace(''.'', '''') @@'
-  when: '@@ WANT_LANG_PYTHON @@'
-PY_SRC_LAYOUT:
-  type: bool
-  help: src/ layout? (false for a flat layout)
-  default: true
-  when: '@@ WANT_LANG_PYTHON @@'
-REPO_URL:
-  type: str
-  help: Remote URL. Empty drops the blocks that reference it
-  default: ''
-  when: '@@ WANT_API @@'
-RUST_LIBRARY:
-  type: bool
-  help: Library crate? (a binary crate commits Cargo.lock)
-  default: true
-  when: '@@ WANT_LANG_RUST @@'
-RUST_VERSION:
-  type: str
-  default: 1.93.0
-  when: '@@ WANT_LANG_RUST @@'
-SECURITY_CONTACT:
-  type: str
-  help: Private security channel, or the forge advisory URL. A placeholder is fine; replace before use.
-  placeholder: security@example.com
-  default: security@example.com
-SETUP_COMMAND:
-  type: str
-  default: just setup
-  when: '@@ WANT_WORKTRUNK @@'
+  help: One command the README shows for running the project
+  default: just dev
 SPDX_ID:
   type: str
   help: Licence. Materialised into LICENSE by a post-copy task
@@ -310,9 +75,258 @@ SPDX_ID:
   - MPL-2.0
   - AGPL-3.0-only
   default: Apache-2.0
-USAGE_EXAMPLE:
+CODEOWNER:
   type: str
-  default: just dev
+  help: Owner or team for CODEOWNERS, e.g. @me or @org/team. A placeholder is fine; replace before use.
+  placeholder: '@TODO-owner'
+  default: '@TODO-owner'
+SECURITY_CONTACT:
+  type: str
+  help: Private security channel, or the forge advisory URL. A placeholder is fine; replace before use.
+  placeholder: security@example.com
+  default: security@example.com
+CODE_OF_CONDUCT_CONTACT:
+  type: str
+  help: Reporting contact. Empty omits CODE_OF_CONDUCT.md
+  default: ''
+ADRS:
+  type: str
+  help: JSON array of ADRs, each {title, decision, rationale, alternatives, consequences, confirmation}.
+    Composed, not chosen. One file is written per entry
+  default: '[]'
+DEFAULT_BRANCH:
+  type: str
+  help: Branch CI listens on and the force-push guard protects
+  default: main
+  validator: '{% if not (DEFAULT_BRANCH | string | regex_search(''^[a-z0-9._/-]+$'')) %}DEFAULT_BRANCH
+    must match ^[a-z0-9._/-]+${% endif %}'
+MAX_FILE_KB:
+  type: str
+  help: Largest file the added-large-files hook accepts
+  default: '512'
+HOOK_EXCLUDE_PATTERNS:
+  type: str
+  help: Paths excluded from hooks, joined with \|. Empty drops the block
+  default: ''
+COMMIT_SCOPES:
+  type: str
+  help: Allowed commit scopes, comma separated. Empty leaves scopes unrestricted
+  default: ''
 UV_VERSION:
   type: str
   default: 0.9.8
+  when: 'false'
+IS_MONOREPO:
+  type: bool
+  help: Monorepo? Writes .ci/members.json, which drives per-member CI jobs
+  default: false
+JOB_TIMEOUT_MINUTES:
+  type: str
+  help: Per-job CI timeout; a hung job holds a runner until it fires
+  default: '15'
+FORGE_PLATFORM:
+  type: str
+  help: Only github and gitlab are supported; other forges are an explicit gap
+  choices:
+  - github
+  - gitlab
+  default: github
+MONOREPO_MEMBERS:
+  type: str
+  help: JSON array of monorepo members, each {name, path, capabilities}. Composed, not chosen. '[]' is
+    the single-root case
+  default: '[]'
+  when: '@@ IS_MONOREPO @@'
+BUN_VERSION:
+  type: str
+  default: 1.3.2
+  when: 'false'
+A11Y_SURFACES_JSON:
+  type: str
+  help: JSON array of {name, baseURL, routes}. '[]' records axe scanning as a gap
+  default: '[]'
+  when: '@@ (WANT_A11Y) @@'
+A11Y_WEB_SERVERS_JSON:
+  type: str
+  help: JSON array of Playwright {command, url, cwd} objects
+  default: '[]'
+  when: '@@ (WANT_A11Y) @@'
+A11Y_PREPARE_COMMANDS:
+  type: str
+  help: Dependency and fixture setup before Playwright starts, indented four spaces
+  default: ''
+  when: '@@ (WANT_A11Y) @@'
+PLAYWRIGHT_VERSION:
+  type: str
+  default: 1.56.0
+  when: 'false'
+AXE_PLAYWRIGHT_VERSION:
+  type: str
+  default: 4.11.0
+  when: 'false'
+ORG:
+  type: str
+  help: Organisation or owner, used for the API contact. A placeholder is fine; replace before use.
+  placeholder: TODO-org
+  default: TODO-org
+  when: '@@ (WANT_API) @@'
+REPO_URL:
+  type: str
+  help: Remote URL. Empty drops the blocks that reference it
+  default: ''
+  when: '@@ (WANT_API) @@'
+API_TITLE:
+  type: str
+  default: '@@ PROJECT_NAME @@'
+  when: 'false'
+API_VERSION:
+  type: str
+  help: Version of your contract, not of OpenAPI
+  default: 0.1.0
+  when: '@@ (WANT_API) @@'
+API_DESCRIPTION:
+  type: str
+  default: '@@ DESCRIPTION @@'
+  when: 'false'
+API_SERVER_URL:
+  type: str
+  help: Production endpoint. Unknown at setup time is normal. A placeholder is fine; replace before use.
+  placeholder: https://api.example.com
+  default: https://api.example.com
+  when: '@@ (WANT_API) @@'
+API_FAIL_SEVERITY:
+  type: str
+  help: vacuum lint severity that fails the gate
+  choices:
+  - error
+  - warn
+  - info
+  default: warn
+  when: '@@ (WANT_API) @@'
+API_BASELINE_REF:
+  type: str
+  help: Git ref the contract diff compares against
+  default: origin/@@ DEFAULT_BRANCH @@
+  when: 'false'
+BASE_LOCALE:
+  type: str
+  help: Locale the source messages are authored in
+  default: en
+  when: '@@ (WANT_I18N) @@'
+LOCALES_JSON:
+  type: str
+  help: JSON array of shipped locales, including the base locale
+  default: '["en"]'
+  when: '@@ (WANT_I18N) @@'
+INLANG_MESSAGE_FORMAT_MODULE_URL:
+  type: str
+  help: Inlang message-format plugin module URL; pin the version you want. A placeholder is fine; replace
+    before use.
+  placeholder: https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js
+  default: https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js
+  when: '@@ (WANT_I18N) @@'
+I18N_PROJECT_DIR:
+  type: str
+  help: Where the Inlang project lives, relative to the repo root. For a nested deployable use apps/web/project.inlang
+  default: project.inlang
+  validator: '{% if not (I18N_PROJECT_DIR | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}I18N_PROJECT_DIR
+    must match ^[A-Za-z0-9._/-]+${% endif %}'
+  when: '@@ (WANT_I18N) @@'
+I18N_PREPARE_COMMANDS:
+  type: str
+  help: Catalog preparation commands, indented four spaces
+  default: ''
+  when: '@@ (WANT_I18N) @@'
+I18N_CHECK_COMMANDS:
+  type: str
+  help: Recurring completeness commands, one per deployable, indented four spaces
+  default: ''
+  when: '@@ (WANT_I18N) @@'
+AWS_CDK_DEST_SHELL:
+  type: str
+  help: Repo-relative CDK destination, shell-quoted
+  default: infrastructure
+  when: '@@ (WANT_INFRA_AWS_CDK) @@'
+AWS_CDK_VERSION:
+  type: str
+  default: 2.1142.0
+  when: 'false'
+GO_VENDOR:
+  type: bool
+  help: Commit vendor/?
+  default: false
+  when: '@@ (WANT_LANG_GO) @@'
+GO_VERSION:
+  type: str
+  default: '1.26'
+  when: 'false'
+GOLANGCI_LINT_VERSION:
+  type: str
+  default: 2.7.1
+  when: 'false'
+GOVULNCHECK_VERSION:
+  type: str
+  default: 1.1.4
+  when: 'false'
+PY_SRC_LAYOUT:
+  type: bool
+  help: src/ layout? (false for a flat layout)
+  default: true
+  when: '@@ (WANT_LANG_PYTHON) @@'
+PYTHON_VERSION:
+  type: str
+  default: '3.13'
+  when: 'false'
+PYTHON_VERSION_NODOT:
+  type: str
+  help: Derived from PYTHON_VERSION; override only if you must
+  default: '@@ PYTHON_VERSION | replace(''.'', '''') @@'
+  when: 'false'
+RUST_LIBRARY:
+  type: bool
+  help: Library crate? (a binary crate commits Cargo.lock)
+  default: true
+  when: '@@ (WANT_LANG_RUST) @@'
+RUST_VERSION:
+  type: str
+  default: 1.93.0
+  when: 'false'
+CARGO_NEXTEST_VERSION:
+  type: str
+  default: 0.9.104
+  when: 'false'
+CARGO_DENY_VERSION:
+  type: str
+  default: 0.19.1
+  when: 'false'
+CARGO_MACHETE_VERSION:
+  type: str
+  default: 0.9.1
+  when: 'false'
+CARGO_LLVM_COV_VERSION:
+  type: str
+  default: 0.6.20
+  when: 'false'
+NODE_VERSION:
+  type: str
+  default: '24'
+  when: 'false'
+BIOME_VERSION:
+  type: str
+  default: 2.4.1
+  when: 'false'
+FORGE_HOSTNAME:
+  type: str
+  help: Self-hosted forge host. Empty means the platform's public host
+  default: ''
+  when: '@@ (WANT_WORKTRUNK) @@'
+SETUP_COMMAND:
+  type: str
+  help: What a freshly created worktree runs to become usable
+  default: just setup
+  when: '@@ (WANT_WORKTRUNK) @@'
+DEV_COMMAND:
+  type: str
+  help: Dev server command. Empty drops the worktree dev-server block
+  default: ''
+  when: '@@ (WANT_WORKTRUNK) @@'

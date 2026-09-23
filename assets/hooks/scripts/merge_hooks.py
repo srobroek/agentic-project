@@ -28,9 +28,10 @@ import yaml
 HEADER = """\
 # .pre-commit-config.yaml -- maintained from .pre-commit.d/ by `just hooks-merge`.
 #
-# Existing semantic configuration is retained when fragments are merged. Add or
-# change a fragment in .pre-commit.d/ and rerun the command; conflicting revisions
-# or hook definitions are refused rather than silently replacing an old entry.
+# Configuration this file already carried is retained. A hook a fragment declares
+# is owned by that fragment: rerunning after its answer changed replaces the entry
+# and says so. Anything no fragment declares is left exactly as it is. Edit the
+# fragment, never this file.
 #
 # `default_install_hook_types` has to name every stage the hooks below use, or
 # `prek install` writes no shim for the missing one and that hook never fires.
@@ -103,14 +104,31 @@ def _merge_excludes(config: dict, fragment_excludes: list[str]) -> None:
 
 
 def merge(fragments: list[Path], existing: dict | None = None) -> tuple[dict, list[str]]:
-    """Merge existing config first, then fragments, refusing semantic conflicts."""
+    """Merge existing config first, then fragments. Fragments own what they declare.
+
+    Two authorities meet in this file. A fragment is generated from a layer and an
+    answer, so the layer owns every hook a fragment declares: re-running after an
+    answer changed has to land the new definition. Anything the fragments do not
+    declare is the repository's own and is kept untouched.
+
+    So an existing entry a fragment also declares is replaced and reported, not
+    refused. Refusing made a changed answer unrecoverable without deleting the
+    generated file by hand, and it made any brownfield repository that happened to
+    share one hook id fail the whole apply.
+
+    Two *fragments* disagreeing is still a hard error: that is a template bug, and
+    no answer can resolve it.
+    """
     config = dict(existing or {})
     repos: dict[str, dict] = {}
     sources: dict[str, str] = {}
+    # Whether the current value came from a fragment, per repo and per hook id.
+    owned: dict[str, bool] = {}
+    hook_owned: dict[tuple[str, str], bool] = {}
     warnings: list[str] = []
     fragment_excludes: list[str] = []
 
-    def add_entries(entries: list[dict], source: str) -> None:
+    def add_entries(entries: list[dict], source: str, *, authoritative: bool) -> None:
         for entry in entries:
             url = str(entry["repo"])
             rev = entry.get("rev", "")
@@ -119,13 +137,20 @@ def merge(fragments: list[Path], existing: dict | None = None) -> tuple[dict, li
                 repos[url] = {key: value for key, value in entry.items() if key != "source"}
                 repos[url]["hooks"] = list(hooks)
                 sources[url] = source
+                owned[url] = authoritative
+                for hook in hooks:
+                    hook_owned[(url, str(hook.get("id")))] = authoritative
                 continue
 
             current = repos[url]
             previous = sources[url]
             old_rev = current.get("rev", "")
             if rev and old_rev and rev != old_rev:
-                _conflict(f"{url} is pinned to {old_rev} by {previous} and {rev} by {source}")
+                if owned[url] and authoritative:
+                    _conflict(f"{url} is pinned to {old_rev} by {previous} and {rev} by {source}")
+                if authoritative:
+                    warnings.append(f"{url}: {source} repins {old_rev} -> {rev} (was {previous})")
+                    current["rev"] = rev
             if rev and not old_rev:
                 current["rev"] = rev
 
@@ -133,21 +158,47 @@ def merge(fragments: list[Path], existing: dict | None = None) -> tuple[dict, li
                 if key in {"repo", "rev", "hooks", "source"}:
                     continue
                 if key in current and current[key] != value:
-                    _conflict(f"{url} has conflicting '{key}' values from {previous} and {source}")
-                current.setdefault(key, value)
+                    if owned[url] and authoritative:
+                        _conflict(
+                            f"{url} has conflicting '{key}' values from {previous} and {source}"
+                        )
+                    if not authoritative:
+                        continue
+                    warnings.append(f"{url}: {source} replaces '{key}' set by {previous}")
+                current[key] = value
+            if authoritative:
+                owned[url] = True
+                sources[url] = source
 
-            seen = {hook.get("id"): hook for hook in current.get("hooks", [])}
+            existing_hooks = current.setdefault("hooks", [])
+            positions = {
+                str(hook.get("id")): index for index, hook in enumerate(existing_hooks)
+            }
             for hook in hooks:
-                hook_id = hook.get("id")
-                if hook_id in seen:
-                    if seen[hook_id] != hook:
-                        _conflict(f"{url} hook {hook_id!r} differs between {previous} and {source}")
+                hook_id = str(hook.get("id"))
+                if hook_id not in positions:
+                    existing_hooks.append(hook)
+                    positions[hook_id] = len(existing_hooks) - 1
+                    hook_owned[(url, hook_id)] = authoritative
                     continue
-                current.setdefault("hooks", []).append(hook)
-                seen[hook_id] = hook
+                if existing_hooks[positions[hook_id]] == hook:
+                    continue
+                if hook_owned.get((url, hook_id)) and authoritative:
+                    _conflict(f"{url} hook {hook_id!r} differs between {previous} and {source}")
+                if not authoritative:
+                    continue
+                warnings.append(
+                    f"{url}: {source} replaces hook {hook_id!r}, which {previous} defined"
+                )
+                existing_hooks[positions[hook_id]] = hook
+                hook_owned[(url, hook_id)] = True
 
     if existing is not None:
-        add_entries(_validate_entries(existing, ".pre-commit-config.yaml"), ".pre-commit-config.yaml")
+        add_entries(
+            _validate_entries(existing, ".pre-commit-config.yaml"),
+            ".pre-commit-config.yaml",
+            authoritative=False,
+        )
         old_stages = existing.get("default_install_hook_types", [])
         if not isinstance(old_stages, list) or any(not isinstance(stage, str) for stage in old_stages):
             _conflict("'default_install_hook_types' must be a list of stage names")
@@ -160,7 +211,7 @@ def merge(fragments: list[Path], existing: dict | None = None) -> tuple[dict, li
             if not isinstance(data["exclude"], str):
                 _conflict(f"{fragment.name} has a non-string 'exclude' value")
             fragment_excludes.append(data["exclude"])
-        add_entries(_validate_entries(data, fragment.name), fragment.name)
+        add_entries(_validate_entries(data, fragment.name), fragment.name, authoritative=True)
 
     _merge_excludes(config, fragment_excludes)
 
@@ -196,8 +247,6 @@ def main() -> int:
 
     existing = load(target) if target.is_file() else None
     config, warnings = merge(fragments, existing)
-    for warning in warnings:
-        print(f"warning: {warning}", file=sys.stderr)
     if (target.exists() and not os.access(target, os.W_OK)) or (
         not target.exists() and not os.access(target.parent, os.W_OK)
     ):
@@ -216,7 +265,15 @@ def main() -> int:
         )
     )
     stages = ", ".join(config["default_install_hook_types"])
-    print(f"merged {len(fragments)} fragment(s) into .pre-commit-config.yaml ({stages})")
+    replaced = f", replaced {len(warnings)} existing entry(s)" if warnings else ""
+    # Summary first: a caller that shows one line of a generator's output shows this
+    # one, and the replacements it names are below it rather than instead of it.
+    print(
+        f"merged {len(fragments)} fragment(s) into .pre-commit-config.yaml "
+        f"({stages}){replaced}"
+    )
+    for warning in warnings:
+        print(f"  replaced: {warning}")
     return 0
 
 

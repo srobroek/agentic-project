@@ -23,7 +23,7 @@ from .catalog import (
     validate_data,
     want_var,
 )
-from .runner import place_layers, prune_empty_dirs, run_generators
+from .runner import REPORTED_OPERATIONS, place_layers, prune_empty_dirs, run_generators
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV_TEMPLATES = "PROJECT_SETUP_TEMPLATES"
@@ -187,6 +187,9 @@ def cmd_catalog(args: argparse.Namespace, catalog: Catalog) -> int:
                             # for it, and do not pass the expression through.
                             "derived": q.derived,
                             "derived_from": q.derived_from or None,
+                            # False means the interview never asks it: a pinned tool
+                            # version, or a derived value. Still settable with --set.
+                            "asked": q.asked,
                         }
                         for q in layer.questions.values()
                     },
@@ -301,21 +304,71 @@ def cmd_validate(args: argparse.Namespace, catalog: Catalog) -> int:
     return 0
 
 
+def preserve_unasked(answers_file: Path, supplied: dict) -> list[str]:
+    """Put back any supplied answer Copier did not record, and name them.
+
+    Copier records only the questions it asked, so a question the interview
+    deliberately skips -- a pinned tool version, a derived value -- vanishes from the
+    answers file even when a preset or `--set` supplied it. An answers file that
+    silently drops what you handed it does not reproduce the scaffold, which is the
+    one thing it exists to do.
+    """
+    recorded = yaml.safe_load(answers_file.read_text()) or {}
+    dropped = {k: v for k, v in supplied.items() if k not in recorded}
+    if dropped:
+        answers_file.write_text(
+            answers_file.read_text().rstrip("\n")
+            + "\n\n# Supplied but not asked: kept so this file reproduces the scaffold.\n"
+            + yaml.safe_dump(dropped, sort_keys=True)
+        )
+    return sorted(dropped)
+
+
 def cmd_interview(args: argparse.Namespace, catalog: Catalog) -> int:
     """Hand the questions to Copier's own prompt engine. No LLM involved."""
     dest = Path(args.dest)
     dest.mkdir(parents=True, exist_ok=True)
-    preset = load_data(args, catalog) if (args.preset or args.data_file or args.set) else None
+    supplied = load_data(args, catalog) if (args.preset or args.data_file or args.set) else {}
     copier.run_copy(
         str(catalog.interview_path),
         dest,
-        data=preset,
+        data=supplied or None,
         overwrite=True,
         unsafe=False,
     )
     written = dest / ANSWERS_FILE
+    if not written.is_file():
+        return 1
+
+    kept = preserve_unasked(written, supplied)
     print(f"\nanswers: {written}")
-    return 0 if written.is_file() else 1
+    if kept:
+        print(f"kept {len(kept)} supplied answer(s) the interview does not ask: {', '.join(kept)}")
+    return 0
+
+
+def _files_report(result) -> None:
+    """What a brownfield user actually needs: the list of their files being replaced.
+
+    Copier overwrites by default, so a plan is the only warning before it happens.
+    Creations are counted; replacements are named, every one, because each is a file
+    somebody wrote by hand.
+    """
+    created, overwritten = result.files("create"), result.files("overwrite")
+    noun = "file(s) to create" if result.pretend else "file(s) created"
+    print(
+        f"{len(created)} {noun}, {len(overwritten)} to overwrite"
+        if result.pretend
+        else f"{len(created)} {noun}"
+    )
+    if not overwritten:
+        return
+    verb = "would be overwritten" if result.pretend else "overwritten"
+    print(f"\n{len(overwritten)} existing file(s) {verb}:")
+    for path in overwritten:
+        print(f"  {path}")
+    if result.pretend:
+        print("\n  Copier overwrites by default. Commit or move anything you want to keep.")
 
 
 def _report(result, *, json_out: bool, verb: str) -> int:
@@ -336,6 +389,10 @@ def _report(result, *, json_out: bool, verb: str) -> int:
                         }
                         for s in result.placed
                     ],
+                    # Named per operation so a caller can warn before overwriting.
+                    "files": {
+                        operation: result.files(operation) for operation in REPORTED_OPERATIONS
+                    },
                     "generated": [
                         {
                             "script": s.name,
@@ -360,9 +417,14 @@ def _report(result, *, json_out: bool, verb: str) -> int:
             print(f"           {s.detail}")
     for s in result.generated:
         mark = "ok  " if s.ok else "FAIL"
-        first = s.detail.splitlines()[0] if s.detail else ""
-        print(f"  generate {mark} {s.name:<28} {s.seconds:.2f}s  {first}")
+        lines = s.detail.splitlines() or [""]
+        print(f"  generate {mark} {s.name:<28} {s.seconds:.2f}s  {lines[0]}")
+        # A generator that replaced something says so on a later line. Showing only
+        # the first hides exactly the part worth reading.
+        for line in lines[1:]:
+            print(f"           {line.strip()}")
     print(f"total {result.seconds:.2f}s")
+    _files_report(result)
     return 0 if result.ok else 1
 
 
@@ -404,7 +466,14 @@ def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
     )
     if result.ok:
         prune_empty_dirs(dest)
-        run_generators(dest, result, data=data, quiet=True)
+        run_generators(
+            dest,
+            result,
+            # Copier applies a layer's defaults itself; a generator argument is
+            # assembled out here and would otherwise miss every unanswered one.
+            data={**catalog.defaults_for(result.layers), **data},
+            quiet=True,
+        )
         (dest / ANSWERS_FILE).write_text(
             "# Written by project-setup apply. Re-run with --data-file to reproduce.\n"
             + yaml.safe_dump(data, sort_keys=True)
