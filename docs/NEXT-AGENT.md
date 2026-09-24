@@ -48,11 +48,21 @@ reintroducing the staleness the no-bundling rule exists to prevent.
 ## Prove it still works before you change anything
 
 ```sh
-just port              # regenerate templates/ from assets/
-pytest -q              # 201 tests
-python3 tools/e2e.py   # 12 stacks, end to end, with tasks
-slopvac .              # 7 authored docs fail on style; 8 unfixable files are excluded
+just port                          # regenerate templates/ from assets/
+.venv/bin/python -m pytest -q      # 201 unit tests
+.venv/bin/python tools/e2e.py      # 12 stacks, end to end, with tasks
+slopvac .                          # 7 authored docs fail on style; 8 unfixable are excluded
 ```
+
+Use `.venv/bin/python -m pytest`, not bare `pytest`: on this machine the interpreter owning
+the `pytest` name lacks `copier` and `jinja2`. `tests/conftest.py` catches that and fails
+collection with one line naming the right command, rather than five `ModuleNotFoundError`
+tracebacks that read like a corrupt checkout. `pythonpath` in `pyproject.toml` puts `src` and
+`tools` on the path, so a fresh clone needs no editable install.
+
+`tools/e2e.py` asserts, per stack: validate is clean, `plan` writes nothing, `apply` succeeds,
+no `@@` tokens survive, expected files exist, excluded files do not, no build artifacts, no
+empty directories, a re-apply changes zero bytes, and the answers file is recorded.
 
 Re-run all four after every change. Breaking `e2e.py` is a regression.
 
