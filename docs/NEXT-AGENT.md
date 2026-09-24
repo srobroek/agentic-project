@@ -83,27 +83,6 @@ silence it.
 | `templates/` | **generated** from `assets/` by `tools/port_assets.py`. Never hand-edit |
 | `presets/` | 12 stacks, plus `presets/parts/` with 12 single-concern parts |
 
-## Prove it still works before you change anything
-
-```sh
-just port                          # regenerate templates/ from assets/
-.venv/bin/python -m pytest -q      # 201 unit tests
-.venv/bin/python tools/e2e.py      # all 12 stacks, end to end, with tasks
-```
-
-`pytest` alone now also works wherever the runtime dependencies are installed: `pythonpath`
-in `pyproject.toml` puts `src` and `tools` on the path, so a fresh clone needs no editable
-install. When the interpreter that owns the `pytest` name lacks `copier` or `jinja2` — the
-mise shim on this machine does — `tests/conftest.py` fails collection with one line naming
-`.venv/bin/python -m pytest`, instead of five `ModuleNotFoundError` tracebacks that read
-like a corrupt checkout.
-
-`tools/e2e.py` asserts, per stack: validate is clean, `plan` writes nothing, `apply`
-succeeds, no `@@` tokens survive, expected files exist, excluded files do not, no empty
-directories, a re-apply changes zero bytes, and the answers file is recorded.
-
-Re-run all three after every change. A change that breaks `e2e.py` is a regression.
-
 ## What had never been exercised, and what it found
 
 All four have now been driven for real. What each one produced is recorded here so the next
