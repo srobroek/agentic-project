@@ -29,10 +29,12 @@ _exclude:
 
   '
 
-AWS_CDK_DEST_SHELL:
+AWS_CDK_DEST:
   type: str
-  help: Repo-relative CDK destination, shell-quoted
+  help: Repo-relative CDK destination
   default: infrastructure
+  validator: '{% if not (AWS_CDK_DEST | string | regex_search(''^[A-Za-z0-9._][A-Za-z0-9._/-]*$'')) %}AWS_CDK_DEST
+    must match ^[A-Za-z0-9._][A-Za-z0-9._/-]*${% endif %}'
 AWS_CDK_VERSION:
   type: str
   help: aws-cdk CLI, exact stable release
@@ -44,3 +46,7 @@ FORGE_PLATFORM:
   - github
   - gitlab
   default: github
+AWS_CDK_DEST_SHELL:
+  type: str
+  help: Shell-quoted form of AWS_CDK_DEST; derived, do not set directly
+  default: '@@ AWS_CDK_DEST | quote @@'

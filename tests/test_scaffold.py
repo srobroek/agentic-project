@@ -6,6 +6,8 @@ Tasks are disabled so the suite stays offline and does not depend on bun or carg
 from __future__ import annotations
 
 import hashlib
+import json
+import re
 import sys
 from pathlib import Path
 
@@ -885,3 +887,34 @@ def test_a_greenfield_destination_costs_no_orphan_scan(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "orphaned_files", fail)
 
     assert cli.checkout_problems(catalog, tmp_path, {"PROJECT_NAME": "x"}) == []
+
+
+def test_the_root_typecheck_excludes_the_cdk_project(tmp_path: Path):
+    """TypeScript's default include is `**/*`, and a nested tsconfig does not shield
+    its own subtree. Without this exclusion the CDK app's jest tests are type-checked
+    by the root config, which has `types: ["bun"]`, so `just check` fails with TS2593
+    on a scaffold the user has not touched. Dot-prefixed trees like .a11y escape
+    because `**/*` does not match them.
+    """
+    assert scaffold(tmp_path, "fullstack-web").ok
+    exclude = json.loads(re.sub(r"//.*", "", (tmp_path / "tsconfig.json").read_text()))["exclude"]
+    assert "infrastructure" in exclude
+
+
+def test_the_root_typecheck_follows_a_custom_cdk_destination(tmp_path: Path):
+    assert scaffold(tmp_path, "fullstack-web", extra={"AWS_CDK_DEST": "deploy/cdk"}).ok
+    exclude = json.loads(re.sub(r"//.*", "", (tmp_path / "tsconfig.json").read_text()))["exclude"]
+    assert "deploy/cdk" in exclude
+    assert "infrastructure" not in exclude
+
+
+def test_the_shell_form_of_the_cdk_path_is_derived_not_answered(tmp_path: Path):
+    """One source of truth: shell-quoting a value and then embedding it in JSON
+    produces invalid JSON the moment a path contains a space."""
+    from project_setup.catalog import load_catalog
+
+    catalog = load_catalog(TEMPLATES)
+    questions = catalog.questions_for(["infra-aws-cdk"])
+    assert questions["AWS_CDK_DEST_SHELL"].derived
+    assert "AWS_CDK_DEST" in questions["AWS_CDK_DEST_SHELL"].derived_from
+    assert not questions["AWS_CDK_DEST"].derived

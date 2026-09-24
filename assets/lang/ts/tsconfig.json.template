@@ -14,5 +14,9 @@
     "noEmit": true,
     "types": ["bun"]
   },
-  "exclude": ["node_modules", "dist"]
+  // TypeScript's default include is **/*, which pulls in every .ts under the root.
+  // A nested project with its own tsconfig is NOT shielded by it, so the CDK app's
+  // jest tests would be type-checked here with the wrong `types` and fail `just
+  // check`. Dot-prefixed directories like .a11y are already skipped by **/*.
+  "exclude": ["node_modules", "dist", "@@AWS_CDK_DEST@@"]
 }

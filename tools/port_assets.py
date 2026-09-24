@@ -354,10 +354,20 @@ TOKEN_POLICY: dict[str, dict] = {
         "default": "",
         "help": "Recurring completeness commands, one per deployable, indented four spaces",
     },
-    "AWS_CDK_DEST_SHELL": {
+    # One source of truth for the CDK destination. The raw form goes into JSON and
+    # into path comparisons; the shell form is derived, because shell-quoting a value
+    # and then embedding it in JSON produces invalid JSON the moment a path has a
+    # space in it.
+    "AWS_CDK_DEST": {
         "type": "str",
         "default": "infrastructure",
-        "help": "Repo-relative CDK destination, shell-quoted",
+        "help": "Repo-relative CDK destination",
+        "validator": "^[A-Za-z0-9._][A-Za-z0-9._/-]*$",
+    },
+    "AWS_CDK_DEST_SHELL": {
+        "type": "str",
+        "derive": "@@ AWS_CDK_DEST | quote @@",
+        "help": "Shell-quoted form of AWS_CDK_DEST; derived, do not set directly",
     },
     # Pinned like every other tool version: `just aws-cdk-init` passes it to the
     # native CDK CLI, which refuses anything but an exact stable release.
@@ -552,10 +562,21 @@ TASKS: dict[str, list[dict]] = {
 EXTRA_TOKENS: dict[str, list[str]] = {
     "governance": ["SPDX_ID", "ADRS"],
     # Referenced only by a _task command, so the body scanner cannot find them.
-    "lang-ts": ["PROJECT_NAME", "OXLINT_VERSION", "TSGOLINT_VERSION", "KNIP_VERSION"],
+    # AWS_CDK_DEST: the root tsconfig must exclude the CDK project or tsc checks it
+    # with the wrong `types` and `just check` fails. Same mechanism as FORGE_EXCLUDE.
+    "lang-ts": [
+        "PROJECT_NAME",
+        "OXLINT_VERSION",
+        "TSGOLINT_VERSION",
+        "KNIP_VERSION",
+        "AWS_CDK_DEST",
+    ],
     "lang-rust": ["PROJECT_NAME", "SPDX_ID"],
     "lang-go": ["PROJECT_NAME", "GO_VERSION"],
     "lang-python": ["PROJECT_NAME"],
+    # The layer that owns the destination declares it, so the interview asks for the
+    # raw path before the shell form derived from it. lang-ts only reads it.
+    "infra-aws-cdk": ["AWS_CDK_DEST"],
     # Referenced only by a destination path, so the body scanner cannot find it.
     "i18n": ["I18N_PROJECT_DIR"],
 }

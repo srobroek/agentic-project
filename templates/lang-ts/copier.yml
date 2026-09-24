@@ -37,6 +37,12 @@ _tasks:
   - '@biomejs/biome=@@ BIOME_VERSION @@,oxlint=@@ OXLINT_VERSION @@,oxlint-tsgolint=@@ TSGOLINT_VERSION
     @@,knip=@@ KNIP_VERSION @@'
 
+AWS_CDK_DEST:
+  type: str
+  help: Repo-relative CDK destination
+  default: infrastructure
+  validator: '{% if not (AWS_CDK_DEST | string | regex_search(''^[A-Za-z0-9._][A-Za-z0-9._/-]*$'')) %}AWS_CDK_DEST
+    must match ^[A-Za-z0-9._][A-Za-z0-9._/-]*${% endif %}'
 BIOME_VERSION:
   type: str
   help: Biome
