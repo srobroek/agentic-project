@@ -34,6 +34,7 @@ _tasks:
   - '@@ _copier_conf.src_path @@/tasks/native_init.py'
   - go
   - '@@ PROJECT_NAME @@'
+  - '@@ GO_VERSION @@'
 
 FORGE_PLATFORM:
   type: str

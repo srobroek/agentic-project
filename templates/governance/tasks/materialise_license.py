@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Copier task: turn the bundled SPDX texts into a single LICENSE file.
+"""Copier task: write LICENSE from one of the bundled SPDX texts.
 
-    materialise_license.py <SPDX_ID>
+    materialise_license.py <licenses-dir> <SPDX_ID>
 
-The layer ships every supported licence under licenses/. This selects one, writes
-LICENSE, and removes the rest so the project carries exactly one licence. Offline:
-nothing is fetched.
+The layer carries every supported licence in its own excluded `tasks/licenses/`, and
+this copies the one selected into LICENSE. Offline: nothing is fetched.
+
+The texts are never placed into the destination. They used to be, as `licenses/`,
+and this task then deleted that directory -- which also deleted whatever the
+repository already kept there, including a REUSE-style `LICENSES/` on a
+case-insensitive filesystem, and `plan` listed four files to create that no apply
+ever left behind.
 
 `NONE` is a real answer: an unpublished repository states no licence, and the four
 choices were otherwise four ways to publish one.
@@ -23,33 +28,20 @@ NONE = "NONE"
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 3:
         print(__doc__, file=sys.stderr)
         return 2
-    spdx = sys.argv[1]
-    pool = Path("licenses")
-    if not pool.is_dir():
-        # WARNING is the token the scaffolder greps out of a task's captured output,
-        # so a skip reaches the summary instead of a log nobody prints.
-        print(
-            "materialise_license: WARNING no licenses/ directory here, so no LICENSE "
-            "was written. The governance layer ships the texts; re-run apply with it "
-            "selected.",
-            file=sys.stderr,
-        )
-        return 0
+    pool, spdx = Path(sys.argv[1]), sys.argv[2]
     if spdx == NONE:
         # A deliberate answer, not a degradation: an internal repository states no
-        # licence. The pool still goes, because carrying four unused licence texts
-        # into a repository that publishes under none of them is worse than noise.
-        shutil.rmtree(pool)
+        # licence.
         print("materialise_license: SPDX_ID is NONE, so no LICENSE was written")
         return 0
     src = pool / f"{spdx}.txt"
     if not src.is_file():
-        available = ", ".join(sorted(p.stem for p in pool.glob("*.txt")))
+        available = ", ".join(sorted(p.stem for p in pool.glob("*.txt"))) or "none"
         print(
-            f"materialise_license: no bundled text for {spdx!r}. Available: {available}",
+            f"materialise_license: no bundled text for {spdx!r} in {pool}. Available: {available}",
             file=sys.stderr,
         )
         return 1
@@ -59,7 +51,6 @@ def main() -> int:
     else:
         shutil.copyfile(src, dest)
         print(f"materialise_license: wrote LICENSE from {spdx}")
-    shutil.rmtree(pool)
     return 0
 
 

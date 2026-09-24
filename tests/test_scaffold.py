@@ -18,9 +18,12 @@ from project_setup.runner import (
     generator_args,
     place_layers,
     prune_empty_dirs,
+    rehearse,
     run_generators,
+    snapshot,
     split_operations,
 )
+from project_setup.runner import scaffold as runner_scaffold
 
 TEMPLATES = Path(__file__).resolve().parents[1] / "templates"
 PRESETS = Path(__file__).resolve().parents[1] / "presets"
@@ -214,32 +217,47 @@ def test_a_missing_generator_argument_names_the_answer(tmp_path: Path):
     assert "DEFAULT_BRANCH" in str(raised.value)
 
 
+def rehearsed(dest: Path, preset: str, extra: dict | None = None):
+    catalog = load_catalog(TEMPLATES)
+    data = {**load_preset(preset, PRESETS)[0], **IDENTITY, **(extra or {})}
+    return rehearse(catalog, dest, data)
+
+
 def test_plan_names_every_file_it_would_overwrite(tmp_path: Path):
     """Copier overwrites by default, so the plan is the only warning a user gets."""
     (tmp_path / "README.md").write_text("hand written\n")
     (tmp_path / "justfile").write_text("build:\n    go build ./...\n")
+    before = snapshot(tmp_path)
 
-    catalog = load_catalog(TEMPLATES)
-    data = {**load_preset("go-service", PRESETS)[0], **IDENTITY}
-    result = place_layers(catalog, tmp_path, data, pretend=True, run_tasks=False, quiet=True)
+    result, changes = rehearsed(tmp_path, "go-service")
 
-    assert result.ok, [s.detail for s in result.placed if not s.ok]
-    # The justfile is not on this list: the `just` layer skips an existing one, because
-    # replacing it deleted the repository's own recipes while `plan` reported the file
-    # as merged. The README is, and naming it is the whole point of the list.
-    assert result.files("overwrite") == ["README.md"]
-    assert "CODEOWNERS" in result.files("create")
+    assert result.ok, [s.detail for s in result.placed + result.generated if not s.ok]
+    assert changes.overwrite == ["README.md"]
+    assert changes.lost == {"README.md": 1}
+    # The `just` layer skips an existing justfile and the generator appends its import
+    # block, so every recipe survives. `plan` once listed it as overwritten *and*
+    # merged; now it is whichever one the rehearsal measured.
+    assert "justfile" in changes.merge
+    assert "CODEOWNERS" in changes.create
     # A dry run that writes something is worse than no dry run at all.
-    assert (tmp_path / "README.md").read_text() == "hand written\n"
-    assert (tmp_path / "justfile").read_text() == "build:\n    go build ./...\n"
+    assert snapshot(tmp_path) == before
 
 
-def test_a_greenfield_plan_reports_no_overwrites(tmp_path: Path):
-    catalog = load_catalog(TEMPLATES)
-    data = {**load_preset("minimal", PRESETS)[0], **IDENTITY}
-    result = place_layers(catalog, tmp_path, data, pretend=True, run_tasks=False, quiet=True)
-    assert result.files("overwrite") == []
-    assert len(result.files("create")) > 20
+def test_a_greenfield_plan_counts_what_the_tasks_and_generators_create(tmp_path: Path):
+    """A plan that skipped tasks and generators reported neither's files.
+
+    It listed four `licenses/*.txt` to create that no apply ever left behind, and
+    left out the LICENSE, .gitignore, ci.yml and AGENTS.md that every apply writes.
+    """
+    result, changes = rehearsed(tmp_path, "minimal")
+
+    assert result.ok and result.pretend
+    assert changes.overwrite == changes.merge == changes.remove == []
+    for written in ("LICENSE", ".gitignore", ".github/workflows/ci.yml", "AGENTS.md", "CLAUDE.md"):
+        assert written in changes.create
+    assert not [p for p in changes.create if p.startswith("licenses/")]
+    assert result.dest == tmp_path, "the report must name the destination, not the copy"
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_bytecode_beside_a_layers_scripts_is_never_placed(tmp_path: Path):
@@ -681,74 +699,112 @@ def test_an_adr_without_a_decision_is_refused(tmp_path: Path):
     assert "missing" in detail and "decision" in detail
 
 
-def test_plan_names_the_files_a_generator_would_rewrite(tmp_path):
-    """Copier places none of them, so Copier's own per-file lines never mention them.
-
-    A brownfield plan reported "2 existing file(s) would be overwritten" and stayed
-    silent about the .gitignore, .pre-commit-config.yaml and AGENTS.md the generators
-    were about to rewrite -- the three files such a repository cares most about.
-    `plan` is documented as the only warning before an existing file is replaced.
-    """
-    from project_setup.runner import MERGED, REPLACED, generator_destinations
-
-    for name in (".gitignore", ".pre-commit-config.yaml", "AGENTS.md", "CLAUDE.md"):
-        (tmp_path / name).write_text("hand written\n")
-
-    found = dict(generator_destinations(tmp_path, ["base", "hooks", "just", "ci", "steering"]))
-
-    assert set(found) == {".gitignore", ".pre-commit-config.yaml", "AGENTS.md", "CLAUDE.md"}
-    # The distinction a user needs in order to decide: merged, or replaced outright.
-    assert found[".pre-commit-config.yaml"] == MERGED
-    assert found[".gitignore"] == MERGED
-    assert found["AGENTS.md"] == MERGED
-    assert found["CLAUDE.md"] == REPLACED
-
-
-def test_a_hand_written_ci_caller_is_reported_as_left_alone(tmp_path):
+def test_a_hand_written_ci_caller_is_not_reported_as_changing(tmp_path):
     """`plan` threatened a replacement that never happens.
 
-    `gen_caller.py` refuses a ci.yml it did not write, so a brownfield repository's own
-    caller survives -- and the plan said "replaced outright" about it, which is the one
-    line that would make somebody move the file first.
+    `gen_caller.py` refuses a ci.yml it did not write, and the plan said "replaced
+    outright" about it -- the one line that would make somebody move the file first.
+    The rehearsal measures what the generator does, so a file it leaves alone is on
+    no list, and its own warning says why.
     """
-    from project_setup.runner import LEFT_ALONE, REPLACED, generator_destinations
-
     caller = tmp_path / ".github/workflows/ci.yml"
     caller.parent.mkdir(parents=True)
     caller.write_text("name: ci\non: [push]\n")
-    assert dict(generator_destinations(tmp_path, ["ci"]))[".github/workflows/ci.yml"] == LEFT_ALONE
 
-    caller.write_text("# Generated by scripts/gen_caller.py -- edit the wc-* workflows\nname: ci\n")
-    assert dict(generator_destinations(tmp_path, ["ci"]))[".github/workflows/ci.yml"] == REPLACED
+    result, changes = rehearsed(tmp_path, "minimal")
 
-
-def test_a_greenfield_destination_reports_no_generator_rewrites(tmp_path):
-    from project_setup.runner import generator_destinations
-
-    assert generator_destinations(tmp_path, ["base", "hooks", "steering"]) == []
+    assert ".github/workflows/ci.yml" not in changes.overwrite + changes.merge
+    assert any("hand-owned" in message for _, message in result.warnings)
 
 
-def test_a_generator_whose_layer_is_not_placed_is_not_reported(tmp_path):
-    """The script only exists in the destination if its layer was placed."""
-    from project_setup.runner import generator_destinations
+def test_a_plan_says_the_apply_would_fail_before_it_does(tmp_path):
+    """A .pre-commit-config.yaml merge_hooks cannot read failed the apply, and the
+    plan beforehand had promised "merged, your entries kept"."""
+    (tmp_path / ".pre-commit-config.yaml").write_text("just a string\n")
 
-    (tmp_path / "AGENTS.md").write_text("hand written\n")
-    (tmp_path / ".gitignore").write_text("build/\n")
+    result, _changes = rehearsed(tmp_path, "minimal")
 
-    # `steering` is always-on, so AGENTS.md is in scope whatever the layer list says;
-    # every generator here belongs to an always-on layer, which is the point.
-    found = dict(generator_destinations(tmp_path, ["base"]))
-    assert ".gitignore" in found
+    assert not result.ok
+    failed = [s for s in result.generated if not s.ok]
+    assert [s.name for s in failed] == ["scripts/merge_hooks.py"]
+    assert (tmp_path / ".pre-commit-config.yaml").read_text() == "just a string\n"
 
 
-def test_every_generator_declares_where_it_writes():
-    """A generator with no declared destination is invisible to `plan` again."""
-    from project_setup.runner import GENERATOR_DISPOSITION, GENERATORS
+def test_a_hand_written_claude_md_is_reported_as_merged_into_the_link(tmp_path):
+    """Its text is folded into AGENTS.md and CLAUDE.md becomes a link to it, which
+    loses nothing; the plan used to call that "replaced outright"."""
+    (tmp_path / "CLAUDE.md").write_text("Use tabs.\n")
 
-    for rel, _extra, destinations in GENERATORS:
-        assert destinations, f"{rel} declares no destination"
-        for relative in destinations:
-            assert relative in GENERATOR_DISPOSITION, f"{relative} has no disposition"
+    _result, changes = rehearsed(tmp_path, "minimal")
+
+    assert "CLAUDE.md" in changes.merge
+    assert changes.links == {"CLAUDE.md": "AGENTS.md"}
+
+
+def test_a_link_out_of_the_destination_is_never_written_through(tmp_path):
+    """The rehearsal copies the destination; a link out of it would carry a step's
+    writes back into the real world, which a dry run must never do."""
+    elsewhere = tmp_path / "elsewhere.md"
+    elsewhere.write_text("shared by several repositories\n")
+    dest = tmp_path / "repo"
+    dest.mkdir()
+    (dest / "README.md").symlink_to(elsewhere)
+
+    _result, changes = rehearsed(dest, "minimal")
+
+    assert elsewhere.read_text() == "shared by several repositories\n"
+    assert (dest / "README.md").is_symlink()
+    assert "README.md" in changes.overwrite
+
+
+def test_classify_separates_what_is_lost_from_what_is_kept():
+    from project_setup.runner import Snapshot, classify
+
+    before = Snapshot(
+        {"kept": b"a\nb\n", "lost": b"a\nb\n", "gone": b"x\n", "same": b"s\n", "blank": b"\n"},
+        frozenset(),
+    )
+    after = Snapshot(
+        {"kept": b"a\nnew\nb\n", "lost": b"a\n", "same": b"s\n", "new": b"n\n", "blank": b"z\n"},
+        frozenset(),
+    )
+    changes = classify(before, after)
+    assert changes.create == ["new"]
+    assert changes.remove == ["gone"]
+    assert changes.overwrite == ["lost"] and changes.lost == {"lost": 1}
+    # A blank line is not content somebody loses.
+    assert changes.merge == ["blank", "kept"]
+
+
+def test_a_repositorys_own_empty_directories_survive(tmp_path: Path):
+    """Prune removed every empty directory in the destination, not only the ones the
+    run had created: a brownfield `logs/`, and empty directories inside node_modules."""
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "node_modules/pkg/empty").mkdir(parents=True)
+    catalog = load_catalog(TEMPLATES)
+    data = {**load_preset("minimal", PRESETS)[0], **IDENTITY}
+
+    result = runner_scaffold(
+        catalog, tmp_path, data, keep_dirs=snapshot(tmp_path).dirs, run_tasks=False
+    )
+
+    assert result.ok
+    assert (tmp_path / "logs").is_dir()
+    assert (tmp_path / "node_modules/pkg/empty").is_dir()
+    assert not (tmp_path / ".gitlab").exists(), "a directory the run left empty still goes"
+
+
+def test_a_reuse_licenses_directory_survives(tmp_path: Path):
+    """The licence pool was placed as `licenses/` and then deleted, and on a
+    case-insensitive filesystem that took a REUSE `LICENSES/` directory with it."""
+    (tmp_path / "LICENSES").mkdir()
+    (tmp_path / "LICENSES/CC0-1.0.txt").write_text("CC0\n")
+
+    result = scaffold_with_tasks(tmp_path, "minimal", extra={"SPDX_ID": "MIT"})
+
+    assert result.ok, [s.detail for s in result.placed if not s.ok]
+    assert (tmp_path / "LICENSES/CC0-1.0.txt").read_text() == "CC0\n"
+    assert "MIT License" in (tmp_path / "LICENSE").read_text()
 
 
 def test_deselecting_a_layer_names_the_files_it_leaves_behind(tmp_path):

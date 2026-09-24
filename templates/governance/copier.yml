@@ -17,6 +17,7 @@ _tasks:
 - command:
   - '@@ _copier_python @@'
   - '@@ _copier_conf.src_path @@/tasks/materialise_license.py'
+  - '@@ _copier_conf.src_path @@/tasks/licenses'
   - '@@ SPDX_ID @@'
 - command:
   - '@@ _copier_python @@'

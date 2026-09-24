@@ -32,8 +32,11 @@ MUST keep `ALWAYS_ON` in `src/project_setup/catalog.py` as the only definition.
 `tools/port_assets.py` imports it; two copies would silently disagree about which layers are
 opt-in.
 
-MUST prune empty directories after placing. Copier creates a directory before deciding every
-file inside it is excluded, so a GitHub-only project would otherwise ship an empty `.gitlab/`.
+MUST prune empty directories after placing, and only the ones the run created. Copier creates
+a directory before deciding every file inside it is excluded, so a GitHub-only project would
+otherwise ship an empty `.gitlab/`. Pruning every empty directory also deleted a brownfield
+repository's own empty `logs/` and the empty directories inside `node_modules`, so
+`prune_empty_dirs` keeps every directory the snapshot taken before the run lists.
 
 MUST declare a destination remap in `REMAP` rather than renaming assets. `forge/github/*` maps
 to `.github/*` and `steering/steering-tree/*` to `docs/agents/*`; longest matching prefix wins,
@@ -62,7 +65,10 @@ expands `/` inside a rendered segment.
 
 MUST use `TASK_ASSETS` for a template a task needs to read. `governance/ADR.md.template` is
 instantiated once per manifest entry, which Copier cannot loop, so `write_adrs.py` owns the loop
-and reads the template from the layer's excluded `tasks/` directory.
+and reads the template from the layer's excluded `tasks/` directory. The licence texts are a
+task asset for the same reason: placed as `licenses/` and deleted afterwards, the pool took a
+brownfield repository's own `licenses/` with it, and on a case-insensitive filesystem a
+REUSE `LICENSES/` directory too.
 
 MUST keep a multi-instance task idempotent by identity, not by filename. `write_adrs.py` matches
 on the title slug: the sequence number differs every run, so comparing filenames would write a
@@ -124,6 +130,14 @@ aside, `seed_selection` is the one place that translates: it converts supplied `
 the list's pre-selection and drops the booleans, because supplied data beats a rendered
 default and the interview would otherwise ignore every deselection the user made.
 
+MUST hand the interview a preset, a data file and the destination's previous answers as
+Copier `user_defaults`, never as `data`. Copier treats `data` as answered and skips the
+question, so `--preset rust-cli` never showed the multiselect and lang-rust could not be
+deselected; a PTY drive found it, and the unit test on `seed_selection` alone had passed.
+`interview_answers` splits the two: `--set` settles a question, except a layer choice,
+which only ever pre-selects. It drops derived values from the defaults, and
+`still_relevant` keeps a default out of the answers file once its layer is deselected.
+
 MUST label every layer choice with what the layer does, from `LAYER_PURPOSE`. The
 multiselect listed ten bare directory names, and `worktrunk`, `a11y` or `infra-aws-cdk`
 tells a first-time reader nothing about what selecting it does; `catalog` listed all
@@ -165,8 +179,20 @@ generated from a layer and an answer, so the layer owns that entry: a changed an
 to land, and a brownfield repository that happens to share one hook id must not fail the
 apply. Two *fragments* disagreeing is still a hard error — no answer can resolve it.
 
-MUST report what a run replaced. `plan` parses Copier's own per-file lines and names every
-file it would overwrite; that is the only warning before Copier overwrites it.
+MUST derive what `plan` and `apply` report from the difference a run made, never from a
+table of what each step is expected to do. `rehearse` in `runner.py` copies the
+destination, runs `scaffold` there with tasks and generators, and `classify` compares the
+two snapshots. `scaffold` is the one sequence both commands run. Two predictions lied in
+use: the justfile listed as both overwritten and merged, and "replaced outright" for a
+`ci.yml` the generator never touches. Predicting also missed every task's output: `plan`
+listed four `licenses/*.txt` no apply left behind, and on re-apply it named seven
+`docs/agents` files as overwritten that the generator rewrote byte for byte.
+`tools/plan_property.py` checks the agreement for every stack in four dispositions, from
+`tools/e2e.py`, and `tests/test_plan_property.py` checks one stack in the unit suite.
+
+MUST NOT let the rehearsal reach outside its copy. It skips `SCAN_SKIP`, and it copies a
+link that points outside the destination as the file it points at, so a step writing
+through the link writes into the copy.
 
 MUST NOT place a file a generator claims to merge. `plan` listed `justfile` twice: once as
 a file it would overwrite, and once as a path a generator "merged, your entries kept". The
@@ -177,20 +203,6 @@ port emits `_skip_if_exists` for those paths. It is only safe where the placed f
 no answer: the layer's justfile has zero `@@` tokens, so keeping an existing one re-derives
 nothing. `gen_justfile.py` appends its block to a justfile with no markers rather than
 refusing, because that is now the brownfield path.
-
-MUST declare every path a generator rewrites, as the third element of its `GENERATORS` row
-and a disposition in `GENERATOR_DISPOSITION`. Copier places none of them —
-they are folded from the `.d/` fragments afterwards — so its per-file lines cannot mention
-them and `plan` reported "2 existing file(s) would be overwritten" for a brownfield repo
-whose `.gitignore`, `.pre-commit-config.yaml` and `AGENTS.md` were all about to be
-rewritten as well. `test_every_generator_declares_where_it_writes` refuses a row without one.
-
-MUST report a third disposition, `left-alone`, for a path whose generator refuses to
-replace a file it did not write. `gen_caller.py` leaves a `ci.yml` with no generator marker
-where it is, so a plan that said "replaced outright" about a brownfield caller threatened a
-replacement that never happens — the one line that would make somebody move the file first.
-`HAND_OWNED_REFUSAL` names the generator, and the existing file's first line is the test,
-because that is where a generated file here names its generator.
 
 MUST make a generator's refusal reachable from where the user is standing. `run_generators`
 passes a generator nothing but the destination and its declared arguments, so
@@ -339,12 +351,33 @@ git history into this repository. Do not reintroduce a dependency on another rep
 
 MUST NOT bundle `templates/` or `presets/` into the wheel. They are the plugin's payload and
 the plugin upgrades independently; a bundled copy would serve stale layers silently. The CLI
-resolves them from `--templates`/`--presets`, then `PROJECT_SETUP_TEMPLATES`/
-`PROJECT_SETUP_PRESETS`, then a source checkout, and fails naming all three otherwise.
+tries `--templates`/`--presets`, `PROJECT_SETUP_TEMPLATES`/`PROJECT_SETUP_PRESETS`, a source
+checkout, and the plugin `omp plugin list --json` reports, in that order. It fails naming
+all four when none resolves.
+
+MUST ask OMP at run time and never record the answer. A recorded path is the stale copy the
+no-bundling rule prevents. Match the package name `@srobroek/project-setup` exactly: an older,
+unrelated plugin is also called `project-setup`. When the plugin's version differs from the
+CLI's, say so and name the reinstall command.
 
 MUST NOT derive the plugin directory from `$0` or the working directory. `$0` in an agent's
-shell is the shell itself, and the working directory is the user's target repository. Ask
-`omp plugin list --json` for the plugin's own path. `tests/test_resolve.py` covers the chain.
+shell is the shell itself, and the working directory is the user's target repository.
+`tests/test_resolve.py` covers the chain.
+
+## Interrupted runs
+
+MUST leave an interrupted or failed apply visible. `scaffold` writes `INCOMPLETE_FILE` before
+its first step and removes it only after the answers file is written, and
+`checkout_problems` reports it as `INTERRUPTED_APPLY`. Killing apply at 60 layer and
+generator boundaries across four stacks showed that re-running recovers byte for byte, so
+the marker is the whole mechanism: nothing resumes, the next apply simply runs every step.
+`tests/test_interrupt.py` kills it with SIGKILL and checks both.
+
+MUST keep every task recoverable from its own interruption. A native init writes the
+manifest first and reconciles after, and a kill in between left a manifest every later run
+skipped as present: no dev tools in package.json, bun's CLAUDE.md folded into AGENTS.md, a
+go.mod with no package. `native_init.py` writes `PENDING` before running the tool and
+removes it when the branch ends; a manifest found beside it is its own, so it is replaced.
 
 ## Verifying a change
 
@@ -354,6 +387,6 @@ shell is the shell itself, and the working directory is the user's target reposi
     just omp-link      # link and health-check the plugin
     just omp-verify    # read the skill and rule back through OMP
 
-A change that breaks `just e2e` is a regression. The interview has no automated TTY driver:
-drive `project-setup interview --dest <tmp>` by hand when you change the question set, and
-check what it asks first.
+A change that breaks `just e2e` is a regression. The interview has no automated TTY driver in
+the suite: drive `project-setup interview --dest <tmp>` through a PTY when you change the
+question set or how the interview hands Copier its answers, and check what it asks first.

@@ -28,34 +28,29 @@ If that prints `ready`, skip the rest of this section.
 
 ### Finding the layers
 
-The templates belong to the plugin, not to the CLI, so the CLI has to be told where they are.
-Ask OMP for the plugin's own path rather than guessing it:
+The CLI finds the layers itself: it asks `omp plugin list --json` for the installed
+`@srobroek/project-setup` plugin on every run. No flag is needed when the plugin is installed
+through OMP.
 
-```sh
-PLUGIN=$(omp plugin list --json | python3 -c '
-import json, sys
-for e in json.load(sys.stdin).get("npm", []):
-    if e.get("name", "").endswith("/project-setup"):
-        print(e["path"]); break')
-echo "$PLUGIN"
-```
-
-Then pass it on every invocation:
-
-```sh
-project-setup --templates "$PLUGIN/templates" --presets "$PLUGIN/presets" catalog
-```
-
-MUST pass the two flags on every call once you need them. Each of your shell commands runs in
-a fresh process, so an `export` in one does not survive into the next. `PROJECT_SETUP_TEMPLATES`
-and `PROJECT_SETUP_PRESETS` exist for a human's shell profile, not for you.
+If `catalog` fails with `no templates directory found`, the plugin is not installed or is
+disabled. Say so and stop. Its error names every place the CLI looked.
 
 MUST NOT guess the plugin path from the working directory. The working directory is the user's
 target repository, not this plugin — installing from it would install their project as the CLI.
 
 ### Installing the CLI
 
-Only if `project-setup` is not on PATH at all:
+Only if `project-setup` is not on PATH at all, find the plugin's path first:
+
+```sh
+PLUGIN=$(omp plugin list --json | python3 -c '
+import json, sys
+for e in json.load(sys.stdin).get("npm", []):
+    if e.get("name") == "@srobroek/project-setup":
+        print(e["path"]); break')
+```
+
+Then install it:
 
 ```sh
 uv tool install "$PLUGIN"          # a marketplace install: a copy, install it as-is
@@ -284,25 +279,25 @@ MUST read committed configuration before asking anything. Run
 `git rev-parse --is-inside-work-tree` and count tracked files: no repo or zero tracked files
 is greenfield.
 
-For an existing repo, `plan` names both lists. `files.overwrite` in `--json` (a list under the
-summary otherwise) is what Copier replaces outright: a `README.md` is on it, a `justfile` is
-not — the `just` layer skips one that is already there.
-`generator_targets` is the second list — the shared files the generators fold into after every
-layer, which Copier never places and therefore never mentions. `.gitignore`,
-`.pre-commit-config.yaml`, `justfile` and `AGENTS.md` are on that one, each with a
-`disposition` and a `keeps_existing` flag.
+For an existing repo, `plan` rehearses the whole apply in a copy and reports what changed, so
+the lists are what `apply` will do, not a prediction. In `--json`, `files` has four lists:
+`create`, `overwrite`, `merge` and `remove`. `overwrite` is an existing file that loses at
+least one non-blank line, and `lines_lost` counts them per file. `merge` keeps every line.
+`links` names a file that becomes a symlink: a hand-written `CLAUDE.md` is folded into
+`AGENTS.md` and linked to it, so it is on `merge`.
 
-MUST read both lists rather than guessing from the layer set. For every entry, ask
-`KEEP | CHANGE | REMOVE` and name the consequence. Copier overwrites by default, and the plan
-is your only warning.
+MUST read every list rather than guessing from the layer set. For every `overwrite` entry, ask
+`KEEP | CHANGE | REMOVE` and name the lines lost. Copier overwrites by default, and the plan
+is your only warning. `remove` should be empty; report any entry on it.
 
-`disposition` has three values. `merged` means the generator folds its block in and your
-entries survive; `replaced` means the path is rewritten; `left-alone` means the generator will
-not touch a file it did not write. A hand-written `CLAUDE.md` is folded into `AGENTS.md` and
-replaced by a symlink to it — nothing is lost, and the run says what it folded in. A
-hand-written `.github/workflows/ci.yml` is `left-alone`, and `apply` then reports that the
-`wc-*` workflows beside it are called by nothing: report that line, it is a real gap the user
-has to close by hand or by deleting the file.
+A file a step leaves alone is on no list. A hand-written `.github/workflows/ci.yml` is one:
+the plan's warnings then say the `wc-*` workflows beside it are called by nothing. Report
+that line, because it is a real gap the user has to close by hand or by deleting the file.
+`ok: false` in a plan means the apply would stop at that step. Report the step and do not
+apply.
+
+`INTERRUPTED_APPLY` means an earlier apply did not finish. Re-running the same apply
+finishes it.
 
 MUST report any step that `apply` says "did less than the full job". That list is how a
 missing toolchain surfaces: `cargo init` is skipped rather than failing the scaffold, so the

@@ -4,10 +4,11 @@
 [group('go')]
 go: go-fmt go-lint go-test
 
-# Format
+# Format. Not `gofmt -w .`, which walked into node_modules: a CDK app ships Go
+# templates named `%name%.template.go` that do not parse, and gofmt rewrote the rest.
 [group('go')]
 go-fmt:
-    gofmt -w .
+    find . \( -name node_modules -o -name vendor -o -name .git \) -prune -o -name '*.go' -type f -exec gofmt -w {} +
 
 # Lint. gosec and revive are enabled in .golangci.yml, not passed here
 [group('go')]

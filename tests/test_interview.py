@@ -514,3 +514,86 @@ def test_a_preset_pre_selects_its_layers_and_stays_deselectable():
     assert seeded["PROJECT_NAME"] == "x"
     # Nothing supplied means nothing to seed; the interview asks from scratch.
     assert seed_selection(catalog, {}) == {}
+
+
+def interview_args(tmp_path, *extra: str):
+    from project_setup.cli import build_parser
+
+    args = build_parser().parse_args(["interview", "--dest", str(tmp_path), *extra])
+    args.presets = Path(__file__).resolve().parents[1] / "presets"
+    return args
+
+
+def test_a_preset_is_where_the_interview_starts_not_what_it_skips(tmp_path):
+    """Handed to Copier as `data`, a preset's answers counted as answered: with
+    `--preset rust-cli` the layer selection never appeared, so lang-rust could not be
+    deselected. A PTY drive now shows the list pre-selected and deselection honoured."""
+    from project_setup.cli import interview_answers
+
+    catalog = load_catalog(TEMPLATES)
+    defaults, answered = interview_answers(
+        interview_args(tmp_path, "--preset", "rust-cli", "--set", "SPDX_ID=MIT"), catalog, tmp_path
+    )
+
+    assert "lang-rust" in defaults["LAYERS"]
+    assert not [k for k in defaults if k.startswith("WANT_")]
+    # --set is the one way to settle a question; it is not asked.
+    assert answered == {"SPDX_ID": "MIT"}
+
+
+def test_a_layer_choice_on_the_command_line_still_shows_the_selection(tmp_path):
+    from project_setup.cli import interview_answers
+
+    catalog = load_catalog(TEMPLATES)
+    defaults, answered = interview_answers(
+        interview_args(tmp_path, "--set", "WANT_LANG_GO=true"), catalog, tmp_path
+    )
+    assert defaults["LAYERS"] == ["lang-go"]
+    assert answered == {}
+
+
+def test_a_second_interview_starts_from_the_first_ones_answers(tmp_path):
+    """Re-running the interview in a scaffolded repository started from blank."""
+    from project_setup.cli import interview_answers
+
+    (tmp_path / ".project-setup-answers.yml").write_text(
+        "PROJECT_NAME: my-app\nDESCRIPTION: A thing\nLAYERS: [lang-go]\nIS_MONOREPO: true\n"
+    )
+    catalog = load_catalog(TEMPLATES)
+    defaults, _ = interview_answers(interview_args(tmp_path), catalog, tmp_path)
+
+    assert defaults["PROJECT_NAME"] == "my-app"
+    assert defaults["LAYERS"] == ["lang-go"]
+    # Derived: a recorded value would pin whatever the members were last time.
+    assert "IS_MONOREPO" not in defaults
+
+
+def test_a_deselected_layers_preset_answers_are_not_recorded(tmp_path):
+    from project_setup.cli import still_relevant
+
+    answers = tmp_path / ".project-setup-answers.yml"
+    answers.write_text("PROJECT_NAME: my-app\nLAYERS: [release]\n")
+    kept = still_relevant(
+        load_catalog(TEMPLATES), {"RUST_LIBRARY": False, "NOT_A_QUESTION": 1}, answers
+    )
+    assert kept == {"NOT_A_QUESTION": 1}
+
+
+def test_ending_the_input_stops_cleanly_and_leaves_nothing(tmp_path):
+    """Ctrl-C and Ctrl-D printed two tracebacks ending in CopierAnswersInterrupt and
+    InteractiveSessionError, and left the destination directory behind."""
+    import subprocess
+    import sys
+
+    dest = tmp_path / "new"
+    done = subprocess.run(
+        [sys.executable, "-m", "project_setup.cli", "interview", "--dest", str(dest)],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 130
+    assert "Traceback" not in done.stderr
+    assert "interview stopped" in done.stderr
+    assert not dest.exists()

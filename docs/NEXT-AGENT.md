@@ -155,7 +155,8 @@ regression even if it looks tidier.
    before later layers had contributed their fragments.
 7. **Templates are not bundled into the wheel.** The plugin upgrades independently and a
    bundled copy would serve stale layers silently. Resolution is `--templates`, then
-   `PROJECT_SETUP_TEMPLATES`, then a source checkout, then an error naming all three.
+   `PROJECT_SETUP_TEMPLATES`, then a source checkout. After those comes the plugin that
+   `omp plugin list --json` reports at run time, and an error naming all four.
 8. **Exclude `node_modules`, `.git`, `target` from recursive scans.** Native init populates
    them and third-party files legitimately contain `@@`.
 9. **Never derive the plugin path from `$0` or the working directory.** `$0` is the shell and
@@ -270,6 +271,40 @@ Two judgement calls taken the other way:
 Left alone deliberately: the always-on set is still not deselectable, and an agent asked to
 "decide everything and apply without waiting" still stops for plan approval. The second is
 the gate working; removing it would let a model overwrite files on its own judgement.
+
+## What the third round found, and fixed
+
+Each has a test named after its symptom, listed in `AGENTS.md` beside the invariant it
+protects.
+
+1. **`plan` predicted instead of measuring.** Its report was assembled from Copier's
+   per-file lines and two static tables, with tasks off. Measured on minimal and rust-cli,
+   the old plan disagreed with apply on both greenfields: four
+   `licenses/*.txt` it promised and no apply left, and the LICENSE, `.gitignore`, `ci.yml`
+   and AGENTS.md it never mentioned. On a no-op re-apply it named seven `docs/agents` files
+   as overwritten. `plan` now rehearses the real apply in a copy and reports the
+   difference; `tools/plan_property.py` found 0 mismatches in 48 runs.
+2. **An interrupted apply left no trace.** Re-running always recovered, byte for byte, at
+   all 60 layer and generator boundaries measured. Nothing said the run was incomplete, so
+   `.project-setup-incomplete` does now. A kill inside a native init did not recover: the
+   manifest was skipped as present forever. `native_init.py` marks an init pending.
+3. **Every command outside a checkout needed two flags.** The CLI asks OMP itself.
+4. **The interview skipped every question a preset answered**, the layer selection
+   included, so `--preset rust-cli` could not drop Rust. Ctrl-C and Ctrl-D printed two
+   tracebacks, and a second interview started from blank.
+5. **Apply deleted things it had not been asked to.** Every empty directory in the
+   destination, including inside `node_modules`, and a REUSE `LICENSES/` directory on a
+   case-insensitive filesystem.
+6. **A crate was named after its directory.** Scaffolding into `ref/` failed the apply.
+7. **`just check` failed after `just aws-cdk-init` on fullstack-web.** gofmt, golangci-lint
+   and `go test` walked into the CDK app's `node_modules`, and oxlint rejected two bare
+   `.sort()` calls in the i18n drift script. Also fixed: `go.mod` said the Go that ran
+   `go mod init`, not the pinned one.
+
+Open: root `tsc --noEmit` still type-checks the CDK app's jest test, so `just check` on
+fullstack-web fails after `just aws-cdk-init` with TS2593. The fix needs the lang-ts
+tsconfig to exclude the CDK destination, which means one layer reading whether another is
+selected; nothing does that yet, and it is a design call.
 
 ## Rules
 

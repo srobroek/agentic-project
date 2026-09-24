@@ -7,15 +7,20 @@ subcommand takes --json so an agent never has to parse prose.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import shlex
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 import copier
 import yaml
+from copier.errors import CopierAnswersInterrupt, InteractiveSessionError
 
+from . import __version__
 from .catalog import (
     ANSWERS_FILE,
     LAYER_PURPOSE,
@@ -32,21 +37,71 @@ from .catalog import (
     want_var,
 )
 from .runner import (
-    LEFT_ALONE,
-    MERGED,
-    REPLACED,
-    REPORTED_OPERATIONS,
+    INCOMPLETE_FILE,
+    Changes,
+    classify,
     deselected_layers,
-    generator_destinations,
     orphaned_files,
-    place_layers,
-    prune_empty_dirs,
-    run_generators,
+    rehearse,
+    scaffold,
+    snapshot,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV_TEMPLATES = "PROJECT_SETUP_TEMPLATES"
 ENV_PRESETS = "PROJECT_SETUP_PRESETS"
+# The exact package name, not a suffix: `project-setup` is also the name of an older,
+# unrelated plugin, and matching `*/project-setup` would scaffold from its layers.
+PLUGIN_NAME = "@srobroek/project-setup"
+
+
+@functools.cache
+def installed_plugin() -> Path | None:
+    """Where OMP says the plugin is installed right now, or None.
+
+    Asked on every run rather than recorded, because a recorded path is exactly the
+    stale copy the no-bundling rule exists to prevent: the plugin upgrades on its own.
+    Never derived from `$0` or the working directory -- `$0` in an agent's shell is
+    the shell, and the working directory is the user's target repository.
+    """
+    omp = shutil.which("omp")
+    if omp is None:
+        return None
+    try:
+        proc = subprocess.run(
+            [omp, "plugin", "list", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            stdin=subprocess.DEVNULL,
+            check=False,
+        )
+        listing = json.loads(proc.stdout)
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+    for entry in listing.get("npm", []) if isinstance(listing, dict) else []:
+        if entry.get("name") == PLUGIN_NAME and entry.get("enabled", True) and entry.get("path"):
+            return Path(entry["path"])
+    return None
+
+
+def plugin_version_note(plugin: Path) -> str | None:
+    """A warning when the plugin's layers are newer or older than this CLI.
+
+    Both halves ship from the same repository, but the CLI is installed once and the
+    plugin upgrades on its own, so after an upgrade the templates can expect a CLI
+    that is not the one running them.
+    """
+    try:
+        version = json.loads((plugin / "package.json").read_text()).get("version")
+    except (OSError, ValueError):
+        return None
+    if version in (None, __version__):
+        return None
+    return (
+        f"warning: the {PLUGIN_NAME} plugin is {version} and this CLI is {__version__}. "
+        f"Reinstall the CLI from the plugin: uv tool install --reinstall {plugin}"
+    )
 
 
 def resolve_data_dir(kind: str, explicit: Path | None) -> Path:
@@ -54,15 +109,16 @@ def resolve_data_dir(kind: str, explicit: Path | None) -> Path:
 
     The templates are the plugin's payload, not the CLI's. They are deliberately not
     bundled into the wheel: the plugin can be upgraded on its own, and a bundled copy
-    would go stale without saying so. So the CLI has to be told where they are, in
-    order of precedence:
+    would go stale without saying so. In order of precedence:
 
       1. --templates / --presets
       2. PROJECT_SETUP_TEMPLATES / PROJECT_SETUP_PRESETS
       3. a source checkout, when running from one
+      4. the plugin OMP reports as installed, asked at run time
 
-    Anything else is an error that names all three, because a wrong guess here means
-    scaffolding from the wrong layer set.
+    The fourth is what makes the common case free: outside a checkout every command
+    used to need both flags, threaded through by hand. Anything else is an error that
+    names every source, because a wrong guess here scaffolds the wrong layer set.
     """
     env_var = ENV_TEMPLATES if kind == "templates" else ENV_PRESETS
     candidates: list[tuple[str, Path]] = []
@@ -75,16 +131,23 @@ def resolve_data_dir(kind: str, explicit: Path | None) -> Path:
     for _origin, path in candidates:
         if path.is_dir():
             return path
+    plugin = installed_plugin()
+    if plugin is not None and (plugin / kind).is_dir():
+        if kind == "templates" and (note := plugin_version_note(plugin)) is not None:
+            print(note, file=sys.stderr)
+        return plugin / kind
+    candidates.append(
+        (f"OMP plugin {PLUGIN_NAME}", plugin / kind if plugin else Path("(not installed)"))
+    )
 
     tried = "\n".join(f"    {origin}: {path}" for origin, path in candidates)
     raise SystemExit(
         f"error: no {kind} directory found. Tried:\n{tried}\n\n"
-        f"  Point the CLI at the plugin's {kind}, either per run:\n"
+        f"  Install the plugin with OMP, or point the CLI at a {kind} directory,\n"
+        f"  either per run:\n"
         f"    project-setup --{kind} /path/to/plugin/{kind} ...\n"
         f"  or once, for the shell:\n"
-        f"    export {env_var}=/path/to/plugin/{kind}\n\n"
-        f"  An OMP-installed plugin reports its own path:\n"
-        f"    omp plugin list --json"
+        f"    export {env_var}=/path/to/plugin/{kind}"
     )
 
 
@@ -359,6 +422,18 @@ def checkout_problems(catalog: Catalog, dest: Path, data: dict) -> list[Problem]
     turned off -- which is never, for the greenfield case every preset takes.
     """
     problems = repo_conflicts(dest, data)
+    if (dest / INCOMPLETE_FILE).is_file():
+        # Nothing else tells a killed or failed apply from a finished one: every file
+        # it got to is real, and a re-apply leaves the previous answers file in place.
+        problems.append(
+            Problem(
+                "warning",
+                "INTERRUPTED_APPLY",
+                f"an earlier apply into {dest} did not finish, so the scaffold there is "
+                f"incomplete. Run apply again to finish it; every step is safe to repeat.",
+                INCOMPLETE_FILE,
+            )
+        )
     dropped = deselected_layers(catalog, dest, data)
     if not dropped:
         return problems
@@ -434,6 +509,19 @@ def preserve_unasked(answers_file: Path, supplied: dict) -> list[str]:
     return sorted(dropped)
 
 
+def still_relevant(catalog: Catalog, defaults: dict, answers_file: Path) -> dict:
+    """The pre-filled defaults that still belong to a selected layer.
+
+    A preset's answer for a layer the user then deselected was never asked, so
+    keeping it would record `RUST_LIBRARY` in a repository with no Rust. A key that is
+    no question at all is kept, so `validate` can name it rather than it vanishing.
+    """
+    recorded = yaml.safe_load(answers_file.read_text()) or {}
+    chosen = catalog.questions_for(selected_layers(catalog, recorded))
+    every = catalog.questions_for(list(catalog.layers))
+    return {k: v for k, v in defaults.items() if k in chosen or k not in every}
+
+
 def drop_copier_bookkeeping(answers_file: Path) -> None:
     """Remove Copier's own `_`-prefixed keys from the recorded answers.
 
@@ -488,33 +576,85 @@ def seed_selection(catalog: Catalog, supplied: dict) -> dict:
     return seeded
 
 
+def interview_answers(args: argparse.Namespace, catalog: Catalog, dest: Path) -> tuple[dict, dict]:
+    """Split what the interview was handed into (pre-filled defaults, settled answers).
+
+    A preset, a data file and the destination's own previous answers are where the
+    conversation starts, not answers to skip: handed to Copier as `data`, every one of
+    them was treated as answered, so `--preset rust-cli` never showed the layer
+    selection at all and lang-rust could not be deselected. They go in as
+    `user_defaults`, which Copier pre-fills and still asks. Only `--set` settles a
+    question -- except a layer choice, which is always a pre-selection, because
+    settling one would skip the whole multiselect.
+
+    A derived value is dropped from the defaults: it is a function of other answers,
+    and a recorded one would pin whatever they were last time.
+    """
+    previous: dict = {}
+    recorded = dest / ANSWERS_FILE
+    if recorded.is_file():
+        try:
+            loaded = yaml.safe_load(recorded.read_text())
+        except yaml.YAMLError:
+            loaded = None
+        if isinstance(loaded, dict):
+            previous = {k: v for k, v in loaded.items() if not str(k).startswith("_")}
+    starting = argparse.Namespace(**{**vars(args), "set": None})
+    defaults = {**previous, **load_data(starting, catalog)}
+    settling = argparse.Namespace(preset=None, data_file=None, set=args.set)
+    answered = load_data(settling, catalog)
+    for key in [k for k in answered if k.startswith("WANT_") or k == SELECTION]:
+        defaults[key] = answered.pop(key)
+    derived = {q.name for q in catalog.questions_for(list(catalog.layers)).values() if q.derived}
+    defaults = {k: v for k, v in defaults.items() if k not in derived}
+    return seed_selection(catalog, defaults), answered
+
+
 def cmd_interview(args: argparse.Namespace, catalog: Catalog) -> int:
     """Hand the questions to Copier's own prompt engine. No LLM involved."""
     dest = Path(args.dest)
     if (problem := unusable_dest(dest)) is not None:
         print(problem, file=sys.stderr)
         return 1
+    created = not dest.exists()
     dest.mkdir(parents=True, exist_ok=True)
-    supplied = load_data(args, catalog) if (args.preset or args.data_file or args.set) else {}
-    supplied = seed_selection(catalog, supplied)
-    copier.run_copy(
-        str(catalog.interview_path),
-        dest,
-        data=supplied or None,
-        overwrite=True,
-        unsafe=False,
-    )
+    defaults, answered = interview_answers(args, catalog, dest)
+    try:
+        copier.run_copy(
+            str(catalog.interview_path),
+            dest,
+            data=answered or None,
+            user_defaults=defaults or None,
+            overwrite=True,
+            unsafe=False,
+        )
+    except (KeyboardInterrupt, CopierAnswersInterrupt, EOFError):
+        return _interview_stopped(dest, created, "interrupted")
+    except InteractiveSessionError:
+        # What Copier raises on end of input: a closed stdin, or Ctrl-D at a prompt.
+        return _interview_stopped(dest, created, "no more input")
     written = dest / ANSWERS_FILE
     if not written.is_file():
         return 1
 
     drop_copier_bookkeeping(written)
-    kept = preserve_unasked(written, supplied)
+    kept = preserve_unasked(written, {**still_relevant(catalog, defaults, written), **answered})
     print(f"\nanswers: {written}")
     if kept:
         print(f"kept {len(kept)} supplied answer(s) the interview does not ask: {', '.join(kept)}")
     print(next_commands(written, args.dest))
     return 0
+
+
+def _interview_stopped(dest: Path, created: bool, why: str) -> int:
+    """Stop cleanly: a traceback ending in CopierAnswersInterrupt told nobody anything."""
+    if created and not any(dest.iterdir()):
+        dest.rmdir()
+    print(
+        f"\ninterview stopped ({why}); nothing was written. Run it again to start over.",
+        file=sys.stderr,
+    )
+    return 130
 
 
 def next_commands(answers_file: Path, dest: str) -> str:
@@ -534,54 +674,54 @@ def next_commands(answers_file: Path, dest: str) -> str:
     )
 
 
-# One line each, in the terms a brownfield user decides in. `left-alone` exists
-# because a generator that did not write the file refuses to replace it, and a plan
-# that said "replaced outright" for a hand-written CI caller threatened a replacement
-# that never happens.
-DISPOSITION_PROSE = {
-    MERGED: "merged, your entries kept",
-    REPLACED: "replaced outright",
-    LEFT_ALONE: "left alone: yours, no generator marker",
-}
-
-
-def _files_report(result) -> None:
-    """What a brownfield user actually needs: the list of their files being replaced.
+def _files_report(result, changes: Changes) -> None:
+    """What a brownfield user actually needs: which of their files lose something.
 
     Copier overwrites by default, so a plan is the only warning before it happens.
-    Creations are counted; replacements are named, every one, because each is a file
-    somebody wrote by hand.
+    Creations are counted; every existing file that changes is named, split by
+    whether its owner loses lines, because that is the decision to make before
+    applying. Both lists come from the difference a real run made -- plan's is a
+    rehearsal in a copy -- so there is no disposition here to be wrong about.
     """
-    created, overwritten = result.files("create"), result.files("overwrite")
-    noun = "file(s) to create" if result.pretend else "file(s) created"
-    print(
-        f"{len(created)} {noun}, {len(overwritten)} to overwrite"
-        if result.pretend
-        else f"{len(created)} {noun}"
+    would = result.pretend
+    counts = [
+        f"{len(changes.create)} file(s) {'to create' if would else 'created'}",
+        f"{len(changes.overwrite)} {'to overwrite' if would else 'overwritten'}",
+        f"{len(changes.merge)} {'to merge into' if would else 'merged into'}",
+    ]
+    if changes.remove:
+        counts.append(f"{len(changes.remove)} {'to remove' if would else 'removed'}")
+    print(", ".join(counts))
+
+    def listing(paths: list[str], heading: str, note) -> None:
+        if not paths:
+            return
+        width = max(len(p) for p in paths)
+        print(f"\n{len(paths)} existing file(s) {heading}:")
+        for path in paths:
+            print(f"  {path:<{width}}  {note(path)}".rstrip())
+
+    def link_note(path: str) -> str:
+        return f"now a link to {changes.links[path]}" if path in changes.links else ""
+
+    listing(
+        changes.overwrite,
+        "would be overwritten" if would else "overwritten",
+        lambda p: " ".join(
+            part for part in (f"{changes.lost[p]} line(s) of yours not kept", link_note(p)) if part
+        ),
     )
-    if overwritten:
-        verb = "would be overwritten" if result.pretend else "overwritten"
-        print(f"\n{len(overwritten)} existing file(s) {verb}:")
-        for path in overwritten:
-            print(f"  {path}")
-        if result.pretend:
-            print("\n  Copier overwrites by default. Commit or move anything you want to keep.")
-
-    if not result.pretend:
-        return
-    # Copier places none of these, so none of them appear above. They are folded from
-    # the `.d/` fragments after every layer, which is exactly why a plan that only
-    # parsed Copier's output stayed silent about a brownfield .pre-commit-config.yaml.
-    generated = generator_destinations(result.dest, result.layers)
-    if not generated:
-        return
-    width = max(len(path) for path, _ in generated)
-    print(f"\n{len(generated)} existing path(s) a generator would rewrite:")
-    for path, how in generated:
-        print(f"  {path:<{width}}  {DISPOSITION_PROSE[how]}")
+    listing(
+        changes.merge,
+        ("would be merged into" if would else "merged into") + ", every line of yours kept",
+        link_note,
+    )
+    listing(changes.remove, "would be removed" if would else "removed", lambda p: "")
+    if would and (changes.overwrite or changes.remove):
+        print("\n  Commit or move anything you want to keep before applying.")
 
 
-def _report(result, *, json_out: bool, verb: str) -> int:
+def _report(result, changes: Changes, *, json_out: bool, verb: str) -> int:
     if json_out:
         print(
             json.dumps(
@@ -600,21 +740,10 @@ def _report(result, *, json_out: bool, verb: str) -> int:
                         }
                         for s in result.placed
                     ],
-                    # Named per operation so a caller can warn before overwriting.
-                    "files": {
-                        operation: result.files(operation) for operation in REPORTED_OPERATIONS
-                    },
-                    # Copier places none of these, so `files` cannot report them.
-                    # `keeps_existing` answers "does my content survive"; `disposition`
-                    # also separates a merge from a file the generator will not touch.
-                    "generator_targets": [
-                        {
-                            "path": path,
-                            "keeps_existing": how != REPLACED,
-                            "disposition": how,
-                        }
-                        for path, how in generator_destinations(result.dest, result.layers)
-                    ],
+                    # What the run did to the destination, from the difference it made,
+                    # not from what each step was expected to do. `overwrite` loses
+                    # lines (`lines_lost` counts them); `merge` keeps every one.
+                    "files": changes.as_json(),
                     "generated": [
                         {
                             "script": s.name,
@@ -653,38 +782,33 @@ def _report(result, *, json_out: bool, verb: str) -> int:
         for line in lines[1:]:
             print(f"           {line.strip()}")
     print(f"total {result.seconds:.2f}s")
-    _files_report(result)
+    _files_report(result, changes)
+    if not result.ok:
+        print(
+            f"\n{'apply would stop' if result.pretend else 'apply stopped'} at the step "
+            f"marked FAIL above, leaving the scaffold incomplete. Fix it and "
+            f"{'plan again' if result.pretend else 're-run apply'}; every step is safe to repeat."
+        )
     return 0 if result.ok else 1
 
 
+def _refuse_incomplete(catalog: Catalog, data: dict, verb: str) -> bool:
+    problems = [p for p in validate_data(catalog, data) if p.level == "error"]
+    for p in problems:
+        print(f"  {p}", file=sys.stderr)
+    if problems:
+        print(f"refusing to {verb} against an incomplete answer set", file=sys.stderr)
+    return bool(problems)
+
+
 def cmd_plan(args: argparse.Namespace, catalog: Catalog) -> int:
-    data = load_data(args, catalog)
-    problems = [p for p in validate_data(catalog, data) if p.level == "error"]
-    if problems:
-        for p in problems:
-            print(f"  {p}", file=sys.stderr)
-        print("refusing to plan against an incomplete answer set", file=sys.stderr)
-        return 1
-    for conflict in checkout_problems(catalog, Path(args.dest), data):
-        print(f"  {conflict}", file=sys.stderr)
-    result = place_layers(
-        catalog,
-        Path(args.dest),
-        data,
-        pretend=True,
-        run_tasks=False,
-        quiet=args.json,
-    )
-    return _report(result, json_out=args.json, verb="would place")
+    """Rehearse the whole apply in a copy of the destination and report the difference.
 
-
-def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
+    Tasks and generators run too, so the plan is what apply does rather than a
+    prediction of it: two predictions were caught lying by hand before this.
+    """
     data = load_data(args, catalog)
-    problems = [p for p in validate_data(catalog, data) if p.level == "error"]
-    if problems:
-        for p in problems:
-            print(f"  {p}", file=sys.stderr)
-        print("refusing to apply against an incomplete answer set", file=sys.stderr)
+    if _refuse_incomplete(catalog, data, "plan"):
         return 1
     dest = Path(args.dest)
     if (problem := unusable_dest(dest)) is not None:
@@ -692,29 +816,41 @@ def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
         return 1
     for conflict in checkout_problems(catalog, dest, data):
         print(f"  {conflict}", file=sys.stderr)
-    dest.mkdir(parents=True, exist_ok=True)
-    result = place_layers(
-        catalog,
-        dest,
-        data,
-        run_tasks=not args.no_tasks,
-        quiet=args.json,
-    )
-    if result.ok:
-        prune_empty_dirs(dest)
-        run_generators(
+    result, changes = rehearse(catalog, dest, data)
+    code = _report(result, changes, json_out=args.json, verb="would place")
+    if not args.json:
+        _warnings_report(result)
+    return code
+
+
+def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
+    data = load_data(args, catalog)
+    if _refuse_incomplete(catalog, data, "apply"):
+        return 1
+    dest = Path(args.dest)
+    if (problem := unusable_dest(dest)) is not None:
+        print(problem, file=sys.stderr)
+        return 1
+    for conflict in checkout_problems(catalog, dest, data):
+        print(f"  {conflict}", file=sys.stderr)
+    before = snapshot(dest)
+    try:
+        result = scaffold(
+            catalog,
             dest,
-            result,
-            # Copier applies a layer's defaults itself; a generator argument is
-            # assembled out here and would otherwise miss every unanswered one.
-            data={**catalog.defaults_for(result.layers), **data},
-            quiet=True,
+            data,
+            keep_dirs=before.dirs,
+            run_tasks=not args.no_tasks,
+            quiet=args.json,
         )
-        (dest / ANSWERS_FILE).write_text(
-            "# Written by project-setup apply. Re-run with --data-file to reproduce.\n"
-            + yaml.safe_dump(data, sort_keys=True)
+    except KeyboardInterrupt:
+        print(
+            f"\ninterrupted: {dest} is partly scaffolded. Re-run the same apply to "
+            f"finish it; every step is safe to repeat.",
+            file=sys.stderr,
         )
-    code = _report(result, json_out=args.json, verb="placed")
+        return 130
+    code = _report(result, classify(before, snapshot(dest)), json_out=args.json, verb="placed")
 
     # Last, so these are what is left on screen: what still needs a real value, and
     # what the run skipped. A placeholder is a reminder; a skipped `cargo init` means

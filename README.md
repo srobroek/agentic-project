@@ -43,6 +43,12 @@ it scaffolds wherever you happen to be standing.
     project-setup plan     --data-file ../my-app/.project-setup-answers.yml --dest ../my-app
     project-setup apply    --data-file ../my-app/.project-setup-answers.yml --dest ../my-app
 
+`--preset` and `--data-file` pre-fill the prompts rather than answering them, so a preset's
+layers show up already selected in the multiselect and can still be deselected. A second
+interview in the same destination pre-fills from its answers file. `--set KEY=VALUE` is the
+one way to settle a question so it is not asked. Ctrl-C or end of input stops the
+interview, writes nothing, and exits 130.
+
 ## Commands
 
 | Command | Purpose |
@@ -51,33 +57,39 @@ it scaffolds wherever you happen to be standing.
 | `presets [--json] [--show NAME]` | standard project shapes |
 | `interview --dest D` | ask the questions, write an answers file, print the next command. No model |
 | `validate [--json]` | check an answer set, including every declared validator. Writes nothing |
-| `plan --dest D [--json]` | dry run. Writes nothing, and names every file it would overwrite or fold into |
-| `apply --dest D [--json]` | scaffold, run tasks, run generators |
+| `plan --dest D [--json]` | rehearse the whole apply in a copy of D and report the difference. Writes nothing to D |
+| `apply --dest D [--json]` | scaffold, run tasks, run generators, and report what changed |
 
 Answer sources compose, later winning: `--preset`, then `--data-file`, then `--set KEY=VALUE`.
 
 `plan` is the only warning before an existing file is replaced, because Copier overwrites by
-default. It counts what it would create, lists what it would overwrite by name, and lists
-separately the shared files the generators fold into — Copier never places those, so its own
-per-file output cannot mention them:
+default. It copies the destination to a temporary directory, runs the real apply there with
+tasks and generators, and reports the difference file by file. An existing file that changes
+is listed as overwritten when any of its non-blank lines is gone, and as merged when every
+one is still there:
 
-    61 file(s) to create, 2 to overwrite
+    66 file(s) to create, 2 to overwrite, 3 to merge into
 
     2 existing file(s) would be overwritten:
-      CONTRIBUTING.md
-      README.md
+      CONTRIBUTING.md  1 line(s) of yours not kept
+      README.md        2 line(s) of yours not kept
 
-    5 existing path(s) a generator would rewrite:
-      .gitignore                merged, your entries kept
-      .pre-commit-config.yaml   merged, your entries kept
-      justfile                  merged, your entries kept
-      .github/workflows/ci.yml  left alone: yours, no generator marker
-      CLAUDE.md                 replaced outright
+    3 existing file(s) would be merged into, every line of yours kept:
+      .gitignore
+      CLAUDE.md   now a link to AGENTS.md
+      justfile
 
-Three dispositions, not two: `gen_caller.py` will not touch a `ci.yml` it did not write, and
-a plan that promised to replace one threatened something that never happens. The justfile is
-on the second list only, because the `just` layer skips an existing one and the generator
-folds its import block into the file you already had.
+A file a step leaves untouched is on no list, and a step that refuses one says why in the
+warnings at the end. `apply` prints the same report from the same comparison.
+`tools/plan_property.py` checks that the two agree for every stack, greenfield, re-applied,
+edited by hand, and brownfield. The copy leaves out `.git`, `node_modules`, `.venv`, `target`,
+`dist` and `__pycache__`, which no step writes into.
+
+`apply` writes `.project-setup-incomplete` before its first step and removes it after the
+last. A run that was killed or failed a step leaves it behind. `validate`, `plan` and `apply`
+then report `INTERRUPTED_APPLY`. Re-running the same apply finishes the scaffold, because
+every step is idempotent. That includes a native init stopped between writing its manifest
+and reconciling it.
 
 `apply` ends with two lists: answers still carrying a placeholder, and any step that did less
 than the full job. The second is how a missing toolchain surfaces, since a skipped
@@ -90,25 +102,21 @@ than the full job. The second is how a missing toolchain surfaces, since a skipp
 
 The templates are the plugin's payload, not the CLI's, and are deliberately **not** bundled
 into the wheel: the plugin can be upgraded on its own, and a bundled copy would go stale
-without saying so. So the CLI has to be told where they are:
+without saying so. The CLI resolves them at run time:
 
 | Precedence | How |
 | --- | --- |
 | 1 | `--templates DIR` / `--presets DIR` |
 | 2 | `PROJECT_SETUP_TEMPLATES` / `PROJECT_SETUP_PRESETS` |
 | 3 | a source checkout, when running from one |
+| 4 | the `@srobroek/project-setup` plugin that `omp plugin list --json` reports |
 
-Running from this repository, none of that is needed. Installed from a plugin, ask OMP where
-the plugin lives:
+With the plugin installed through OMP, no flag is needed. The CLI asks OMP on every run
+rather than recording a path, so an upgraded plugin is used immediately. When the plugin's
+`package.json` version differs from the CLI's, the CLI prints the `uv tool install
+--reinstall` command that brings them back in step.
 
-    PLUGIN=$(omp plugin list --json | python3 -c '
-    import json, sys
-    for e in json.load(sys.stdin).get("npm", []):
-        if e.get("name", "").endswith("/project-setup"):
-            print(e["path"]); break')
-    project-setup --templates "$PLUGIN/templates" --presets "$PLUGIN/presets" catalog
-
-If none of the three resolve, the CLI fails naming all three rather than guessing. A wrong
+If none of the four resolve, the CLI fails naming each one rather than guessing. A wrong
 guess scaffolds from the wrong layer set.
 
 ## How a scaffold runs
@@ -200,7 +208,7 @@ the files; removing somebody's CI is not this tool's call.
 | Re-apply | byte-identical, 0 changes |
 | Unresolved tokens | 0 |
 | Empty directories | 0 |
-| Tests | 197 unit + 12 presets end to end |
+| Tests | 229 unit + 12 presets end to end, each in 4 plan dispositions |
 | Fresh scaffold | `just setup` and `just check` green, all four languages |
 
 CPU time rather than wall clock, because wall clock tracks machine load.

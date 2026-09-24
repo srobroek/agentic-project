@@ -33,7 +33,7 @@ _tasks:
   - '@@ _copier_python @@'
   - '@@ _copier_conf.src_path @@/tasks/native_init.py'
   - rust
-  - '@@ ''lib'' if RUST_LIBRARY else ''bin'' @@'
+  - '@@ PROJECT_NAME @@:@@ ''lib'' if RUST_LIBRARY else ''bin'' @@'
   - '@@ SPDX_ID @@'
 
 CARGO_DENY_VERSION:
@@ -63,6 +63,12 @@ JOB_TIMEOUT_MINUTES:
   type: str
   help: Per-job CI timeout; a hung job holds a runner until it fires
   default: '15'
+PROJECT_NAME:
+  type: str
+  help: Repository name, lowercase with dashes
+  validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z](?:[a-z0-9-]*[a-z0-9])?$'')) %}PROJECT_NAME
+    must be lowercase letters, digits and dashes, starting with a letter and ending with a letter or digit
+    -- my-app, flint, api2. It becomes the crate, package and module name{% endif %}'
 RUST_LIBRARY:
   type: bool
   help: Library crate? (a binary crate commits Cargo.lock)

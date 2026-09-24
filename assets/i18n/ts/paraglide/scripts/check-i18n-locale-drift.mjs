@@ -11,6 +11,13 @@ function fail(message) {
   process.exit(1);
 }
 
+// oxlint's require-array-sort-compare is an error, so a bare `.sort()` failed the
+// scaffold's own `just check`. Code-point order is what `.sort()` meant here.
+function byCodePoint(a, b) {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+}
+
 function readJson(filePath, label) {
   try {
     return JSON.parse(readFileSync(filePath, 'utf8'));
@@ -90,8 +97,8 @@ if (baseKeys.size === 0) fail(`base catalog ${baseLocale} has no messages`);
 let drift = false;
 for (const locale of locales) {
   const keys = keysForLocale(locale);
-  const missing = [...baseKeys].filter((key) => !keys.has(key)).sort();
-  const orphaned = [...keys].filter((key) => !baseKeys.has(key)).sort();
+  const missing = [...baseKeys].filter((key) => !keys.has(key)).sort(byCodePoint);
+  const orphaned = [...keys].filter((key) => !baseKeys.has(key)).sort(byCodePoint);
 
   if (missing.length === 0 && orphaned.length === 0) {
     console.log(`${locale}: complete (${keys.size} keys)`);

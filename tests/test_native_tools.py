@@ -30,6 +30,117 @@ def native_init():
     return load_module(NATIVE_INIT, "native_init_under_test")
 
 
+def fake_tool(native_init, monkeypatch, writes: dict[str, str]) -> list[list[str]]:
+    """Stand in for the native tool: record the command, write these files."""
+    calls: list[list[str]] = []
+
+    def run(cmd, owns=""):
+        calls.append(cmd)
+        for name, text in writes.items():
+            if not Path(name).exists():
+                Path(name).parent.mkdir(parents=True, exist_ok=True)
+                Path(name).write_text(text)
+        return 0
+
+    monkeypatch.setattr(native_init, "run", run)
+    return calls
+
+
+def test_the_crate_is_named_after_the_project_not_the_directory(native_init, tmp_path, monkeypatch):
+    """`cargo init` names the package after its directory: a scaffold into `ref/` failed
+    the whole apply on a Rust keyword, and any other name disagreed with PROJECT_NAME."""
+    monkeypatch.chdir(tmp_path)
+    calls = fake_tool(native_init, monkeypatch, {"Cargo.toml": '[package]\nname = "my-app"\n'})
+    monkeypatch.setattr("sys.argv", ["native_init.py", "rust", "my-app:bin", "MIT"])
+
+    assert native_init.main() == 0
+    assert calls == [["cargo", "init", "--name", "my-app", "--bin", "--quiet"]]
+
+
+def test_an_interrupted_init_is_finished_by_the_next_run(native_init, tmp_path, monkeypatch):
+    """An apply killed between `bun init` and the reconciliation left a package.json
+    with no dev tools and bun's CLAUDE.md in place. Every later apply skipped the
+    manifest as present, folded bun's CLAUDE.md into AGENTS.md, and reported clean."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / native_init.PENDING.format(kind="ts")).write_text("[]\n")
+    (tmp_path / "package.json").write_text('{"name": "tmp"')  # cut off mid-write
+    (tmp_path / "CLAUDE.md").write_text("bun's generic agent file\n")
+    fake_tool(native_init, monkeypatch, {"package.json": '{"name": "tmp"}\n'})
+    monkeypatch.setattr("sys.argv", ["native_init.py", "ts", "my-app", "oxlint=1.0.0"])
+
+    assert native_init.main() == 0
+
+    assert not (tmp_path / "CLAUDE.md").exists(), "bun's file survived the recovery"
+    manifest = json.loads((tmp_path / "package.json").read_text())
+    assert manifest["name"] == "my-app"
+    assert "oxlint" in manifest["devDependencies"]
+    assert not (tmp_path / native_init.PENDING.format(kind="ts")).exists()
+
+
+def test_a_file_that_existed_before_an_interrupted_init_is_still_kept(
+    native_init, tmp_path, monkeypatch
+):
+    """By the second run bun's own leftovers look pre-existing too; the record of what
+    was there first is what keeps a repository's CLAUDE.md."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / native_init.PENDING.format(kind="ts")).write_text('["CLAUDE.md"]\n')
+    (tmp_path / "CLAUDE.md").write_text("the repository's own\n")
+    fake_tool(native_init, monkeypatch, {"package.json": '{"name": "tmp"}\n'})
+    monkeypatch.setattr("sys.argv", ["native_init.py", "ts", "my-app", ""])
+
+    assert native_init.main() == 0
+    assert (tmp_path / "CLAUDE.md").read_text() == "the repository's own\n"
+
+
+def test_a_manifest_with_no_pending_marker_is_still_left_alone(native_init, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "go.mod").write_text("module mine\n")
+    calls = fake_tool(native_init, monkeypatch, {})
+    monkeypatch.setattr("sys.argv", ["native_init.py", "go", "my-app"])
+
+    assert native_init.main() == 0
+    assert calls == []
+    assert (tmp_path / "go.mod").read_text() == "module mine\n"
+
+
+def test_go_mod_says_the_pinned_version_and_ignores_node_modules(
+    native_init, tmp_path, monkeypatch
+):
+    """`go mod init` wrote the Go that ran it (1.27.1 against a 1.26 pin), and `./...`
+    walked into a CDK app's node_modules, whose `%name%.template.go` files do not parse:
+    golangci-lint and `go test` both failed the scaffold's own `just check`."""
+    monkeypatch.chdir(tmp_path)
+    fake_tool(native_init, monkeypatch, {"go.mod": "module my-app\n\ngo 1.27.1\n"})
+    monkeypatch.setattr("sys.argv", ["native_init.py", "go", "my-app", "1.26"])
+
+    assert native_init.main() == 0
+
+    lines = (tmp_path / "go.mod").read_text().splitlines()
+    assert "go 1.26" in lines and "go 1.27.1" not in lines
+    assert "ignore node_modules" in lines
+
+
+def test_the_go_format_recipe_stays_out_of_node_modules(tmp_path):
+    """`gofmt -w .` rewrote files inside node_modules and failed on the ones that do
+    not parse. Runs the recipe's own command line against such a tree."""
+    import shutil
+    import subprocess
+
+    if shutil.which("gofmt") is None:
+        pytest.skip("gofmt is not installed")
+    recipe = (TEMPLATES / "lang-go/.just.d/go.just").read_text().split("go-fmt:\n", 1)[1]
+    command = recipe.splitlines()[0].strip().replace("-w", "-l")
+    (tmp_path / "main.go").write_text("package main\nfunc main(){}\n")
+    broken = tmp_path / "infra/node_modules/aws-cdk/%name%.template.go"
+    broken.parent.mkdir(parents=True)
+    broken.write_text("package %name%\n")
+
+    done = subprocess.run(command, shell=True, cwd=tmp_path, capture_output=True, text=True)
+
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == "./main.go"
+
+
 def test_bun_leftovers_are_removed_when_bun_created_them(native_init, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "package.json").write_text('{"name": "wrong-name"}\n')

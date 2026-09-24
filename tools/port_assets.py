@@ -88,7 +88,11 @@ REMAP: dict[str, list[tuple[str, str]]] = {
 # Assets that must not be ported 1:1 because they are instantiated per-item
 # rather than once per project.
 SKIP_ASSETS: dict[str, set[str]] = {
-    "governance": {"ADR.md.template", "LICENSE.source"},
+    # `licenses` is a task asset, never placed: the task reads the one text it needs
+    # from the layer. Placing the pool and deleting it afterwards removed whatever the
+    # destination kept under that name, and on a case-insensitive filesystem that
+    # included a REUSE-style `LICENSES/` directory.
+    "governance": {"ADR.md.template", "LICENSE.source", "licenses"},
 }
 
 # ---------------------------------------------------------------- token policy
@@ -466,6 +470,7 @@ TASKS: dict[str, list[dict]] = {
             "command": [
                 "@@ _copier_python @@",
                 "@@ _copier_conf.src_path @@/tasks/materialise_license.py",
+                "@@ _copier_conf.src_path @@/tasks/licenses",
                 "@@ SPDX_ID @@",
             ]
         },
@@ -485,7 +490,11 @@ TASKS: dict[str, list[dict]] = {
                 "@@ _copier_python @@",
                 "@@ _copier_conf.src_path @@/tasks/native_init.py",
                 "rust",
-                "@@ 'lib' if RUST_LIBRARY else 'bin' @@",
+                # The crate name, because `cargo init` otherwise names the package
+                # after the directory: a scaffold into `ref/` or `my.app/` failed the
+                # whole apply ("`ref` cannot be used as a package name"), and any other
+                # directory produced a crate that disagreed with PROJECT_NAME.
+                "@@ PROJECT_NAME @@:@@ 'lib' if RUST_LIBRARY else 'bin' @@",
                 # The licence, because `cargo init` writes no `license` field and
                 # cargo-deny falls back to reading the LICENSE file. With SPDX_ID=NONE
                 # there is no such file, and `cargo deny check licenses` then fails the
@@ -530,6 +539,8 @@ TASKS: dict[str, list[dict]] = {
                 "@@ _copier_conf.src_path @@/tasks/native_init.py",
                 "go",
                 "@@ PROJECT_NAME @@",
+                # The pinned version, because `go mod init` writes whichever Go ran it.
+                "@@ GO_VERSION @@",
             ],
         }
     ],
@@ -542,8 +553,8 @@ EXTRA_TOKENS: dict[str, list[str]] = {
     "governance": ["SPDX_ID", "ADRS"],
     # Referenced only by a _task command, so the body scanner cannot find them.
     "lang-ts": ["PROJECT_NAME", "OXLINT_VERSION", "TSGOLINT_VERSION", "KNIP_VERSION"],
-    "lang-rust": ["SPDX_ID"],
-    "lang-go": ["PROJECT_NAME"],
+    "lang-rust": ["PROJECT_NAME", "SPDX_ID"],
+    "lang-go": ["PROJECT_NAME", "GO_VERSION"],
     "lang-python": ["PROJECT_NAME"],
     # Referenced only by a destination path, so the body scanner cannot find it.
     "i18n": ["I18N_PROJECT_DIR"],
@@ -554,7 +565,7 @@ EXTRA_TOKENS: dict[str, list[str]] = {
 # Assets a task needs to read, copied into <layer>/tasks/ and excluded from output.
 # ADR.md.template is instantiated once per manifest entry, which Copier cannot loop.
 TASK_ASSETS: dict[str, list[str]] = {
-    "governance": ["ADR.md.template"],
+    "governance": ["ADR.md.template", "licenses"],
 }
 
 TASK_SCRIPTS: dict[str, list[str]] = {
@@ -761,7 +772,7 @@ def port_layer(src: Path, dst: Path, layer: str) -> tuple[int, int, set[str], se
 
     for f in sorted(p for p in src.rglob("*") if p.is_file()):
         rel = f.relative_to(src)
-        if rel.name in skip or is_junk(rel):
+        if rel.name in skip or rel.parts[0] in skip or is_junk(rel):
             continue
         mapped = Path(remap(layer, rel.as_posix()))
         if rel.name.endswith(".template"):
@@ -803,9 +814,12 @@ def install_tasks(layer: str, dst: Path) -> None:
         shutil.copy2(src, target_dir / name)
     for name in assets:
         src = ASSETS_ROOT[0] / LAYERS[layer] / name
-        if not src.is_file():
+        if src.is_dir():
+            shutil.copytree(src, target_dir / name, dirs_exist_ok=True)
+        elif src.is_file():
+            shutil.copy2(src, target_dir / name)
+        else:
             raise SystemExit(f"FATAL {layer}: task asset missing: {src}")
-        shutil.copy2(src, target_dir / name)
 
 
 TASK_REF = re.compile(r"src_path @@/tasks/([^\s'\"]+)")

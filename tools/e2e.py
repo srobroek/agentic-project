@@ -13,6 +13,7 @@ run needs no toolchain but uses one when it is there.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -23,6 +24,7 @@ import tempfile
 import time
 from pathlib import Path
 
+import plan_property
 import yaml
 
 from project_setup.cli import load_preset
@@ -222,6 +224,18 @@ def check_preset(preset: str, workdir: Path) -> dict:
     if not (dest / ".project-setup-answers.yml").is_file():
         raise Failure("no answers file recorded")
 
+    # 9. plan is honest: for every disposition a destination can be in, what plan
+    # reported is exactly the difference the apply after it made.
+    found = {
+        name: problems
+        for name, problems in plan_property.check_stack(
+            workdir / f"{preset}-plan", answer_file
+        ).items()
+        if problems
+    }
+    if found:
+        shown = "; ".join(f"{name}: {problems[:3]}" for name, problems in found.items())
+        raise Failure(f"plan disagreed with apply in {len(found)} disposition(s): {shown}")
     return {
         "layers": len(result["layers"]),
         "files": sum(1 for p in dest.rglob("*") if p.is_file() and ours(p, dest)),
@@ -236,6 +250,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--keep", action="store_true", help="keep the output directory")
     parser.add_argument("--preset", help="run only this preset")
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=max(1, (os.cpu_count() or 2) // 2),
+        help="presets to run at once; each runs in its own directory",
+    )
     args = parser.parse_args()
 
     if not CLI.is_file():
@@ -250,17 +270,23 @@ def main() -> int:
     print("-" * len(header))
 
     failures: list[tuple[str, str]] = []
-    for preset in names:
+
+    def one(preset: str) -> tuple[str, dict | None, str]:
         try:
-            stats = check_preset(preset, workdir)
+            return preset, check_preset(preset, workdir), ""
         except Failure as exc:
-            failures.append((preset, str(exc)))
-            print(f"{preset:<18}{'':>7}{'':>7}{'':>8}{'':>8}  FAIL")
-        else:
-            print(
-                f"{preset:<18}{stats['layers']:>7}{stats['files']:>7}"
-                f"{stats['apply_seconds']:>8}{stats['total_seconds']:>8}  ok"
-            )
+            return preset, None, str(exc)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
+        for preset, stats, reason in pool.map(one, names):
+            if stats is None:
+                failures.append((preset, reason))
+                print(f"{preset:<18}{'':>7}{'':>7}{'':>8}{'':>8}  FAIL")
+            else:
+                print(
+                    f"{preset:<18}{stats['layers']:>7}{stats['files']:>7}"
+                    f"{stats['apply_seconds']:>8}{stats['total_seconds']:>8}  ok"
+                )
     print("-" * len(header))
 
     if failures:
@@ -271,7 +297,8 @@ def main() -> int:
         print(
             f"\nall {len(names)} presets passed: "
             "validate, plan-writes-nothing, apply, no tokens, expected and forbidden "
-            "files, no build artifacts, no empty dirs, idempotent re-apply, answers recorded"
+            "files, no build artifacts, no empty dirs, idempotent re-apply, answers "
+            "recorded, plan matches apply in 4 dispositions"
         )
 
     if args.keep:

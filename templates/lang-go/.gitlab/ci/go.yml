@@ -14,7 +14,7 @@ go-lint:
   extends: .go-setup
   stage: lint
   script:
-    - test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+    - unformatted="$(find . \( -name node_modules -o -name vendor -o -name .git \) -prune -o -name '*.go' -type f -exec gofmt -l {} +)"; test -z "$unformatted" || { echo "$unformatted"; exit 1; }
     - golangci-lint run ./...
     - go mod tidy -diff
     - govulncheck ./...

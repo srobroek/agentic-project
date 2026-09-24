@@ -73,47 +73,31 @@ def capture_fds() -> Iterator[Path]:
 # Order matters: gen_caller reads members.json, gen_steering reads the whole tree.
 # Some generators need more than the destination. gen_caller writes an `on: push`
 # branch list, so a wrong branch means a workflow that never runs and reports nothing.
-# The third element is every path the generator rewrites. Copier never places these
-# -- they are folded from the `.d/` fragments afterwards -- so Copier's own per-file
-# lines never mention them, and `plan` reported "2 files would be overwritten" for a
-# brownfield repository whose .gitignore, .pre-commit-config.yaml and AGENTS.md were
-# all about to be rewritten as well. `plan` is documented as the only warning before
-# an existing file is replaced, so it has to name these too.
-GENERATORS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
-    ("scripts/fold_gitignore.py", (), (".gitignore",)),
-    ("scripts/merge_hooks.py", (), (".pre-commit-config.yaml",)),
-    ("scripts/gen_justfile.py", (), ("justfile",)),
+# What a generator writes is not declared here. `plan` rehearses the whole apply in a
+# copy of the destination and reports the difference, because every static table of
+# "what a generator does to this path" has been wrong in use: it listed the justfile
+# as both overwritten and merged, and promised "replaced outright" for a ci.yml the
+# generator would never touch.
+GENERATORS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("scripts/fold_gitignore.py", ()),
+    ("scripts/merge_hooks.py", ()),
+    ("scripts/gen_justfile.py", ()),
     # --keep-hand-owned is what the script's own help calls "for a render that must not
     # fail", and this is that render. Without it a brownfield repository with its own
     # .github/workflows/ci.yml made the generator exit 3, which marked the whole apply
     # FAIL and suppressed the placeholder report over a scaffold that was otherwise
     # complete. Leaving somebody's CI alone is the correct outcome, not a failure.
-    (
-        "scripts/gen_caller.py",
-        ("--default-branch", "{DEFAULT_BRANCH}", "--keep-hand-owned"),
-        (".github/workflows/ci.yml",),
-    ),
-    ("scripts/gen_steering.py", (), ("docs/agents",)),
-    ("scripts/install_agents_index.py", (), ("AGENTS.md", "CLAUDE.md")),
+    ("scripts/gen_caller.py", ("--default-branch", "{DEFAULT_BRANCH}", "--keep-hand-owned")),
+    ("scripts/gen_steering.py", ()),
+    ("scripts/install_agents_index.py", ()),
 )
-# What a generator does to a path that is already there, which is the part a
-# brownfield user needs in order to decide. Three outcomes, not two: `gen_caller`
-# refuses a ci.yml it did not write, so `plan` promising "replaced outright" for a
-# hand-written caller threatened something that never happens.
-MERGED, REPLACED, LEFT_ALONE = "merged", "replaced", "left-alone"
-GENERATOR_DISPOSITION = {
-    ".gitignore": MERGED,
-    ".pre-commit-config.yaml": MERGED,
-    "justfile": MERGED,
-    "AGENTS.md": MERGED,
-    ".github/workflows/ci.yml": REPLACED,
-    "CLAUDE.md": REPLACED,
-    "docs/agents": REPLACED,
-}
-# A generated file names its generator in its first line. Without that line the file
-# is somebody's own, and the generator named here leaves it where it is rather than
-# replacing it, so `plan` has to say that instead.
-HAND_OWNED_REFUSAL = {".github/workflows/ci.yml": "gen_caller.py"}
+# Not ours, never scanned and never copied into a rehearsal. Native init populates
+# them, they can be enormous, and nothing here writes into them.
+SCAN_SKIP = frozenset({".git", "node_modules", ".venv", "target", "dist", "__pycache__"})
+# Present from the moment apply starts writing until it has finished, so a run that
+# was killed, or failed a step, is visible in the checkout rather than looking like
+# a scaffold. Re-running apply finishes the job: every step is idempotent.
+INCOMPLETE_FILE = ".project-setup-incomplete"
 # Copier announces one line per file it touches. Parsing them is what lets `plan`
 # answer the only question a brownfield user has: what of mine gets replaced?
 # `conflict` precedes `overwrite` for the same path, so `overwrite` is the signal.
@@ -267,23 +251,28 @@ def place_layers(
     return result
 
 
-def prune_empty_dirs(dest: Path) -> list[str]:
+def prune_empty_dirs(dest: Path, keep: frozenset[str] = frozenset()) -> list[str]:
     """Remove directories left empty because their contents were excluded.
 
     Copier creates a directory before deciding that every file inside it is
     excluded, so a forge the project does not use still leaves an empty `.gitlab/`
     behind. Deepest-first so nested shells collapse in one pass.
+
+    Only a directory this run created goes. `keep` is every directory that existed
+    beforehand: a brownfield repository's own empty `logs/`, and every empty
+    directory inside node_modules, used to be deleted without a word.
     """
     removed: list[str] = []
     for path in sorted(
-        (p for p in dest.rglob("*") if p.is_dir()),
+        (Path(root) for root, _dirs, _files in walk(dest) if Path(root) != dest),
         key=lambda p: len(p.parts),
         reverse=True,
     ):
-        if ".git" in path.parts or any(path.iterdir()):
+        relative = path.relative_to(dest).as_posix()
+        if relative in keep or any(path.iterdir()):
             continue
         path.rmdir()
-        removed.append(str(path.relative_to(dest)))
+        removed.append(relative)
     return removed
 
 
@@ -309,53 +298,222 @@ def generator_args(extra: tuple[str, ...], answers: dict) -> list[str]:
     return out
 
 
-def generator_destinations(dest: Path, layers: list[str]) -> list[tuple[str, str]]:
-    """Existing paths a generator will rewrite, and what it does to each one.
+def walk(root: Path) -> Iterator[tuple[str, list[str], list[str]]]:
+    """`os.walk`, never descending into SCAN_SKIP, and never following a link."""
+    for current, dirs, files in os.walk(root):
+        kept = []
+        for name in dirs:
+            if name in SCAN_SKIP:
+                continue
+            if os.path.islink(os.path.join(current, name)):
+                # A link to a directory is an entry, not a tree to scan.
+                files.append(name)
+                continue
+            kept.append(name)
+        dirs[:] = kept
+        yield current, dirs, files
 
-    A generator only runs when the layer that owns its script was placed, so the
-    answer depends on the selected layers rather than on the templates as a whole.
-    Reported by `plan`, which is the one warning a brownfield user gets and which
-    Copier's own per-file lines cannot supply: Copier never touches these paths.
+
+@dataclass(frozen=True)
+class Snapshot:
+    """Every path apply could touch: file bytes, or a link's target as a string.
+
+    `through` is what a reader of each link saw, wherever it points, because a
+    link's content is what somebody loses when it is replaced.
     """
-    from .catalog import ALWAYS_ON
 
-    owners = {
-        "scripts/fold_gitignore.py": "base",
-        "scripts/merge_hooks.py": "hooks",
-        "scripts/gen_justfile.py": "just",
-        "scripts/gen_caller.py": "ci",
-        "scripts/gen_steering.py": "steering",
-        "scripts/install_agents_index.py": "steering",
-    }
-    found: list[tuple[str, str]] = []
-    for rel, _extra, destinations in GENERATORS:
-        owner = owners.get(rel)
-        if owner is not None and owner not in layers and owner not in ALWAYS_ON:
+    files: dict[str, bytes | str]
+    dirs: frozenset[str]
+    through: dict[str, bytes] = field(default_factory=dict, compare=False)
+
+    def text(self, relative: str) -> str:
+        entry = self.files.get(relative)
+        if isinstance(entry, str):
+            entry = self.through.get(relative)
+        return entry.decode("utf-8", "replace") if isinstance(entry, bytes) else ""
+
+
+def snapshot(root: Path) -> Snapshot:
+    files: dict[str, bytes | str] = {}
+    through: dict[str, bytes] = {}
+    dirs: set[str] = set()
+    if not root.is_dir():
+        return Snapshot(files, frozenset())
+    for current, subdirs, names in walk(root):
+        base = Path(current)
+        for name in subdirs:
+            dirs.add((base / name).relative_to(root).as_posix())
+        for name in names:
+            path = base / name
+            relative = path.relative_to(root).as_posix()
+            if relative == INCOMPLETE_FILE:
+                continue
+            if path.is_symlink():
+                files[relative] = os.readlink(path)
+                if path.is_file():
+                    through[relative] = path.read_bytes()
+            elif path.is_file():
+                files[relative] = path.read_bytes()
+    return Snapshot(files, frozenset(dirs), through)
+
+
+@dataclass
+class Changes:
+    """What a run did to a destination, classified by what the owner loses.
+
+    `merge` is a changed file that still holds every non-blank line it held before;
+    `overwrite` is one that does not, with the count in `lost`. Derived from the two
+    snapshots, never from a table of what each step is expected to do.
+    """
+
+    create: list[str] = field(default_factory=list)
+    overwrite: list[str] = field(default_factory=list)
+    merge: list[str] = field(default_factory=list)
+    remove: list[str] = field(default_factory=list)
+    lost: dict[str, int] = field(default_factory=dict)
+    links: dict[str, str] = field(default_factory=dict)
+
+    def as_json(self) -> dict:
+        return {
+            "create": self.create,
+            "overwrite": self.overwrite,
+            "merge": self.merge,
+            "remove": self.remove,
+            "lines_lost": self.lost,
+            "links": self.links,
+        }
+
+
+def classify(before: Snapshot, after: Snapshot) -> Changes:
+    changes = Changes()
+    for relative in sorted(set(before.files) | set(after.files)):
+        old, new = before.files.get(relative), after.files.get(relative)
+        # The same link can still have changed: a step that writes through a link
+        # rewrites whatever it points at.
+        if old == new and (
+            not isinstance(old, str) or before.through.get(relative) == after.through.get(relative)
+        ):
             continue
-        for relative in destinations:
-            path = dest / relative
-            if path.is_symlink() or path.exists():
-                found.append((relative, disposition(path, relative)))
-    return found
+        if old is None:
+            changes.create.append(relative)
+            continue
+        if new is None:
+            changes.remove.append(relative)
+            continue
+        if isinstance(new, str):
+            changes.links[relative] = new
+        kept = set(after.text(relative).splitlines())
+        lost = [
+            line for line in before.text(relative).splitlines() if line.strip() and line not in kept
+        ]
+        if lost:
+            changes.overwrite.append(relative)
+            changes.lost[relative] = len(lost)
+        else:
+            changes.merge.append(relative)
+    return changes
 
 
-def disposition(path: Path, relative: str) -> str:
-    """What the generator will do to this existing path.
+def scaffold(
+    catalog: Catalog,
+    dest: Path,
+    data: dict,
+    *,
+    keep_dirs: frozenset[str],
+    run_tasks: bool = True,
+    quiet: bool = True,
+) -> RunResult:
+    """Everything apply does to a destination, in order, and the one place it is done.
 
-    A generator that refuses a file it did not write leaves it alone, and `plan`
-    saying "replaced outright" for a hand-written CI caller threatened a replacement
-    that never happens. The first line is the test, because that is where every
-    generated file here names its generator.
+    `plan` calls this too, on a copy, which is what makes the plan the apply.
     """
-    owner = HAND_OWNED_REFUSAL.get(relative)
-    if owner is not None and path.is_file():
-        try:
-            first = path.read_text(errors="replace").split("\n", 1)[0]
-        except OSError:
-            first = ""
-        if owner not in first:
-            return LEFT_ALONE
-    return GENERATOR_DISPOSITION.get(relative, REPLACED)
+    from .catalog import ANSWERS_FILE
+
+    dest.mkdir(parents=True, exist_ok=True)
+    marker = dest / INCOMPLETE_FILE
+    marker.write_text(
+        "project-setup apply started here and has not finished: it was interrupted, or\n"
+        "a step failed. The files it placed are real, but the scaffold is incomplete.\n"
+        "Re-run the same apply to finish it; every step is safe to repeat.\n"
+    )
+    result = place_layers(catalog, dest, data, run_tasks=run_tasks, quiet=quiet)
+    if result.ok:
+        prune_empty_dirs(dest, keep=keep_dirs)
+        run_generators(
+            dest,
+            result,
+            # Copier applies a layer's defaults itself; a generator argument is
+            # assembled out here and would otherwise miss every unanswered one.
+            data={**catalog.defaults_for(result.layers), **data},
+            quiet=True,
+        )
+    if result.ok:
+        (dest / ANSWERS_FILE).write_text(
+            "# Written by project-setup apply. Re-run with --data-file to reproduce.\n"
+            + yaml.safe_dump(data, sort_keys=True)
+        )
+        marker.unlink()
+    return result
+
+
+def rehearse(catalog: Catalog, dest: Path, data: dict) -> tuple[RunResult, Changes]:
+    """Run the real apply, tasks and generators included, in a copy of `dest`.
+
+    The difference between the copy before and after is the plan. Nothing is
+    predicted, so there is nothing for the plan to get wrong that the apply would
+    not get wrong identically. What the copy leaves out is SCAN_SKIP, which no step
+    writes into. A link that points outside the destination is copied as the file
+    it points at, so a step writing through it writes into the copy.
+    """
+    before = snapshot(dest)
+    with tempfile.TemporaryDirectory(prefix="project-setup-plan-") as scratch:
+        # The same name, because a native tool may read it: `cargo init` names a
+        # crate after its directory when it is not told otherwise.
+        stage = Path(scratch) / (dest.resolve().name or "repo")
+        outside = _copy_for_rehearsal(dest, stage)
+        result = scaffold(catalog, stage, data, keep_dirs=before.dirs, quiet=True)
+        after = snapshot(stage)
+        for relative, (target, copied) in outside.items():
+            if after.files.get(relative) == copied:
+                after.files[relative] = target
+                if copied is not None:
+                    after.through[relative] = copied
+        for step in result.placed + result.generated:
+            step.detail = step.detail.replace(str(stage), str(dest))
+            step.warnings = [w.replace(str(stage), str(dest)) for w in step.warnings]
+    result.dest, result.pretend = dest, True
+    return result, classify(before, after)
+
+
+def _copy_for_rehearsal(dest: Path, stage: Path) -> dict[str, tuple[str, bytes | None]]:
+    """Copy dest into stage. Returns each link that points outside dest: its target,
+    and the bytes that stand in for it in the copy (None when nothing could)."""
+    outside: dict[str, tuple[str, bytes | None]] = {}
+    stage.mkdir(parents=True)
+    if not dest.is_dir():
+        return outside
+    root = dest.resolve()
+    for current, dirs, files in walk(dest):
+        base = Path(current)
+        target_dir = stage / base.relative_to(dest)
+        for name in dirs:
+            (target_dir / name).mkdir()
+        for name in files:
+            path = base / name
+            copy = target_dir / name
+            if path.is_symlink():
+                resolved = path.resolve()
+                if resolved == root or root in resolved.parents:
+                    copy.symlink_to(os.readlink(path))
+                    continue
+                copied = resolved.read_bytes() if resolved.is_file() else None
+                if copied is not None:
+                    copy.write_bytes(copied)
+                outside[path.relative_to(dest).as_posix()] = (os.readlink(path), copied)
+            elif path.is_file():
+                copy.write_bytes(path.read_bytes())
+                copy.chmod(path.stat().st_mode)
+    return outside
 
 
 def deselected_layers(catalog: Catalog, dest: Path, data: dict) -> list[str]:
@@ -437,7 +595,7 @@ def run_generators(
 ) -> RunResult:
     """Run each generator that the placed layers actually installed."""
     answers = data or {}
-    for rel, extra, _destinations in GENERATORS:
+    for rel, extra in GENERATORS:
         script = dest / rel
         if not script.is_file():
             continue

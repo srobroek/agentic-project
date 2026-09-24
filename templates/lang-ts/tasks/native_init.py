@@ -1,19 +1,27 @@
 #!/usr/bin/env python3
 """Copier task: let the language's own tool own its manifest and lockfile.
 
-    native_init.py rust lib|bin
+    native_init.py rust <crate-name>:lib|bin <spdx-id>
     native_init.py ts   <project-name>
     native_init.py py   <project-name>:<src|flat>:<python-version>
-    native_init.py go   <module-path>
+    native_init.py go   <module-path> [<go-version>]
 
 Templating a lockfile is a mistake; the native tool should generate it. Each branch
 is a no-op when the manifest already exists, and degrades to a warning when the
 tool is absent, so a scaffold never hard-fails on a missing toolchain.
+
+A manifest that exists is only proof of a finished init if nothing interrupted it.
+Each branch writes the manifest first and reconciles afterwards, so an apply killed
+in between left a package.json with no dev tools, a pyproject with no tests, or a
+go.mod with no package, and every later apply skipped it as "present" and reported
+a clean run. `PENDING` marks an init as started; it is removed only when the branch
+finishes, and finding it means the manifest is this task's own half-written output.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -40,6 +48,38 @@ def run(cmd: list[str], owns: str = "") -> int:
     return subprocess.run(cmd, check=False).returncode
 
 
+# Written before the native tool runs and removed when the branch has finished, so a
+# manifest found beside it is this task's own interrupted output rather than one the
+# repository brought. It holds which of the tool's leftovers existed beforehand,
+# because by the second run the tool's own copies look pre-existing too.
+PENDING = ".project-setup-native-init-{kind}"
+
+
+def begin(kind: str, manifest: str, leftovers: tuple[tuple[str, str], ...] = ()) -> set[str] | None:
+    """Start one init. The names that existed before it, or None to skip it."""
+    pending = Path(PENDING.format(kind=kind))
+    if pending.exists():
+        try:
+            recorded = set(json.loads(pending.read_text()))
+        except (ValueError, TypeError):
+            recorded = set()
+        Path(manifest).unlink(missing_ok=True)
+        print(f"native_init: finishing an interrupted init; the half-written {manifest} was ours")
+        return recorded
+    if Path(manifest).exists():
+        print(f"native_init: {manifest} present, skipping")
+        return None
+    before = {name for name, _ in leftovers if Path(name).exists()}
+    pending.write_text(json.dumps(sorted(before)) + "\n")
+    return before
+
+
+def finish(kind: str, code: int) -> int:
+    """End one init, however it ended. Only an interrupted one leaves PENDING behind."""
+    Path(PENDING.format(kind=kind)).unlink(missing_ok=True)
+    return code
+
+
 def main() -> int:
     if not 3 <= len(sys.argv) <= 4:
         print(__doc__, file=sys.stderr)
@@ -51,35 +91,36 @@ def main() -> int:
     # the tool is absent `run` degrades to a warning and returns 0, and a tidy pass
     # over a tree the tool never wrote reconciles nothing against nothing.
     if kind == "rust":
-        if Path("Cargo.toml").exists():
-            print("native_init: Cargo.toml present, skipping")
+        name, _, target = arg.rpartition(":")
+        if begin(kind, "Cargo.toml") is None:
             return 0
-        code = run(["cargo", "init", f"--{arg}", "--quiet"], owns="Cargo.toml")
+        command = ["cargo", "init", f"--{target}", "--quiet"]
+        if name:
+            command[2:2] = ["--name", name]
+        code = run(command, owns="Cargo.toml")
         if code == 0 and Path("Cargo.toml").is_file():
             _mark_unpublished_if_unlicensed(extra)
-        return code
+        return finish(kind, code)
 
     if kind == "ts":
-        if Path("package.json").exists():
-            print("native_init: package.json present, skipping")
-            return 0
         # What bun drops is only junk if bun is the one who put it there. Record
         # what already exists so the tidy can tell its own leftovers from a file
         # the repository brought with it.
-        pre_existing = {name for name, _ in BUN_LEFTOVERS if Path(name).exists()}
+        pre_existing = begin(kind, "package.json", BUN_LEFTOVERS)
+        if pre_existing is None:
+            return 0
         code = run(["bun", "init", "-y"], owns="package.json")
         if code == 0 and Path("package.json").is_file():
             _tidy_after_bun(arg, pre_existing)
             _declare_ts_dev_tools(extra)
             _seed_ts_entry_point()
-        return code
+        return finish(kind, code)
 
     if kind == "py":
-        if Path("pyproject.toml").exists():
-            print("native_init: pyproject.toml present, skipping")
+        pre_existing = begin(kind, "pyproject.toml", UV_LEFTOVERS)
+        if pre_existing is None:
             return 0
         name, layout, python = arg.split(":", 2)
-        pre_existing = {n for n, _ in UV_LEFTOVERS if Path(n).exists()}
         # --lib gives src/<name>/ with py.typed; --app gives the same tree without
         # the packaging intent. Either way uv owns pyproject.toml, and --python is
         # what carries the answered version into requires-python.
@@ -100,16 +141,16 @@ def main() -> int:
             _tidy_after_uv(pre_existing)
             _declare_dev_tools()
             _seed_python_test()
-        return code
+        return finish(kind, code)
 
     if kind == "go":
-        if Path("go.mod").exists():
-            print("native_init: go.mod present, skipping")
+        if begin(kind, "go.mod") is None:
             return 0
         code = run(["go", "mod", "init", arg], owns="go.mod")
         if code == 0 and Path("go.mod").is_file():
+            _pin_go_module(extra)
             _seed_go_package(arg)
-        return code
+        return finish(kind, code)
 
     print(f"native_init: unknown kind {kind!r}", file=sys.stderr)
     return 2
@@ -363,6 +404,29 @@ def _seed_python_test() -> None:
     target = tests / "test_smoke.py"
     target.write_text(SMOKE_TEST.format(module=packages[0].name))
     print(f"native_init: wrote {target} so an empty test run does not fail the gate")
+
+
+# Appended to a fresh go.mod. `./...` walked into node_modules, where a CDK app ships
+# Go templates named `%name%.template.go` that do not parse: `golangci-lint run ./...`
+# and `go test ./...` both failed a scaffold's own `just check`. The directive needs
+# go 1.25; the version line below is the pinned one, which is newer.
+GO_IGNORE = "ignore node_modules"
+
+
+def _pin_go_module(version: str) -> None:
+    """Say the pinned Go version, not the one that happened to run `go mod init`.
+
+    `go mod init` writes its own version: 1.27.1 on a machine whose Go is 1.27.1, in a
+    repository whose mise pin is 1.26, so the pinned toolchain then had to download a
+    newer one before it could read its own module.
+    """
+    text = Path("go.mod").read_text()
+    if version:
+        text = re.sub(r"(?m)^go \S+$", f"go {version}", text, count=1)
+    if GO_IGNORE not in text:
+        text = text.rstrip("\n") + f"\n\n{GO_IGNORE}\n"
+    Path("go.mod").write_text(text)
+    print(f"native_init: go.mod says go {version or 'as written'} and ignores node_modules")
 
 
 def _seed_go_package(module: str) -> None:

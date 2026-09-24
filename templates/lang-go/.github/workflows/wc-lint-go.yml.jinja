@@ -33,7 +33,7 @@ jobs:
           working-directory: ${{ inputs.working-directory }}
 
       - name: Format
-        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+        run: unformatted="$(find . \( -name node_modules -o -name vendor -o -name .git \) -prune -o -name '*.go' -type f -exec gofmt -l {} +)"; test -z "$unformatted" || { echo "$unformatted"; exit 1; }
 
       - name: Lint
         uses: golangci/golangci-lint-action@0a35821d5c230e903fcfe077583637dea1b27b47 # v9.0.0
