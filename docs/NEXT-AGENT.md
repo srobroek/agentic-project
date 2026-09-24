@@ -1,12 +1,75 @@
 # Brief: shake out `project-setup`
 
-You are picking up a deterministic repository scaffolder that works but has never been used
-in anger. Your job is to **use it like an impatient user would, find where it fights back,
-and fix that** — not just crashes, but friction, needless questions, and inflexibility that
-has no good reason behind it.
+You are picking up a deterministic repository scaffolder. Two shake-out rounds have closed the
+obvious defects, so this round is about **improvement**: propose changes and make them. Not
+only crashes — friction, needless questions, inflexibility with no reason behind it, and
+places where the tool is merely adequate.
 
 Read `README.md` for what it is, `AGENTS.md` for the invariants, and
 `skills/project-setup/SKILL.md` for how an agent is meant to drive it.
+
+## This round: four named targets, then your own judgement
+
+Do these four first, because each is a known gap rather than a hunch. Then range wider.
+
+### 1. Make `plan` provably honest
+
+`plan` is the only warning a user gets before files are written, and it has lied twice: it
+listed the justfile as both overwritten and merged, and promised "replaced outright" for a
+file it would not touch. Both were found by hand.
+
+Replace the spot checks with a **property**: for every stack, and every disposition a file can
+have, assert that what `plan` reports is what `apply` actually does. Run `plan`, run `apply`,
+diff the claim against the result. A mismatch is a defect wherever it is.
+
+### 2. Decide what an interrupted `apply` leaves behind
+
+There is no handling and no test: `grep -r 'resume\|partial\|interrupt' src/ tests/` is empty.
+Kill an `apply` mid-run — between layers, and between generators — and answer plainly: what
+state is the repository in, can the user tell, and can they recover by re-running? Then make
+the answer acceptable. Re-running is already idempotent, which may be most of the work; if so,
+prove it and say so rather than adding machinery.
+
+### 3. Remove the per-call flag friction
+
+Outside a source checkout the CLI needs `--templates` and `--presets` on **every** invocation,
+because the templates belong to the plugin and are deliberately not bundled (see AGENTS.md).
+An agent must therefore thread two paths through every command, and a human must export two
+variables. That is a tax on the common case. Find a way to make the common case free without
+reintroducing the staleness the no-bundling rule exists to prevent.
+
+### 4. Exercise the two paths nothing has driven
+
+- `project-setup interview --dest .` — the interactive prompt path. No automated check drives a
+  TTY, so this is the least-verified surface in the repo. Judge the question count, order, and
+  whether deselecting a layer really silences its questions.
+- `tools/tasks/init_aws_cdk.py` — shipped, never executed. Needs `cdk` on PATH.
+
+## Prove it still works before you change anything
+
+```sh
+just port              # regenerate templates/ from assets/
+pytest -q              # 201 tests
+python3 tools/e2e.py   # 12 stacks, end to end, with tasks
+slopvac .              # 7 authored docs fail on style; 8 unfixable files are excluded
+```
+
+Re-run all four after every change. Breaking `e2e.py` is a regression.
+
+## Count your output; do not `tail` it
+
+Three separate readers of this project have drawn a wrong conclusion from a truncated command:
+twice claiming a check passed, once reporting "the four docs" when fifteen files were failing.
+When you assert a number, produce it with `wc -l`, `grep -c`, or a summary line. A `tail` is
+for reading, never for concluding.
+
+## Leave the owner's style call alone
+
+`slopvac` fails on seven authored documents, dominated by unicode-dash findings — em dashes,
+this repo's markdown style. The eight files that cannot be fixed (verbatim SPDX licence texts)
+are already excluded in `slopvac.toml`. Whether to restyle the remaining seven or switch
+`rules."prose-format.no-unicode-dash"` off is the owner's decision. You may propose; do not
+silence it.
 
 ## Where things are
 
