@@ -44,11 +44,11 @@ A11Y_WEB_SERVERS_JSON:
 AXE_PLAYWRIGHT_VERSION:
   type: str
   help: '@axe-core/playwright'
-  default: 4.11.0
+  default: 4.13.0
 BUN_VERSION:
   type: str
   help: Bun
-  default: 1.3.2
+  default: 1.4.2
 FORGE_PLATFORM:
   type: str
   help: Only github and gitlab are supported; other forges are an explicit gap
@@ -59,4 +59,4 @@ FORGE_PLATFORM:
 PLAYWRIGHT_VERSION:
   type: str
   help: Playwright
-  default: 1.56.0
+  default: 1.63.0

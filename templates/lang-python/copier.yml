@@ -54,7 +54,7 @@ PROJECT_NAME:
 PYTHON_VERSION:
   type: str
   help: Python minor, e.g. 3.13. Sets requires-python and the ruff target
-  default: '3.13'
+  default: '3.14'
 PY_SRC_LAYOUT:
   type: bool
   help: Package layout
@@ -65,7 +65,7 @@ PY_SRC_LAYOUT:
 UV_VERSION:
   type: str
   help: uv
-  default: 0.9.8
+  default: 0.12.18
 PYTHON_VERSION_NODOT:
   type: str
   help: Derived from PYTHON_VERSION; override only if you must

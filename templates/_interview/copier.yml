@@ -154,16 +154,81 @@ COMMIT_SCOPES:
   help: Allowed commit scopes, comma separated. Empty leaves scopes unrestricted
   default: ''
   when: '@@ CUSTOMISE_DEFAULTS @@'
+PREK_VERSION:
+  type: str
+  help: prek hook runner
+  default: 0.4.11
+  when: '@@ PIN_TOOL_VERSIONS @@'
+BETTERLEAKS_VERSION:
+  type: str
+  help: betterleaks
+  default: 1.8.1
+  when: '@@ PIN_TOOL_VERSIONS @@'
+TRUFFLEHOG_VERSION:
+  type: str
+  help: trufflehog
+  default: 3.97.9
+  when: '@@ PIN_TOOL_VERSIONS @@'
+TYPOS_VERSION:
+  type: str
+  help: typos
+  default: 1.50.2
+  when: '@@ PIN_TOOL_VERSIONS @@'
+SHELLCHECK_VERSION:
+  type: str
+  help: shellcheck
+  default: 0.11.0
+  when: '@@ PIN_TOOL_VERSIONS @@'
+ACTIONLINT_VERSION:
+  type: str
+  help: actionlint
+  default: 1.7.12
+  when: '@@ PIN_TOOL_VERSIONS @@'
+ZIZMOR_VERSION:
+  type: str
+  help: zizmor
+  default: 1.30.1
+  when: '@@ PIN_TOOL_VERSIONS @@'
+TAPLO_VERSION:
+  type: str
+  help: taplo
+  default: 0.10.0
+  when: '@@ PIN_TOOL_VERSIONS @@'
+LYCHEE_VERSION:
+  type: str
+  help: lychee
+  default: 0.24.2
+  when: '@@ PIN_TOOL_VERSIONS @@'
+CONVENTIONAL_PRECOMMIT_VERSION:
+  type: str
+  help: conventional-pre-commit
+  default: 4.4.0
+  when: '@@ PIN_TOOL_VERSIONS @@'
 UV_VERSION:
   type: str
   help: uv
-  default: 0.9.8
+  default: 0.12.18
+  when: '@@ PIN_TOOL_VERSIONS @@'
+JUST_VERSION:
+  type: str
+  help: just
+  default: 1.58.0
   when: '@@ PIN_TOOL_VERSIONS @@'
 JOB_TIMEOUT_MINUTES:
   type: str
   help: Per-job CI timeout; a hung job holds a runner until it fires
   default: '15'
   when: '@@ CUSTOMISE_DEFAULTS @@'
+PINACT_VERSION:
+  type: str
+  help: pinact
+  default: 5.0.0
+  when: '@@ PIN_TOOL_VERSIONS @@'
+OPENGREP_VERSION:
+  type: str
+  help: opengrep
+  default: 1.26.0
+  when: '@@ PIN_TOOL_VERSIONS @@'
 MONOREPO_MEMBERS:
   type: str
   help: JSON array of {name, path, capabilities}; [] is single-root
@@ -177,7 +242,7 @@ IS_MONOREPO:
 BUN_VERSION:
   type: str
   help: Bun
-  default: 1.3.2
+  default: 1.4.2
   when: '@@ (WANT_A11Y or WANT_LANG_TS) and PIN_TOOL_VERSIONS @@'
 A11Y_SURFACES_JSON:
   type: str
@@ -197,13 +262,23 @@ A11Y_PREPARE_COMMANDS:
 PLAYWRIGHT_VERSION:
   type: str
   help: Playwright
-  default: 1.56.0
+  default: 1.63.0
   when: '@@ (WANT_A11Y) and PIN_TOOL_VERSIONS @@'
 AXE_PLAYWRIGHT_VERSION:
   type: str
   help: '@axe-core/playwright'
-  default: 4.11.0
+  default: 4.13.0
   when: '@@ (WANT_A11Y) and PIN_TOOL_VERSIONS @@'
+VACUUM_VERSION:
+  type: str
+  help: vacuum
+  default: 0.30.6
+  when: '@@ (WANT_API) and PIN_TOOL_VERSIONS @@'
+OASDIFF_VERSION:
+  type: str
+  help: oasdiff
+  default: 1.32.1
+  when: '@@ (WANT_API) and PIN_TOOL_VERSIONS @@'
 ORG:
   type: str
   help: Organisation or owner, used for the API contact
@@ -306,7 +381,7 @@ AWS_CDK_DEST_SHELL:
 AWS_CDK_VERSION:
   type: str
   help: aws-cdk CLI, exact stable release
-  default: 2.1142.0
+  default: 2.1143.0
   when: '@@ (WANT_INFRA_AWS_CDK) and PIN_TOOL_VERSIONS @@'
 GO_VENDOR:
   type: bool
@@ -319,12 +394,12 @@ GO_VENDOR:
 GO_VERSION:
   type: str
   help: Go toolchain
-  default: '1.26'
+  default: '1.27'
   when: '@@ (WANT_LANG_GO) and PIN_TOOL_VERSIONS @@'
 GOLANGCI_LINT_VERSION:
   type: str
   help: golangci-lint
-  default: 2.13.2
+  default: 2.14.0
   when: '@@ (WANT_LANG_GO) and PIN_TOOL_VERSIONS @@'
 GOVULNCHECK_VERSION:
   type: str
@@ -342,7 +417,7 @@ PY_SRC_LAYOUT:
 PYTHON_VERSION:
   type: str
   help: Python minor, e.g. 3.13. Sets requires-python and the ruff target
-  default: '3.13'
+  default: '3.14'
   when: '@@ (WANT_LANG_PYTHON) and PIN_TOOL_VERSIONS @@'
 PYTHON_VERSION_NODOT:
   type: str
@@ -360,32 +435,32 @@ RUST_LIBRARY:
 RUST_VERSION:
   type: str
   help: Rust toolchain, written to rust-toolchain.toml
-  default: 1.93.0
+  default: 1.98.1
   when: '@@ (WANT_LANG_RUST) and PIN_TOOL_VERSIONS @@'
 CARGO_NEXTEST_VERSION:
   type: str
   help: cargo-nextest
-  default: 0.9.104
+  default: 0.9.146
   when: '@@ (WANT_LANG_RUST) and PIN_TOOL_VERSIONS @@'
 CARGO_DENY_VERSION:
   type: str
   help: cargo-deny
-  default: 0.19.1
+  default: 0.20.2
   when: '@@ (WANT_LANG_RUST) and PIN_TOOL_VERSIONS @@'
 CARGO_MACHETE_VERSION:
   type: str
   help: cargo-machete
-  default: 0.9.1
+  default: 0.9.2
   when: '@@ (WANT_LANG_RUST) and PIN_TOOL_VERSIONS @@'
 CARGO_LLVM_COV_VERSION:
   type: str
   help: cargo-llvm-cov
-  default: 0.6.20
+  default: 0.9.1
   when: '@@ (WANT_LANG_RUST) and PIN_TOOL_VERSIONS @@'
 BIOME_VERSION:
   type: str
   help: Biome
-  default: 2.4.1
+  default: 2.5.14
   when: '@@ (WANT_LANG_TS) and PIN_TOOL_VERSIONS @@'
 OXLINT_VERSION:
   type: str
@@ -395,7 +470,7 @@ OXLINT_VERSION:
 TSGOLINT_VERSION:
   type: str
   help: oxlint-tsgolint, which oxlint's type-aware rules require
-  default: 7.0.2002
+  default: 7.0.2003
   when: '@@ (WANT_LANG_TS) and PIN_TOOL_VERSIONS @@'
 KNIP_VERSION:
   type: str

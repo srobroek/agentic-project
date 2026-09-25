@@ -2,7 +2,6 @@
 # pins its own tools without a merge step.
 #
 # `[group(...)]` on a recipe needs just 1.27 or later (added there by #1842), and
-# every fragment uses it. `import?`, the optional form the import block relies on,
-# needs 1.21 or later (#1797).
+# `import?`, the optional form the import block relies on, needs 1.21 or later (#1797).
 [tools]
-just = "1.57.0"
+just = "@@JUST_VERSION@@"

@@ -200,10 +200,10 @@ jobs:
         with:
           cache: true
 
-      # `--sarif` writes to STDOUT and is redirected. `--sarif-output=FILE` is documented and
-      # silently writes nothing: verified against opengrep 1.26.0, where the flag produced no
-      # file at all while the same scan on stdout produced valid SARIF 2.1.0. A workflow
-      # trusting the documented flag uploads an empty file and reports a clean scan.
+      # `--sarif` writes to STDOUT and is redirected. The documented `--sarif-output` form
+      # silently writes no file, so this workflow captures the scanner's valid SARIF output.
+      #
+      # The scanner output is uploaded after discovery.
       #
       # No --error here, so a finding does not end the job before the upload. The step after
       # the upload is what fails it.

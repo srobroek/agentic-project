@@ -195,18 +195,33 @@ TOKEN_POLICY: dict[str, dict] = {
         "help": "Allowed commit scopes, comma separated. Empty leaves scopes unrestricted",
         "tune": True,
     },
+    "PREK_VERSION": {"type": "str", "default": "0.4.11", "pin": True, "help": "prek hook runner"},
+    "BETTERLEAKS_VERSION": {"type": "str", "default": "1.8.1", "pin": True, "help": "betterleaks"},
+    "TRUFFLEHOG_VERSION": {"type": "str", "default": "3.97.9", "pin": True, "help": "trufflehog"},
+    "TYPOS_VERSION": {"type": "str", "default": "1.50.2", "pin": True, "help": "typos"},
+    "SHELLCHECK_VERSION": {"type": "str", "default": "0.11.0", "pin": True, "help": "shellcheck"},
+    "ACTIONLINT_VERSION": {"type": "str", "default": "1.7.12", "pin": True, "help": "actionlint"},
+    "ZIZMOR_VERSION": {"type": "str", "default": "1.30.1", "pin": True, "help": "zizmor"},
+    "TAPLO_VERSION": {"type": "str", "default": "0.10.0", "pin": True, "help": "taplo"},
+    "LYCHEE_VERSION": {"type": "str", "default": "0.24.2", "pin": True, "help": "lychee"},
+    "JUST_VERSION": {"type": "str", "default": "1.58.0", "pin": True, "help": "just"},
+    "PINACT_VERSION": {"type": "str", "default": "5.0.0", "pin": True, "help": "pinact"},
+    "OPENGREP_VERSION": {"type": "str", "default": "1.26.0", "pin": True, "help": "opengrep"},
+    "VACUUM_VERSION": {"type": "str", "default": "0.30.6", "pin": True, "help": "vacuum"},
+    "OASDIFF_VERSION": {"type": "str", "default": "1.32.1", "pin": True, "help": "oasdiff"},
+    "CONVENTIONAL_PRECOMMIT_VERSION": {"type": "str", "default": "4.4.0", "pin": True, "help": "conventional-pre-commit"},
     # Tool versions. Pinned, not resolved at run time: Renovate owns the bumps, and a
     # scaffold that reads "latest" builds something different next week. A user who
     # needs a specific one is asked -- once, behind PIN_GATE -- rather than never.
     "GO_VERSION": {
         "type": "str",
-        "default": "1.26",
+        "default": "1.27",
         "pin": True,
         "help": "Go toolchain",
     },
     "GOLANGCI_LINT_VERSION": {
         "type": "str",
-        "default": "2.13.2",
+        "default": "2.14.0",
         "pin": True,
         "help": "golangci-lint",
     },
@@ -222,45 +237,45 @@ TOKEN_POLICY: dict[str, dict] = {
         "pin": True,
         "help": "Node major, for tools that need a Node runtime",
     },
-    "BUN_VERSION": {"type": "str", "default": "1.3.2", "pin": True, "help": "Bun"},
-    "BIOME_VERSION": {"type": "str", "default": "2.4.1", "pin": True, "help": "Biome"},
+    "BUN_VERSION": {"type": "str", "default": "1.4.2", "pin": True, "help": "Bun"},
+    "BIOME_VERSION": {"type": "str", "default": "2.5.14", "pin": True, "help": "Biome"},
     "OXLINT_VERSION": {"type": "str", "default": "1.85.0", "pin": True, "help": "oxlint"},
     "TSGOLINT_VERSION": {
         "type": "str",
-        "default": "7.0.2002",
+        "default": "7.0.2003",
         "pin": True,
         "help": "oxlint-tsgolint, which oxlint's type-aware rules require",
     },
     "KNIP_VERSION": {"type": "str", "default": "6.38.0", "pin": True, "help": "knip"},
-    "UV_VERSION": {"type": "str", "default": "0.9.8", "pin": True, "help": "uv"},
+    "UV_VERSION": {"type": "str", "default": "0.12.18", "pin": True, "help": "uv"},
     "RUST_VERSION": {
         "type": "str",
-        "default": "1.93.0",
+        "default": "1.98.1",
         "pin": True,
         "help": "Rust toolchain, written to rust-toolchain.toml",
     },
     "CARGO_NEXTEST_VERSION": {
         "type": "str",
-        "default": "0.9.104",
+        "default": "0.9.146",
         "pin": True,
         "help": "cargo-nextest",
     },
-    "CARGO_DENY_VERSION": {"type": "str", "default": "0.19.1", "pin": True, "help": "cargo-deny"},
+    "CARGO_DENY_VERSION": {"type": "str", "default": "0.20.2", "pin": True, "help": "cargo-deny"},
     "CARGO_MACHETE_VERSION": {
         "type": "str",
-        "default": "0.9.1",
+        "default": "0.9.2",
         "pin": True,
         "help": "cargo-machete",
     },
     "CARGO_LLVM_COV_VERSION": {
         "type": "str",
-        "default": "0.6.20",
+        "default": "0.9.1",
         "pin": True,
         "help": "cargo-llvm-cov",
     },
     "PYTHON_VERSION": {
         "type": "str",
-        "default": "3.13",
+        "default": "3.14",
         "pin": True,
         "help": "Python minor, e.g. 3.13. Sets requires-python and the ruff target",
     },
@@ -392,7 +407,7 @@ TOKEN_POLICY: dict[str, dict] = {
     # native CDK CLI, which refuses anything but an exact stable release.
     "AWS_CDK_VERSION": {
         "type": "str",
-        "default": "2.1142.0",
+        "default": "2.1143.0",
         "pin": True,
         "help": "aws-cdk CLI, exact stable release",
     },
@@ -413,16 +428,17 @@ TOKEN_POLICY: dict[str, dict] = {
     },
     "PLAYWRIGHT_VERSION": {
         "type": "str",
-        "default": "1.56.0",
+        "default": "1.63.0",
         "pin": True,
         "help": "Playwright",
     },
     "AXE_PLAYWRIGHT_VERSION": {
         "type": "str",
-        "default": "4.11.0",
+        "default": "4.13.0",
         "pin": True,
         "help": "@axe-core/playwright",
     },
+
     "ADRS": {
         "type": "str",
         "default": "[]",
@@ -481,6 +497,25 @@ EXTRA_VARS: dict[str, dict[str, dict]] = {
         }
     },
 }
+
+# Compatibility facts are intentionally kept beside TOKEN_POLICY. Values are the
+# minimums observed in release metadata on 2026-09-25; tests consume this table
+# offline so a bump cannot silently create an impossible scaffold.
+VERSION_COMPATIBILITY: dict[str, dict] = {
+    "golangci_lint": {"minimum_go": "1.27", "source": "golangci-lint v2.14.0 version output built with go1.27.0"},
+    "oxlint_tsgolint": {"minimum_tsgolint": "7.0.2001", "source": "oxlint@1.85.0 npm peerDependencies"},
+    "rust_tools": {
+        "minimum_rust": {
+            "CARGO_NEXTEST_VERSION": "1.91",
+            "CARGO_DENY_VERSION": "1.88",
+            "CARGO_MACHETE_VERSION": "1.74",
+            "CARGO_LLVM_COV_VERSION": "1.87",
+        },
+        "source": "crates.io package rust_version metadata, 2026-09-25",
+    },
+    "playwright_axe": {"minimum_playwright": "1.0.0", "source": "@axe-core/playwright@4.13.0 npm peerDependencies"},
+}
+
 
 # OPTIONAL block label -> Jinja condition. An unmapped label is a hard error.
 OPTIONAL_MAP: dict[str, str] = {

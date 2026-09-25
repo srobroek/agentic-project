@@ -25,8 +25,8 @@ api-report:
 
 # `--fail-on ERR` is mandatory, not decorative: oasdiff prints every breaking change and
 # still exits 0 without it, so the check would pass while reporting the breakage.
-# Verified against oasdiff 1.26.1, where removing an operation exited 0 bare and 1 with
-# the flag.
+# Verified against the pinned oasdiff release, where removing an operation exits 1 with
+# the required flag rather than silently passing.
 #
 # The baseline is read from the ref rather than a committed copy, so nothing has to be
 # kept in step by hand. `API_BASELINE` in the environment wins, because a pull request is

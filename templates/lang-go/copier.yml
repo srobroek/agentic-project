@@ -46,7 +46,7 @@ FORGE_PLATFORM:
 GOLANGCI_LINT_VERSION:
   type: str
   help: golangci-lint
-  default: 2.13.2
+  default: 2.14.0
 GOVULNCHECK_VERSION:
   type: str
   help: govulncheck
@@ -61,7 +61,7 @@ GO_VENDOR:
 GO_VERSION:
   type: str
   help: Go toolchain
-  default: '1.26'
+  default: '1.27'
 JOB_TIMEOUT_MINUTES:
   type: str
   help: Per-job CI timeout; a hung job holds a runner until it fires

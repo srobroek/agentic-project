@@ -5,18 +5,18 @@
 # are not used for these: most of the tools publish none, and a repo pin would
 # drift from the binary on PATH.
 #
-# betterleaks is pinned to 1.7.1 rather than 1.7.2. mise hides a release younger
-# than its minimum_release_age, and pinning the hidden one fails to install.
+# betterleaks uses the latest version available to the mise registry after its
+# minimum_release_age window, so this pin remains installable on fresh clones.
 [tools]
-prek = "0.4.11"
+prek = "@@PREK_VERSION@@"
 # hooks-merge runs merge_hooks.py through `uv run --with pyyaml`; this exact latest-stable
 # setup input is authoritative even when the repository has no Python layer.
 uv = "@@UV_VERSION@@"
-betterleaks = "1.7.1"
-trufflehog = "3.96.0"
-typos = "1.48.0"
-shellcheck = "0.11.0"
-actionlint = "1.7.12"
-zizmor = "1.28.0"
-taplo = "0.10.0"
-lychee = "0.24.2"
+betterleaks = "@@BETTERLEAKS_VERSION@@"
+trufflehog = "@@TRUFFLEHOG_VERSION@@"
+typos = "@@TYPOS_VERSION@@"
+shellcheck = "@@SHELLCHECK_VERSION@@"
+actionlint = "@@ACTIONLINT_VERSION@@"
+zizmor = "@@ZIZMOR_VERSION@@"
+taplo = "@@TAPLO_VERSION@@"
+lychee = "@@LYCHEE_VERSION@@"

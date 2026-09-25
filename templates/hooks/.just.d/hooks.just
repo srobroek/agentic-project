@@ -12,8 +12,8 @@ hooks-merge:
 
 # `--git-dir` rather than `core.hooksPath`. prek declines to install while an ambient
 # global hooksPath is set, which is what a machine-wide hook manager leaves behind:
-# verified against prek 0.4.11, where it printed a note and wrote NO shim, so a fresh
-# clone silently had no hooks. Passing the directory sidesteps that entirely.
+# The explicit directory sidesteps any machine-wide hook manager and keeps fresh clones
+# deterministic.
 #
 # `--absolute-git-dir` resolves per checkout, so a linked worktree installs into its own
 # hooks directory rather than the primary's. A worktree's $GIT_DIR is

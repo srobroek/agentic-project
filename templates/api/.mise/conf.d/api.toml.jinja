@@ -1,0 +1,12 @@
+# .mise/conf.d/api.toml -- the API layer's contract tools.
+#
+# Concrete pins keep vacuum's rule set and oasdiff's breaking-change
+# classification stable across local and CI runs. Renovate owns the bumps.
+[tools]
+vacuum = "@@VACUUM_VERSION@@"
+# ubi, not aqua: the aqua registry carries no oasdiff entry, so `aqua:oasdiff/oasdiff`
+# resolves nothing. ubi reads the GitHub releases directly.
+#
+# `--fail-on ERR` is required because without the flag oasdiff prints every breaking
+# change and still exits 0.
+"ubi:oasdiff/oasdiff" = "@@OASDIFF_VERSION@@"
