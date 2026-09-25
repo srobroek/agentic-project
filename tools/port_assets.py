@@ -485,7 +485,7 @@ EXTRA_VARS: dict[str, dict[str, dict]] = {
 # minimums observed in release metadata on 2026-09-25; tests consume this table
 # offline so a bump cannot silently create an impossible scaffold.
 VERSION_COMPATIBILITY: dict[str, dict] = {
-    "golangci_lint": {"minimum_go": "1.26", "source": "golangci-lint v2.14.0 go.mod directive"},
+    "golangci_lint": {"minimum_go": "1.27", "source": "golangci-lint v2.14.0 version output built with go1.27.0"},
     "oxlint_tsgolint": {"minimum_tsgolint": "7.0.2001", "source": "oxlint@1.85.0 npm peerDependencies"},
     "rust_tools": {
         "minimum_rust": {
