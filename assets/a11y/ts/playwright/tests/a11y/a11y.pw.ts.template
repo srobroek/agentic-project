@@ -1,12 +1,15 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-// Parsed rather than inlined: the answer is JSON, so its keys are quoted, and a
-// quoted-key object literal is not what a JS formatter emits. Inlining it made a
-// fresh scaffold fail its own `just check`. A template literal keeps the JSON
-// verbatim and out of the formatter's way.
+// The surfaces and web servers are read from JSON at run time rather than inlined.
+// A JSON answer has quoted keys, which no JS formatter emits, and its length decides
+// whether the formatter wants the call on one line or three -- so no fixed layout in
+// this file could satisfy `just check` for every answer. The data files are excluded
+// from the formatter in biome.json, because their shape is nobody's to read.
 const surfaces: { name: string; baseURL: string; routes: string[] }[] = JSON.parse(
-  `@@A11Y_SURFACES_JSON@@`,
+  readFileSync(resolve(process.cwd(), "surfaces.json"), "utf8"),
 );
 
 for (const surface of surfaces) {

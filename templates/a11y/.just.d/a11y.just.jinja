@@ -27,4 +27,4 @@ a11y-install:
 # Run axe against accepted routes
 [group('a11y')]
 a11y:
-    cd .a11y && bunx playwright test --config playwright.config.ts
+    cd .a11y && bunx playwright test --config playwright.config.ts --pass-with-no-tests

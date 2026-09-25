@@ -1,2 +1,6 @@
 # Isolated Playwright dependency tree; the lockfile remains committed.
 .a11y/node_modules/
+
+# Playwright run artifacts, written beside the config by `just a11y`.
+.a11y/test-results/
+.a11y/playwright-report/

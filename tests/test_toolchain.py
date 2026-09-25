@@ -152,29 +152,6 @@ def test_no_check_recipe_carries_a_writing_flag(recipe, forbidden):
     assert forbidden not in block, f"{recipe} still writes: {forbidden!r}"
 
 
-# ------------------------------------------------- injected JSON must not be inlined
-
-
-@pytest.mark.parametrize(
-    "path,token",
-    [
-        ("a11y/ts/playwright/playwright.a11y.config.ts.template", "A11Y_WEB_SERVERS_JSON"),
-        ("a11y/ts/playwright/tests/a11y/a11y.pw.ts.template", "A11Y_SURFACES_JSON"),
-    ],
-)
-def test_json_answers_reach_javascript_through_a_template_literal(path, token):
-    """A JSON answer has quoted keys, and no JS formatter emits a quoted-key object
-    literal. Inlining one made a fresh scaffold fail its own `just check`. Inside a
-    template literal the JSON is a string, so the formatter leaves it alone.
-    """
-    body = (ASSETS / path).read_text()
-    line = next(line for line in body.splitlines() if token in line)
-    assert line.strip().startswith("`") and line.strip().rstrip(",").endswith("`"), (
-        f"@@{token}@@ must sit alone inside backticks, found: {line.strip()!r}"
-    )
-    assert "JSON.parse(" in body
-
-
 def test_no_preset_restates_a_pinned_tool_version():
     """One source of truth for a version, so Renovate has one place to bump.
 
@@ -196,3 +173,52 @@ def test_no_preset_restates_a_pinned_tool_version():
         if restated:
             offenders[path.name] = restated
     assert offenders == {}, f"version pins restated in a preset: {offenders}"
+
+
+def test_the_a11y_data_is_not_inlined_into_typescript():
+    """No fixed layout in a .ts file can satisfy a formatter for every answer.
+
+    A JSON answer has quoted keys, which no JS formatter emits, and its rendered
+    length decides whether the formatter wants the call on one line or three. Both
+    a11y arrays therefore live in their own JSON files, read at run time, and are
+    excluded from the formatter because their shape is nobody's to read.
+    """
+    playwright = ASSETS / "a11y/ts/playwright"
+    assert (playwright / "surfaces.json.template").is_file()
+    assert (playwright / "web-servers.json.template").is_file()
+    for name in ("playwright.a11y.config.ts.template", "tests/a11y/a11y.pw.ts.template"):
+        body = (playwright / name).read_text()
+        assert "A11Y_SURFACES_JSON" not in body, f"{name} still inlines the answer"
+        assert "A11Y_WEB_SERVERS_JSON" not in body, f"{name} still inlines the answer"
+        assert "readFileSync" in body
+
+    biome = (ASSETS / "lang/ts/biome.json.template").read_text()
+    assert "!**/.a11y/surfaces.json" in biome
+    assert "!**/.a11y/web-servers.json" in biome
+
+
+def test_the_playwright_config_avoids_esm_only_apis():
+    """Playwright loads a .ts config through a CJS transform and .a11y/package.json
+    declares no module type, so import.meta.url failed with "exports is not defined in
+    ES module scope" before any test ran."""
+    body = (ASSETS / "a11y/ts/playwright/playwright.a11y.config.ts.template").read_text()
+    assert "import.meta" not in body
+    assert "node:url" not in body
+
+
+def test_an_empty_surface_set_is_a_gap_not_a_failure():
+    """A route nobody has written cannot be scanned, and a webServer command that does
+    not exist failed `just check` on a fresh scaffold."""
+    recipe = (ASSETS / "a11y/ts/playwright/.just.d/a11y.just.template").read_text()
+    assert "--pass-with-no-tests" in recipe
+
+    part = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / "presets/parts/web-ui.yml").read_text()
+    )
+    assert part["A11Y_SURFACES_JSON"] == "[]"
+    assert part["A11Y_WEB_SERVERS_JSON"] == "[]"
+
+
+def test_playwright_run_artifacts_are_ignored():
+    body = (ASSETS / "a11y/ts/playwright/.gitignore.d/a11y").read_text()
+    assert "test-results" in body

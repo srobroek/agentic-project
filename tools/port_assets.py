@@ -82,6 +82,9 @@ REMAP: dict[str, list[tuple[str, str]]] = {
         ("ts/playwright/.gitlab/", ".gitlab/"),
         ("ts/playwright/.mise/", ".mise/"),
         ("ts/playwright/.gitignore.d/", ".gitignore.d/"),
+        # Catch-all, last because the rules above are longer and win: anything else
+        # the layer ships belongs inside the isolated .a11y package.
+        ("ts/playwright/", ".a11y/"),
     ],
 }
 
