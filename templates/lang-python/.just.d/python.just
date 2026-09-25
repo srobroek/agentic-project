@@ -2,12 +2,20 @@
 
 # Format, lint, type-check, and test
 [group('python')]
-python: python-fmt python-lint python-types python-test
+python: python-fmt-check python-lint python-types python-test
 
 # Format
 [group('python')]
 python-fmt:
     uv run ruff format .
+
+# Report formatting without changing a file. `just check` runs this one, because
+# a task called check must not rewrite the tree it is checking: it cannot then be
+# run on a dirty checkout, and in CI it reports success having edited the files.
+# `just python-fmt` is the writer.
+[group('python')]
+python-fmt-check:
+    uv run ruff format --check .
 
 # Lint
 [group('python')]

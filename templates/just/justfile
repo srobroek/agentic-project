@@ -107,7 +107,11 @@ setup-worktree:
 # The comment directly above a task becomes its `--list` description, so the
 # rationale goes here and the description stays on the last line.
 
-# Format, lint, type-check, and test every language present
+# Check formatting, lint, type-check, and test every language present
+#
+# Checks only: nothing here rewrites a file. `just each fmt` is the writer.
+# A check that formats cannot be run on a dirty checkout, and in CI it reports
+# success having edited the tree it was asked to inspect.
 [group('all')]
 check:
     #!/usr/bin/env bash

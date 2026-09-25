@@ -2,7 +2,7 @@
 
 # Format, lint, type-check, and test
 [group('ts')]
-ts: ts-fmt ts-lint ts-types ts-test
+ts: ts-fmt-check ts-lint ts-types ts-test
 
 # Format and organise imports. biome owns this half of the split.
 #
@@ -14,6 +14,14 @@ ts: ts-fmt ts-lint ts-types ts-test
 [group('ts')]
 ts-fmt:
     bunx biome check --write .
+
+# Report formatting without changing a file. `just check` runs this one, because
+# a task called check must not rewrite the tree it is checking: it cannot then be
+# run on a dirty checkout, and in CI it reports success having edited the files.
+# `just ts-fmt` is the writer.
+[group('ts')]
+ts-fmt-check:
+    bunx biome check .
 
 # oxlint owns this half of the split: 59 of typescript-eslint's 61 type-aware rules
 # against biome's 4 outside nursery.

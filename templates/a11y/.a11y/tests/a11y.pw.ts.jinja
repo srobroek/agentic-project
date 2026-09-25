@@ -1,11 +1,19 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-const surfaces = @@A11Y_SURFACES_JSON@@;
+// Parsed rather than inlined: the answer is JSON, so its keys are quoted, and a
+// quoted-key object literal is not what a JS formatter emits. Inlining it made a
+// fresh scaffold fail its own `just check`. A template literal keeps the JSON
+// verbatim and out of the formatter's way.
+const surfaces: { name: string; baseURL: string; routes: string[] }[] = JSON.parse(
+  `@@A11Y_SURFACES_JSON@@`,
+);
 
 for (const surface of surfaces) {
   for (const route of surface.routes) {
-    test(`${surface.name} ${route} has no detectable accessibility violations`, async ({ page }) => {
+    test(`${surface.name} ${route} has no detectable accessibility violations`, async ({
+      page,
+    }) => {
       await page.goto(new URL(route, surface.baseURL).href);
       const results = await new AxeBuilder({ page }).analyze();
       expect(results.violations).toEqual([]);

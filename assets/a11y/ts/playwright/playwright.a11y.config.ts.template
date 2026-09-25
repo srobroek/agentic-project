@@ -3,7 +3,13 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const webServers = @@A11Y_WEB_SERVERS_JSON@@;
+// Parsed rather than inlined: the answer is JSON, so its keys are quoted, and a
+// quoted-key object literal is not what a JS formatter emits. Inlining it made a
+// fresh scaffold fail its own `just check`. A template literal keeps the JSON
+// verbatim and out of the formatter's way.
+const webServers: { command: string; url: string; cwd: string }[] = JSON.parse(
+  `@@A11Y_WEB_SERVERS_JSON@@`,
+);
 
 export default defineConfig({
   testDir: "./tests",

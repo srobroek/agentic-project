@@ -2,13 +2,28 @@
 
 # Format, lint, and test
 [group('go')]
-go: go-fmt go-lint go-test
+go: go-fmt-check go-lint go-test
 
 # Format. Not `gofmt -w .`, which walked into node_modules: a CDK app ships Go
 # templates named `%name%.template.go` that do not parse, and gofmt rewrote the rest.
 [group('go')]
 go-fmt:
     find . \( -name node_modules -o -name vendor -o -name .git \) -prune -o -name '*.go' -type f -exec gofmt -w {} +
+
+# Report formatting without changing a file. `just check` runs this one, because
+# a task called check must not rewrite the tree it is checking: it cannot then be
+# run on a dirty checkout, and in CI it reports success having edited the files.
+# `just go-fmt` is the writer.
+[group('go')]
+go-fmt-check:
+    #!/usr/bin/env bash
+        set -euo pipefail
+        unformatted=$(find . \( -name node_modules -o -name vendor -o -name .git \) -prune -o -name '*.go' -type f -exec gofmt -l {} +)
+        if [ -n "$unformatted" ]; then
+          echo "gofmt would rewrite:" >&2
+          echo "$unformatted" >&2
+          exit 1
+        fi
 
 # Lint. gosec and revive are enabled in .golangci.yml, not passed here
 [group('go')]

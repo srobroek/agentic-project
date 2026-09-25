@@ -2,12 +2,20 @@
 
 # Format, lint, and test the rust code
 [group('rust')]
-rust: rust-fmt rust-lint rust-test
+rust: rust-fmt-check rust-lint rust-test
 
 # Format
 [group('rust')]
 rust-fmt:
     cargo fmt --all
+
+# Report formatting without changing a file. `just check` runs this one, because
+# a task called check must not rewrite the tree it is checking: it cannot then be
+# run on a dirty checkout, and in CI it reports success having edited the files.
+# `just rust-fmt` is the writer.
+[group('rust')]
+rust-fmt-check:
+    cargo fmt --all --check
 
 # Clippy with warnings as errors
 [group('rust')]

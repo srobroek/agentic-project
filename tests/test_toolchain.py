@@ -15,6 +15,8 @@ import pytest
 
 from project_setup.catalog import ALWAYS_ON
 
+ASSETS = Path(__file__).resolve().parents[1] / "assets"
+
 TEMPLATES = Path(__file__).resolve().parents[1] / "templates"
 
 # A package manager resolves what follows it: `bunx biome` from node_modules,
@@ -111,3 +113,62 @@ def test_every_tool_a_recipe_calls_is_pinned_somewhere(layer: str):
 
     missing = sorted(invoked_tools(layer) - available)
     assert missing == [], f"{layer} recipes call {missing}, which no .mise/conf.d/ pins"
+
+
+# --------------------------------------------------------- check must not rewrite
+
+
+LANGUAGES = ("ts", "go", "python", "rust")
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_the_language_aggregate_checks_formatting_without_writing(lang):
+    """`just check` runs each language's aggregate. A check that formats cannot be run
+    on a dirty checkout, and in CI it reports success having edited the tree it was
+    asked to inspect. The writer stays available as `just <lang>-fmt`.
+    """
+    body = (ASSETS / f"lang/{lang}/.just.d/{lang}.just").read_text()
+    aggregate = next(line for line in body.splitlines() if line.startswith(f"{lang}:"))
+    assert f"{lang}-fmt-check" in aggregate
+    assert f" {lang}-fmt " not in f" {aggregate} "
+    assert f"{lang}-fmt-check:" in body, "the check-only recipe must exist"
+    assert f"{lang}-fmt:" in body, "the writer must remain available"
+
+
+@pytest.mark.parametrize(
+    "recipe,forbidden",
+    [
+        ("ts-fmt-check", "--write"),
+        ("python-fmt-check", "ruff format ."),
+        ("rust-fmt-check", "cargo fmt --all\n"),
+        ("go-fmt-check", "gofmt -w"),
+    ],
+)
+def test_no_check_recipe_carries_a_writing_flag(recipe, forbidden):
+    lang = recipe.split("-")[0]
+    body = (ASSETS / f"lang/{lang}/.just.d/{lang}.just").read_text()
+    block = body.split(f"{recipe}:")[1].split("\n[group")[0]
+    assert forbidden not in block, f"{recipe} still writes: {forbidden!r}"
+
+
+# ------------------------------------------------- injected JSON must not be inlined
+
+
+@pytest.mark.parametrize(
+    "path,token",
+    [
+        ("a11y/ts/playwright/playwright.a11y.config.ts.template", "A11Y_WEB_SERVERS_JSON"),
+        ("a11y/ts/playwright/tests/a11y/a11y.pw.ts.template", "A11Y_SURFACES_JSON"),
+    ],
+)
+def test_json_answers_reach_javascript_through_a_template_literal(path, token):
+    """A JSON answer has quoted keys, and no JS formatter emits a quoted-key object
+    literal. Inlining one made a fresh scaffold fail its own `just check`. Inside a
+    template literal the JSON is a string, so the formatter leaves it alone.
+    """
+    body = (ASSETS / path).read_text()
+    line = next(line for line in body.splitlines() if token in line)
+    assert line.strip().startswith("`") and line.strip().rstrip(",").endswith("`"), (
+        f"@@{token}@@ must sit alone inside backticks, found: {line.strip()!r}"
+    )
+    assert "JSON.parse(" in body
