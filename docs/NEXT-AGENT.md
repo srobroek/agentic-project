@@ -8,49 +8,72 @@ places where the tool is merely adequate.
 Read `README.md` for what it is, `AGENTS.md` for the invariants, and
 `skills/project-setup/SKILL.md` for how an agent is meant to drive it.
 
-## This round: four named targets, then your own judgement
+## This round: two named targets, then your own judgement
 
-Do these four first, because each is a known gap rather than a hunch. Then range wider.
+The previous round's four are delivered: the journey gate runs in `tools/e2e.py`, the
+interview is driven through a PTY, `just check` dispatches `api`, `aws-cdk`, `i18n` and
+`a11y` so `fullstack-web` exercises them, and tool versions live only in `TOKEN_POLICY`.
+Two things replace them.
 
-### 1. Make the checks run the journey, not just the scaffolder
+### 1. The journey gate is flaky, which is worse than absent
 
-Every defect found in the last round was found by hand, by running the sequence a user
-runs — `apply`, then `just setup`, then `just check` — and none of them was caught by
-`pytest` or `tools/e2e.py`, which both passed throughout. That is the gap.
+Three consecutive full runs of `tools/e2e.py` gave `12 walked / 0 failed`, then
+`11 walked / 1 failed`, then `12 / 0`. It passes on retry. A gate that fails one run in
+three for environmental reasons teaches everybody to re-run instead of read it, and it
+was installed to be trusted.
 
-Fold the journey into `tools/e2e.py`: for each preset, after `apply`, run `just setup` and
-`just check` in the scaffolded repository and require both to exit 0. Where a language
-toolchain is missing, skip with a reported reason rather than passing silently. This is the
-single highest-value change available, because it converts the thing that keeps finding bugs
-from a manual habit into a gate.
+The cause is structural rather than a bug: `just setup` and `just check` do real network
+work. `bun install`, `cargo fetch`, `uv sync`, prek hook downloads, and `go-vuln` through
+a module proxy that does not resolve on this network at all. `go-service` passed three
+times in isolation, so the failing preset was not reproducible, which is itself the point.
 
-A fresh scaffold currently reaches `setup=0 check=0` on minimal, go-service, ts-service,
-rust-cli, py-lib, web-app and fullstack-web, and on fullstack-web again after
-`just aws-cdk-init`. That is the baseline to lock in.
+Find every network-dependent step the journey runs, then decide **per step** whether it
+retries, skips with a reported reason, or leaves the gate. A step that skips must say so
+in the summary: `0 not walked` is a number the run already prints, and a silent skip is
+the failure this whole project keeps finding. Do not make the gate pass by weakening what
+it checks.
 
-### 2. Drive the interactive interview
+### 2. Scaffold a monorepo member by running project-setup in it
 
-`project-setup interview --dest .` prompts, and nothing automated drives a TTY, so it is
-still the least-verified surface in the repo. It can be driven: `pty.fork`, write
-keystrokes, read the answers file. That technique found the keypress leak — a `bool` was a
-confirm, which submits on one keypress, so the Enter a user typed after `y` silently
-answered the next question. All five asked bools are selects now; a test should hold that
-and check the question order and count.
+This is the owner's answer to the member-config design call, and it is better than the
+three options put to them: the monorepo shell is scaffolded, then `project-setup` runs
+again per member. Nothing is hand-built and nothing guesses at architecture. It also
+dissolves the `knip` failure at its root: `knip` only detects plugins from a member's own
+configs, and a member scaffolded by the tool has its own.
 
-### 3. Verify the layers nothing has exercised end to end
+It does not work yet. Measured today:
 
-`just i18n`, `just api`, and the monorepo member CI path have never been run in a
-scaffolded repository. `just a11y` had never run either, and turned out to have never
-worked at all: its Playwright config used an ESM-only API that its own loader cannot take.
-Assume the same of anything unexercised.
+```
+project-setup apply --preset monorepo --dest R                    # 25 files, a git repo
+project-setup apply --preset parts/lang-ts --dest R/services/api  # 69 files
+```
 
-### 4. Keep one source of truth for a version
+The member received the entire root-only surface: a **nested `.git`**, `CODEOWNERS`,
+`CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, `docs/agents/`, `AGENTS.md`, `CLAUDE.md`,
+`.github/`, its own `.pre-commit-config.yaml`. A nested repository inside a member is a
+trap on its own. The cause is that the root-only layers are `ALWAYS_ON`, so no selection
+can exclude them.
 
-Thirteen tool versions were pinned in both `TOKEN_POLICY` and the preset parts, and the
-preset silently won — so bumping the policy did nothing and a fresh Go scaffold failed its
-own lint with golangci-lint built against an older Go than the pinned toolchain. Versions
-now live only in `TOKEN_POLICY` and a test forbids restating one. Check the pinned set is
-mutually compatible, not merely present: several pins are months stale.
+What a member-scoped apply has to do, and the shape is already in the catalog:
+
+- Apply only the member-safe layers. The current `ALWAYS_ON` set is exactly the root-only
+  set, so the distinction exists; it just has no mode that honours it.
+- Not run `git_init`. It probes `.git` relative to the destination, so in a member it
+  creates a nested repository instead of finding the root's.
+- Register the member in the root's `.ci/members.json`, which is what drives per-member CI
+  and today reports `MEMBER_PATH_EMPTY` for paths nobody created.
+- Leave the root's generated files alone. The `.d/` fragments and their generators are
+  root-scoped.
+
+Decide the interface and say why. A `--member` flag, a `member` preset tier, and a
+separate `add-member` subcommand are all defensible; what matters is that a member cannot
+silently receive a nested repository or a second licence. Cover it in the journey gate:
+scaffold the monorepo, scaffold both members, then require the root's `just check` and
+each member's own checks to pass.
+
+If this turns out to be larger than one round, say so and land the safety half first:
+refusing a member-scoped apply that would nest a repository is worth more than the
+feature.
 
 ## Prove it still works before you change anything
 
