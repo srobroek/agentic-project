@@ -1,5 +1,6 @@
 # Python: uv, ruff, pytest, src/ layout.
 WANT_LANG_PYTHON: true
-PYTHON_VERSION: "3.13"
-UV_VERSION: "0.9.8"
 PY_SRC_LAYOUT: true
+# Tool versions are not restated here. TOKEN_POLICY in tools/port_assets.py is the
+# single source, so Renovate has one place to bump: a version pinned in both drifts
+# the moment one copy moves, and the preset silently wins.

@@ -51,8 +51,7 @@ DEFAULT_BRANCH:
   help: Branch CI listens on and the force-push guard protects
   default: main
   validator: '{% if not (DEFAULT_BRANCH | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}DEFAULT_BRANCH
-    must be a branch name: letters, digits, dot, underscore, slash or dash, with no spaces -- main, master,
-    release/2.x{% endif %}'
+    must have no spaces or shell characters: main, release/2.x{% endif %}'
 FORGE_PLATFORM:
   type: str
   help: Only github and gitlab are supported; other forges are an explicit gap

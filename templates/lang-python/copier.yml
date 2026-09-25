@@ -48,10 +48,9 @@ JOB_TIMEOUT_MINUTES:
   default: '15'
 PROJECT_NAME:
   type: str
-  help: Repository name, lowercase with dashes
+  help: Repository name. Becomes the crate, package and module name
   validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z](?:[a-z0-9-]*[a-z0-9])?$'')) %}PROJECT_NAME
-    must be lowercase letters, digits and dashes, starting with a letter and ending with a letter or digit
-    -- my-app, flint, api2. It becomes the crate, package and module name{% endif %}'
+    must be lowercase letters, digits and dashes: my-app, api2{% endif %}'
 PYTHON_VERSION:
   type: str
   help: Python minor, e.g. 3.13. Sets requires-python and the ruff target

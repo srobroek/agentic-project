@@ -9,14 +9,30 @@
 aws-cdk-init:
     python3 scripts/init_aws_cdk.py --dest @@AWS_CDK_DEST_SHELL@@ --cdk-version @@AWS_CDK_VERSION@@
 
+# `just setup` runs this on every fresh scaffold, before `aws-cdk-init` has generated
+# anything, so a bare `cd` into the destination failed setup outright with nothing but
+# a shell error. Standing down is correct: there is no application to restore yet.
+
 # Restore the generated CDK application from its committed lockfile
 [group('infrastructure')]
 aws-cdk-install:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! -d @@AWS_CDK_DEST_SHELL@@ ]]; then
+      echo "aws-cdk-install: @@AWS_CDK_DEST_SHELL@@/ not generated yet; run 'just aws-cdk-init' first"
+      exit 0
+    fi
     cd @@AWS_CDK_DEST_SHELL@@ && bun install --frozen-lockfile
 
 # Synthesize CloudFormation locally; never bootstrap or deploy
 [group('infrastructure')]
 aws-cdk-synth:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! -d @@AWS_CDK_DEST_SHELL@@ ]]; then
+      echo "aws-cdk-synth: @@AWS_CDK_DEST_SHELL@@/ not generated yet; run 'just aws-cdk-init' first" >&2
+      exit 1
+    fi
     cd @@AWS_CDK_DEST_SHELL@@ && bun run cdk synth
 
 # A gate that fails for a directory nobody created yet says nothing about the code,

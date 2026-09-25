@@ -12,6 +12,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 
 from project_setup.catalog import ALWAYS_ON
 
@@ -172,3 +173,26 @@ def test_json_answers_reach_javascript_through_a_template_literal(path, token):
         f"@@{token}@@ must sit alone inside backticks, found: {line.strip()!r}"
     )
     assert "JSON.parse(" in body
+
+
+def test_no_preset_restates_a_pinned_tool_version():
+    """One source of truth for a version, so Renovate has one place to bump.
+
+    GOLANGCI_LINT_VERSION was pinned in both TOKEN_POLICY and presets/parts/lang-go.yml.
+    Bumping the policy alone changed nothing, because the preset wins, and a fresh
+    go-service kept failing `just check` with golangci-lint built against an older Go
+    than the pinned toolchain.
+    """
+    import re
+
+    source = (Path(__file__).resolve().parents[1] / "tools" / "port_assets.py").read_text()
+    pinned = set(re.findall(r'"([A-Z0-9_]+)": \{[^}]*"pin": True', source, re.S))
+    assert pinned, "no pinned tokens found; the pattern this guards has moved"
+
+    offenders: dict[str, list[str]] = {}
+    for path in sorted((Path(__file__).resolve().parents[1] / "presets").rglob("*.yml")):
+        answers = yaml.safe_load(path.read_text()) or {}
+        restated = sorted(k for k in answers if k in pinned)
+        if restated:
+            offenders[path.name] = restated
+    assert offenders == {}, f"version pins restated in a preset: {offenders}"

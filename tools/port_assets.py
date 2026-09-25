@@ -105,16 +105,16 @@ TOKEN_POLICY: dict[str, dict] = {
     "PROJECT_NAME": {
         "type": "str",
         "required": True,
-        "help": "Repository name, lowercase with dashes",
+        # A validator message is read at 80 columns, where anything past ~76
+        # characters is cut off mid-sentence. Context belongs in `help`, which is
+        # shown when the question is asked; `rule` is read only on a rejection and
+        # has to fit.
+        "help": "Repository name. Becomes the crate, package and module name",
         # `^[a-z][a-z0-9-]+$` refused the one-letter name `q` and accepted the typo
         # `my-app-`, which is the wrong way round for both. Start with a letter, end
         # with a letter or digit, dashes in between.
         "validator": "^[a-z](?:[a-z0-9-]*[a-z0-9])?$",
-        "rule": (
-            "be lowercase letters, digits and dashes, starting with a letter and "
-            "ending with a letter or digit -- my-app, flint, api2. It becomes the "
-            "crate, package and module name"
-        ),
+        "rule": "be lowercase letters, digits and dashes: my-app, api2",
     },
     "DESCRIPTION": {"type": "str", "required": True, "help": "One-line purpose"},
     "INSTALL_COMMANDS": {
@@ -165,10 +165,7 @@ TOKEN_POLICY: dict[str, dict] = {
         # which some repositories actually use. The pattern exists to keep the value
         # safe inside a workflow and a shell, not to have an opinion about case.
         "validator": "^[A-Za-z0-9._/-]+$",
-        "rule": (
-            "be a branch name: letters, digits, dot, underscore, slash or dash, "
-            "with no spaces -- main, master, release/2.x"
-        ),
+        "rule": ("have no spaces or shell characters: main, release/2.x"),
     },
     "JOB_TIMEOUT_MINUTES": {
         "type": "str",
@@ -205,7 +202,7 @@ TOKEN_POLICY: dict[str, dict] = {
     },
     "GOLANGCI_LINT_VERSION": {
         "type": "str",
-        "default": "2.7.1",
+        "default": "2.13.2",
         "pin": True,
         "help": "golangci-lint",
     },
@@ -343,6 +340,7 @@ TOKEN_POLICY: dict[str, dict] = {
         "default": "project.inlang",
         "help": "Inlang project dir, repo-relative, e.g. apps/web/project.inlang",
         "validator": "^[A-Za-z0-9._/-]+$",
+        "rule": "be a repo-relative path: apps/web/project.inlang",
     },
     "I18N_PREPARE_COMMANDS": {
         "type": "str",
@@ -363,6 +361,7 @@ TOKEN_POLICY: dict[str, dict] = {
         "default": "infrastructure",
         "help": "Repo-relative CDK destination",
         "validator": "^[A-Za-z0-9._][A-Za-z0-9._/-]*$",
+        "rule": "be a repo-relative path, no spaces: deploy/cdk",
     },
     "AWS_CDK_DEST_SHELL": {
         "type": "str",

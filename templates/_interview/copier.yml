@@ -10,10 +10,9 @@ _message_after_copy: Answers recorded in .project-setup-answers.yml.
 
 PROJECT_NAME:
   type: str
-  help: Repository name, lowercase with dashes
+  help: Repository name. Becomes the crate, package and module name
   validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z](?:[a-z0-9-]*[a-z0-9])?$'')) %}PROJECT_NAME
-    must be lowercase letters, digits and dashes, starting with a letter and ending with a letter or digit
-    -- my-app, flint, api2. It becomes the crate, package and module name{% endif %}'
+    must be lowercase letters, digits and dashes: my-app, api2{% endif %}'
 DESCRIPTION:
   type: str
   help: One-line purpose
@@ -139,8 +138,7 @@ DEFAULT_BRANCH:
   help: Branch CI listens on and the force-push guard protects
   default: main
   validator: '{% if not (DEFAULT_BRANCH | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}DEFAULT_BRANCH
-    must be a branch name: letters, digits, dot, underscore, slash or dash, with no spaces -- main, master,
-    release/2.x{% endif %}'
+    must have no spaces or shell characters: main, release/2.x{% endif %}'
 MAX_FILE_KB:
   type: str
   help: Largest file the added-large-files hook accepts
@@ -271,7 +269,7 @@ I18N_PROJECT_DIR:
   help: Inlang project dir, repo-relative, e.g. apps/web/project.inlang
   default: project.inlang
   validator: '{% if not (I18N_PROJECT_DIR | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}I18N_PROJECT_DIR
-    must match ^[A-Za-z0-9._/-]+${% endif %}'
+    must be a repo-relative path: apps/web/project.inlang{% endif %}'
   when: '@@ (WANT_I18N) @@'
 I18N_PREPARE_COMMANDS:
   type: str
@@ -288,7 +286,7 @@ AWS_CDK_DEST:
   help: Repo-relative CDK destination
   default: infrastructure
   validator: '{% if not (AWS_CDK_DEST | string | regex_search(''^[A-Za-z0-9._][A-Za-z0-9._/-]*$'')) %}AWS_CDK_DEST
-    must match ^[A-Za-z0-9._][A-Za-z0-9._/-]*${% endif %}'
+    must be a repo-relative path, no spaces: deploy/cdk{% endif %}'
   when: '@@ (WANT_INFRA_AWS_CDK or WANT_LANG_TS) @@'
 AWS_CDK_DEST_SHELL:
   type: str
@@ -316,7 +314,7 @@ GO_VERSION:
 GOLANGCI_LINT_VERSION:
   type: str
   help: golangci-lint
-  default: 2.7.1
+  default: 2.13.2
   when: '@@ (WANT_LANG_GO) and PIN_TOOL_VERSIONS @@'
 GOVULNCHECK_VERSION:
   type: str

@@ -7,6 +7,7 @@ found by driving `project-setup interview` through a PTY.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -631,3 +632,20 @@ def test_a_bool_with_choices_still_answers_true_or_false():
         values = sorted(choices.values(), key=str)
         assert values == [False, True], f"{name} choices must map to booleans, got {values}"
         assert spec.get("default") in (True, False), f"{name} default must be a bool"
+
+
+def test_a_rejection_message_fits_an_eighty_column_terminal():
+    """A validator message is read at the moment of failure, and at 80 columns
+    anything past roughly 76 characters is cut off mid-sentence -- which is how
+    "PROJECT_NAME must be lowercase le…" reached a user. Context belongs in `help`,
+    shown when the question is asked; the rule has to fit.
+    """
+    interview = yaml.safe_load((TEMPLATES / "_interview" / "copier.yml").read_text())
+    too_long = {}
+    for name, spec in interview.items():
+        if not isinstance(spec, dict) or not spec.get("validator"):
+            continue
+        message = re.sub(r"\{%.*?%\}", "", spec["validator"]).strip()
+        if len(message) > 76:
+            too_long[name] = len(message)
+    assert too_long == {}, f"truncated on an 80-column terminal: {too_long}"
