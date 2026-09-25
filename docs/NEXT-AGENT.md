@@ -219,6 +219,18 @@ survives. This repository has no ledger, so this list is the carrier.
    edited last. Check: `uvx slopvac` passes on all four, and the Python comments still read
    the way they do now.
 
+3. **`@types/bun` is `"latest"` in every TypeScript scaffold's `package.json`.** `bun init`
+   writes it, and `native_init.py` keeps it. `bun.lock` pins it from the first
+   `just setup`, so a committed scaffold is reproducible, but the manifest still floats.
+   Check: `package.json` names an exact `@types/bun` from `TOKEN_POLICY`.
+4. **`just setup` installs the developer's whole global mise toolset.** Bare `mise install`
+   reads every config in scope, so a minimal scaffold installed 116 tools on this machine.
+   Check: `just setup` installs only the tools under `.mise/conf.d/`.
+5. **Two host problems, not repository defects.** The `slopvac` on PATH here fails with
+   `ModuleNotFoundError: No module named 'slopvac.cli'`; `uvx slopvac` works. And
+   `proxy.golang.org` does not resolve on this network, so `just go-vuln` needs
+   `GOPROXY=direct` to run.
+
 ## What a second shake-out found, and fixed
 
 Driven again: the interview through a PTY, `/project-setup` headless against a greenfield
