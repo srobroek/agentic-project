@@ -477,6 +477,11 @@ KNIP_VERSION:
   help: knip
   default: 6.38.0
   when: '@@ (WANT_LANG_TS) and PIN_TOOL_VERSIONS @@'
+TYPES_BUN_VERSION:
+  type: str
+  help: '@types/bun'
+  default: 1.4.2
+  when: '@@ (WANT_LANG_TS) and PIN_TOOL_VERSIONS @@'
 FORGE_HOSTNAME:
   type: str
   help: Self-hosted forge host. Empty means the platform's public host

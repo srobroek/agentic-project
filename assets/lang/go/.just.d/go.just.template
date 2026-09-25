@@ -43,7 +43,28 @@ go-test:
 # Known vulnerabilities in the dependency graph
 [group('go')]
 go-vuln:
-    go run golang.org/x/vuln/cmd/govulncheck@v@@GOVULNCHECK_VERSION@@ ./...
+    #!/usr/bin/env bash
+    set -euo pipefail
+    status=0
+    go run golang.org/x/vuln/cmd/govulncheck@v@@GOVULNCHECK_VERSION@@ ./... || status=$?
+    # `go run <module>@<version>` downloads through GOPROXY, and on a network that
+    # cannot reach the proxy the failure is a bare timeout naming no fix. Gated on the
+    # proxy really not answering, so a genuine vulnerability report never carries a
+    # network excuse, and on 127 so a missing curl is not read as a dead proxy.
+    if [ "$status" -ne 0 ]; then
+      proxy=$(go env GOPROXY | cut -d, -f1)
+      reachable=0
+      if [[ "$proxy" == https://* ]]; then
+        curl -sSf --max-time 5 -o /dev/null "$proxy" 2>/dev/null || reachable=$?
+      fi
+      if [ "$reachable" -ne 0 ] && [ "$reachable" -ne 127 ]; then
+        echo "" >&2
+        echo "go-vuln: $proxy did not answer, and this check is downloaded through it." >&2
+        echo "  On a network that blocks the module proxy, fetch from source instead:" >&2
+        echo "    GOPROXY=direct just go-vuln" >&2
+      fi
+    fi
+    exit "$status"
 
 # Fail when go.mod or go.sum is not tidy
 [group('go')]

@@ -568,3 +568,43 @@ def test_skip_still_leaves_a_hand_written_claude_md_alone(agents_index, tmp_path
 
     assert (tmp_path / "CLAUDE.md").read_text() == "mine\n"
     assert "mine" not in (tmp_path / "AGENTS.md").read_text()
+
+
+# ------------------------------------------------- a pinned scaffold pins everything
+
+
+def test_the_bun_types_version_is_pinned_not_latest(tmp_path: Path):
+    """`bun init` writes `"@types/bun": "latest"`, which was the one floating version in
+    a scaffold whose every other dependency is exact. bun.lock pins it once setup has
+    run, but the manifest still said latest, so a fresh resolve elsewhere could take a
+    different version of the types that define the runtime.
+    """
+    native = load_module(NATIVE_INIT, "native_init_bun_types")
+    manifest = tmp_path / "package.json"
+    manifest.write_text(json.dumps({"devDependencies": {"@types/bun": "latest"}}) + "\n")
+
+    cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        native._declare_ts_dev_tools("@types/bun=1.4.2")
+    finally:
+        os.chdir(cwd)
+
+    assert json.loads(manifest.read_text())["devDependencies"]["@types/bun"] == "1.4.2"
+
+
+def test_a_deliberate_range_is_not_overwritten(tmp_path: Path):
+    """Only `latest` exactly is replaced. A brownfield repository's `^2.0.0` is a choice
+    somebody made, and this task is not the place to overrule it."""
+    native = load_module(NATIVE_INIT, "native_init_range")
+    manifest = tmp_path / "package.json"
+    manifest.write_text(json.dumps({"devDependencies": {"@types/bun": "^2.0.0"}}) + "\n")
+
+    cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        native._declare_ts_dev_tools("@types/bun=1.4.2")
+    finally:
+        os.chdir(cwd)
+
+    assert json.loads(manifest.read_text())["devDependencies"]["@types/bun"] == "^2.0.0"

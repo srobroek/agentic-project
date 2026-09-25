@@ -270,7 +270,14 @@ def _declare_ts_dev_tools(pinned: str) -> None:
         print("native_init: package.json is not valid JSON, leaving it", file=sys.stderr)
         return
     dev = data.setdefault("devDependencies", {})
-    added = {name: version for name, version in entries.items() if name not in dev}
+    # `bun init` writes `"@types/bun": "latest"`, so adding only missing keys left the
+    # one floating version in the manifest. `latest` exactly, and nothing else, is
+    # replaced: a brownfield repository's `^2.0.0` is a deliberate choice to keep.
+    added = {
+        name: version
+        for name, version in entries.items()
+        if name not in dev or dev[name] == "latest"
+    }
     if not added:
         return
     dev.update(added)

@@ -4,6 +4,7 @@ python = "3.13"
 copier = "9.18.2"
 uv = "0.9.8"
 just = "1.44.0"
+"pipx:slopvac" = "2.10.0"
 
 [env]
 _.python.venv = { path = ".venv", create = true }

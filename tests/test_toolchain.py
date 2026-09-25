@@ -33,6 +33,8 @@ SHELL = frozenset(
         "case",
         "cat",
         "cd",
+        "command",
+        "curl",
         "cp",
         "do",
         "done",
@@ -240,3 +242,44 @@ def test_the_formatter_leaves_the_cdk_app_alone():
 
     tsconfig = (ASSETS / "lang/ts/tsconfig.json.template").read_text()
     assert "@@AWS_CDK_DEST@@" in tsconfig, "the two exclusions must name the same answer"
+
+
+# ------------------------------------------------------- setup installs this project
+
+
+def test_setup_installs_only_this_projects_tools():
+    """`mise install` with no scope installs every tool in scope, and the developer's
+    global config is in scope: a minimal scaffold pulled 116 tools on a machine with a
+    populated ~/.config/mise, against the 13 it declares. Pointing the global config at
+    an empty file for the install alone leaves the rest of the environment untouched.
+    """
+    setup = (ASSETS / "just/justfile").read_text()
+    block = setup.split("setup:")[1].split("\n# ")[0]
+    assert "MISE_GLOBAL_CONFIG_FILE=" in block
+    for line in block.splitlines():
+        bare = line.strip()
+        if bare.startswith("mise install"):
+            raise AssertionError(f"unscoped install would take the global set: {bare!r}")
+
+
+def test_this_repo_pins_its_own_prose_gate():
+    """The slopvac on PATH was a python-install shadow that fails with
+    ModuleNotFoundError: slopvac.cli, so the gate's verdict depended on which
+    interpreter mise resolved in a given directory."""
+    pinned = tomllib.loads((Path(__file__).resolve().parents[1] / "mise.toml").read_text())
+    assert any("slopvac" in name for name in pinned["tools"]), (
+        "slopvac unpinned, so a broken copy on PATH can answer for the gate"
+    )
+
+
+def test_the_vulnerability_check_names_its_own_workaround():
+    """`go run <module>@<version>` downloads through GOPROXY, and on a network that
+    cannot reach the proxy the failure is a bare timeout naming no fix. The hint is
+    gated on the proxy really not answering, so a genuine vulnerability report never
+    carries a network excuse.
+    """
+    recipe = (ASSETS / "lang/go/.just.d/go.just.template").read_text()
+    assert "GOPROXY=direct just go-vuln" in recipe
+    assert "go env GOPROXY" in recipe, "the hint must probe the configured proxy, not a guess"
+    assert '[ "$status" -ne 0 ]' in recipe, "the hint must fire only on failure"
+    assert "-ne 127" in recipe, "a missing curl must not be read as a dead proxy"

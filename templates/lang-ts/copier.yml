@@ -35,7 +35,7 @@ _tasks:
   - ts
   - '@@ PROJECT_NAME @@'
   - '@biomejs/biome=@@ BIOME_VERSION @@,oxlint=@@ OXLINT_VERSION @@,oxlint-tsgolint=@@ TSGOLINT_VERSION
-    @@,knip=@@ KNIP_VERSION @@'
+    @@,knip=@@ KNIP_VERSION @@,@types/bun=@@ TYPES_BUN_VERSION @@'
 
 AWS_CDK_DEST:
   type: str
@@ -83,3 +83,7 @@ TSGOLINT_VERSION:
   type: str
   help: oxlint-tsgolint, which oxlint's type-aware rules require
   default: 7.0.2003
+TYPES_BUN_VERSION:
+  type: str
+  help: '@types/bun'
+  default: 1.4.2

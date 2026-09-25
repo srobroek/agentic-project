@@ -48,7 +48,18 @@ setup:
       # Trust first: without it mise may skip the config or fail unable to prompt, and
       # then `mise install` reads nothing and reports success.
       mise trust --yes
-      mise install --yes
+      # This project's tools, not the developer's whole collection. `mise install`
+      # with no scope installs every tool in scope, and the global config is in
+      # scope, so a minimal scaffold pulled 116 tools on a machine with a populated
+      # ~/.config/mise. Pointing the global config at an empty file for the install
+      # alone leaves the rest of the environment untouched: later steps, and every
+      # later command, still see whatever the developer has configured.
+      (
+        scoped=$(mktemp -d)
+        trap 'rm -rf "$scoped"' EXIT
+        : > "$scoped/mise.toml"
+        MISE_GLOBAL_CONFIG_FILE="$scoped/mise.toml" mise install --yes
+      )
     else
       echo "mise is not on PATH; skipping the toolchain" >&2
     fi

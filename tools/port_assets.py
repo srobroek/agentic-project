@@ -257,6 +257,16 @@ TOKEN_POLICY: dict[str, dict] = {
         "help": "oxlint-tsgolint, which oxlint's type-aware rules require",
     },
     "KNIP_VERSION": {"type": "str", "default": "6.38.0", "pin": True, "help": "knip"},
+    # `bun init` writes `"@types/bun": "latest"`, the one floating version in a
+    # scaffold whose every other dependency is exact. bun.lock pins it once setup
+    # has run, but the manifest still says latest, so a fresh resolve on another
+    # machine can take a different version of the types that define the runtime.
+    "TYPES_BUN_VERSION": {
+        "type": "str",
+        "default": "1.4.2",
+        "pin": True,
+        "help": "@types/bun",
+    },
     "UV_VERSION": {"type": "str", "default": "0.12.18", "pin": True, "help": "uv"},
     "RUST_VERSION": {
         "type": "str",
@@ -611,7 +621,8 @@ TASKS: dict[str, list[dict]] = {
                     "@biomejs/biome=@@ BIOME_VERSION @@,"
                     "oxlint=@@ OXLINT_VERSION @@,"
                     "oxlint-tsgolint=@@ TSGOLINT_VERSION @@,"
-                    "knip=@@ KNIP_VERSION @@"
+                    "knip=@@ KNIP_VERSION @@,"
+                    "@types/bun=@@ TYPES_BUN_VERSION @@"
                 ),
             ],
         }
@@ -653,6 +664,7 @@ EXTRA_TOKENS: dict[str, list[str]] = {
         "OXLINT_VERSION",
         "TSGOLINT_VERSION",
         "KNIP_VERSION",
+        "TYPES_BUN_VERSION",
         "AWS_CDK_DEST",
     ],
     "lang-rust": ["PROJECT_NAME", "SPDX_ID"],
