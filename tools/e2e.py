@@ -8,6 +8,26 @@ tasks enabled, so it covers the path a user or an agent actually takes: validate
 plan, apply, re-apply. Native toolchain init is not a question and is not suppressed:
 each branch skips when its manifest exists and warns when its tool is absent, so the
 run needs no toolchain but uses one when it is there.
+
+After the scaffolder's own checks, each preset walks the journey a user takes next,
+in the scaffolded repository, with the repository's own pinned toolchain active:
+
+    mise exec -- just setup      install what the scaffold pins
+    git add -A                   stage it, as the first commit will
+    mise exec -- just check      the scaffold's own gate, over tracked files
+    git commit                   the first commit, through every hook
+    git status                   nothing left dirty or untracked
+
+and, for a preset with the CDK layer, again after `just aws-cdk-init`. Every defect
+the fourth round found came from running exactly this by hand, while this suite and
+pytest passed throughout. Staging comes before `check` because `prek run --all-files`
+reads tracked files only: in a repository with none, every hook reports "(no files to
+check)" and `check` passes having checked nothing.
+
+`mise exec` rather than whatever is on PATH, so the pins are what runs: a gate over
+the developer's own newer toolchain passes for a set of versions nobody pinned. A
+toolchain the scaffolder reports absent -- an apply warning "<tool> is not on PATH" --
+skips the journey with that reason, and the summary counts every skip.
 """
 
 from __future__ import annotations
@@ -17,6 +37,7 @@ import concurrent.futures
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -117,6 +138,94 @@ class Failure(Exception):
     pass
 
 
+class Skipped(Exception):
+    """The journey could not run here; the reason is reported, never counted as a pass."""
+
+
+# The journey's environment: never prompt, never page. A commit hook or a mise trust
+# prompt waiting on a terminal nobody is watching would hang the run instead of failing.
+JOURNEY_ENV = {
+    "GIT_TERMINAL_PROMPT": "0",
+    "SSH_ASKPASS": "/usr/bin/false",
+    "SSH_ASKPASS_REQUIRE": "force",
+    "PAGER": "cat",
+    "GIT_PAGER": "cat",
+    "MISE_YES": "1",
+    "GIT_AUTHOR_NAME": "e2e",
+    "GIT_AUTHOR_EMAIL": "e2e@example.com",
+    "GIT_COMMITTER_NAME": "e2e",
+    "GIT_COMMITTER_EMAIL": "e2e@example.com",
+}
+
+# What the journey itself needs before any scaffold-specific toolchain.
+JOURNEY_TOOLS = ("mise", "git")
+
+ABSENT_TOOL = re.compile(r"(\S+) is not on PATH")
+
+JOURNEY_TIMEOUT_SECONDS = 1800
+
+# After the first commit: nothing modified, nothing untracked. A hook that rewrites a
+# file, or a setup step that writes one nobody ignores, both land here.
+CLEAN_TREE = 'test -z "$(git status --porcelain)" || { git status --short; exit 1; }'
+
+
+def journey_skip_reason(warnings: list[dict], which=shutil.which) -> str | None:
+    """Why the journey cannot run for this scaffold, or None when it can.
+
+    A language toolchain is absent exactly when apply said so: native init warns
+    "<tool> is not on PATH" and leaves the manifest unwritten, so `just setup` would fail
+    on a missing Cargo.toml rather than on anything the scaffold got wrong.
+    """
+    missing = [tool for tool in JOURNEY_TOOLS if which(tool) is None]
+    if missing:
+        return f"{', '.join(missing)} not on PATH"
+    absent = sorted(
+        {m.group(1) for w in warnings if (m := ABSENT_TOOL.search(w.get("message", "")))}
+    )
+    if absent:
+        return f"apply reported {', '.join(absent)} not on PATH"
+    return None
+
+
+def journey_step(dest: Path, name: str, command: str) -> float:
+    started = time.perf_counter()
+    try:
+        proc = subprocess.run(
+            ["bash", "-c", command],
+            cwd=dest,
+            capture_output=True,
+            text=True,
+            check=False,
+            env={**os.environ, **JOURNEY_ENV},
+            timeout=JOURNEY_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise Failure(f"{name}: timed out after {JOURNEY_TIMEOUT_SECONDS}s") from exc
+    if proc.returncode != 0:
+        output = (proc.stdout + proc.stderr).strip().splitlines()
+        # The first failing line names the cause; the last lines are just's own summary.
+        cause = next((line for line in output if re.search(r"Failed|error|FAIL", line)), "")
+        shown = "\n      ".join(output[-12:])
+        raise Failure(
+            f"{name} exited {proc.returncode} in {dest}\n    first failure: {cause}\n"
+            f"    last lines:\n      {shown}"
+        )
+    return time.perf_counter() - started
+
+
+def journey(dest: Path, *, label: str = "") -> dict[str, float]:
+    """setup, stage, check, first commit, clean tree. Each must exit 0."""
+    prefix = f"{label} " if label else ""
+    steps = [
+        ("setup", "mise trust --yes --quiet && mise exec -- just setup"),
+        ("stage", "git add -A"),
+        ("check", "mise exec -- just check"),
+        ("commit", f"git commit -q --allow-empty -m 'chore: {label or 'initial'} scaffold'"),
+        ("clean", CLEAN_TREE),
+    ]
+    return {name: journey_step(dest, prefix + name, command) for name, command in steps}
+
+
 def run(args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run([str(CLI), *args], capture_output=True, text=True, check=False, cwd=REPO)
 
@@ -136,7 +245,7 @@ def fingerprint(root: Path) -> dict[str, str]:
     return out
 
 
-def check_preset(preset: str, workdir: Path) -> dict:
+def check_preset(preset: str, workdir: Path, run_journey: bool = True) -> dict:
     dest = workdir / preset
     dest.mkdir(parents=True)
     answer_file = workdir / f"{preset}.yml"
@@ -236,7 +345,25 @@ def check_preset(preset: str, workdir: Path) -> dict:
     if found:
         shown = "; ".join(f"{name}: {problems[:3]}" for name, problems in found.items())
         raise Failure(f"plan disagreed with apply in {len(found)} disposition(s): {shown}")
+
+    # 10. the user's journey, in the scaffold, with its own pins.
+    journey_result = "off"
+    if run_journey:
+        reason = journey_skip_reason(result.get("warnings", []))
+        if reason:
+            journey_result = f"skip: {reason}"
+        else:
+            journey(dest)
+            journey_result = "ok"
+            # The CDK layer's app is generated on demand, and `just check` failed on
+            # fullstack-web the moment it existed: the formatter, the type-checker and
+            # go's ./... all walked into it. So the journey runs again after it.
+            if "infra-aws-cdk" in result["layers"]:
+                journey_step(dest, "aws-cdk-init", "mise exec -- just aws-cdk-init")
+                journey(dest, label="aws-cdk-init")
+                journey_result = "ok+cdk"
     return {
+        "journey": journey_result,
         "layers": len(result["layers"]),
         "files": sum(1 for p in dest.rglob("*") if p.is_file() and ours(p, dest)),
         # Both are wall clock. Treat them as comparable only within one run:
@@ -250,6 +377,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--keep", action="store_true", help="keep the output directory")
     parser.add_argument("--preset", help="run only this preset")
+    parser.add_argument(
+        "--no-journey",
+        action="store_true",
+        help="skip setup/check/commit in the scaffold; reported, never a pass",
+    )
     parser.add_argument(
         "--jobs",
         type=int,
@@ -265,15 +397,16 @@ def main() -> int:
     names = [args.preset] if args.preset else sorted(p.stem for p in PRESETS.glob("*.yml"))
     workdir = Path(tempfile.mkdtemp(prefix="project-setup-e2e-"))
     print(f"workdir: {workdir}\n")
-    header = f"{'preset':<18}{'layers':>7}{'files':>7}{'apply':>8}{'total':>8}  result"
+    header = f"{'preset':<18}{'layers':>7}{'files':>7}{'apply':>8}{'total':>8}  result  journey"
     print(header)
     print("-" * len(header))
 
     failures: list[tuple[str, str]] = []
+    journeys: dict[str, str] = {}
 
     def one(preset: str) -> tuple[str, dict | None, str]:
         try:
-            return preset, check_preset(preset, workdir), ""
+            return preset, check_preset(preset, workdir, not args.no_journey), ""
         except Failure as exc:
             return preset, None, str(exc)
 
@@ -285,8 +418,10 @@ def main() -> int:
             else:
                 print(
                     f"{preset:<18}{stats['layers']:>7}{stats['files']:>7}"
-                    f"{stats['apply_seconds']:>8}{stats['total_seconds']:>8}  ok"
+                    f"{stats['apply_seconds']:>8}{stats['total_seconds']:>8}  ok      "
+                    f"{stats['journey']}"
                 )
+                journeys[preset] = stats["journey"]
     print("-" * len(header))
 
     if failures:
@@ -300,6 +435,15 @@ def main() -> int:
             "files, no build artifacts, no empty dirs, idempotent re-apply, answers "
             "recorded, plan matches apply in 4 dispositions"
         )
+    # Counted, never implied: a skipped journey is the gap a pass would hide.
+    walked = sorted(p for p, j in journeys.items() if j.startswith("ok"))
+    skipped = sorted((p, j) for p, j in journeys.items() if not j.startswith("ok"))
+    print(
+        f"\njourney (setup, check, first commit, clean tree): {len(walked)} walked, "
+        f"{len(skipped)} not walked, {len(failures)} failed"
+    )
+    for preset, why in skipped:
+        print(f"  {preset}: {why}")
 
     if args.keep:
         print(f"\noutput kept at {workdir}")

@@ -42,11 +42,11 @@ FORGE_PLATFORM:
   default: github
 I18N_CHECK_COMMANDS:
   type: str
-  help: Recurring completeness commands, one per deployable, indented four spaces
+  help: Extra completeness commands, e.g. one per deployable, indented four spaces
   default: ''
 I18N_PREPARE_COMMANDS:
   type: str
-  help: Catalog preparation commands, indented four spaces
+  help: Extra catalog preparation commands, indented four spaces
   default: ''
 I18N_PROJECT_DIR:
   type: str
@@ -63,3 +63,11 @@ LOCALES_JSON:
   type: str
   help: JSON array of shipped locales, including the base locale
   default: '["en"]'
+NODE_VERSION:
+  type: str
+  help: Node major, for tools that need a Node runtime
+  default: '24'
+I18N_MESSAGES_DIR:
+  type: str
+  help: Derived from I18N_PROJECT_DIR; do not set directly
+  default: '@@ (I18N_PROJECT_DIR.rpartition(''/'')[0] ~ ''/messages'').lstrip(''/'') @@'

@@ -5,6 +5,7 @@
       "**",
       "!**/.a11y/surfaces.json",
       "!**/.a11y/web-servers.json",
+      "!.ci/members.json",
       "!**/@@AWS_CDK_DEST@@/**"
     ]
   },

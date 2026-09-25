@@ -248,6 +248,11 @@ API_BASELINE_REF:
   help: Git ref the contract diff compares against
   default: origin/@@ DEFAULT_BRANCH @@
   when: 'false'
+NODE_VERSION:
+  type: str
+  help: Node major, for tools that need a Node runtime
+  default: '24'
+  when: '@@ (WANT_I18N or WANT_LANG_TS) and PIN_TOOL_VERSIONS @@'
 BASE_LOCALE:
   type: str
   help: Locale the source messages are authored in
@@ -271,16 +276,21 @@ I18N_PROJECT_DIR:
   validator: '{% if not (I18N_PROJECT_DIR | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}I18N_PROJECT_DIR
     must be a repo-relative path: apps/web/project.inlang{% endif %}'
   when: '@@ (WANT_I18N) @@'
+I18N_MESSAGES_DIR:
+  type: str
+  help: Derived from I18N_PROJECT_DIR; do not set directly
+  default: '@@ (I18N_PROJECT_DIR.rpartition(''/'')[0] ~ ''/messages'').lstrip(''/'') @@'
+  when: 'false'
 I18N_PREPARE_COMMANDS:
   type: str
-  help: Catalog preparation commands, indented four spaces
+  help: Extra catalog preparation commands, indented four spaces
   default: ''
-  when: '@@ (WANT_I18N) @@'
+  when: '@@ (WANT_I18N) and CUSTOMISE_DEFAULTS @@'
 I18N_CHECK_COMMANDS:
   type: str
-  help: Recurring completeness commands, one per deployable, indented four spaces
+  help: Extra completeness commands, e.g. one per deployable, indented four spaces
   default: ''
-  when: '@@ (WANT_I18N) @@'
+  when: '@@ (WANT_I18N) and CUSTOMISE_DEFAULTS @@'
 AWS_CDK_DEST:
   type: str
   help: Repo-relative CDK destination
@@ -372,11 +382,6 @@ CARGO_LLVM_COV_VERSION:
   help: cargo-llvm-cov
   default: 0.6.20
   when: '@@ (WANT_LANG_RUST) and PIN_TOOL_VERSIONS @@'
-NODE_VERSION:
-  type: str
-  help: Node major, for tools that need a Node runtime
-  default: '24'
-  when: '@@ (WANT_LANG_TS) and PIN_TOOL_VERSIONS @@'
 BIOME_VERSION:
   type: str
   help: Biome

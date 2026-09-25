@@ -1,0 +1,4 @@
+# The drift check is a Node script. lang-ts pins the same NODE_VERSION, so the two
+# fragments agree; this one is what makes `just i18n` runnable without it.
+[tools]
+node = "@@NODE_VERSION@@"

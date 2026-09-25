@@ -69,6 +69,7 @@ REMAP: dict[str, list[tuple[str, str]]] = {
     # destination is templated. Empty I18N_DEPLOYABLE puts it at the root.
     "i18n": [
         ("ts/paraglide/project.inlang/", "@@ I18N_PROJECT_DIR @@/"),
+        ("ts/paraglide/messages/base.json", "@@ I18N_MESSAGES_DIR @@/@@ BASE_LOCALE @@.json"),
         ("ts/paraglide/scripts/", "scripts/"),
         ("ts/paraglide/", ""),
     ],
@@ -345,15 +346,31 @@ TOKEN_POLICY: dict[str, dict] = {
         "validator": "^[A-Za-z0-9._/-]+$",
         "rule": "be a repo-relative path: apps/web/project.inlang",
     },
+    # Where the base catalog goes: `messages/` beside the Inlang project, which is what
+    # the settings' `./messages/{locale}.json` resolves against. Derived, because the
+    # catalog has to sit wherever I18N_PROJECT_DIR put the project, and a second answer
+    # could only disagree with it.
+    "I18N_MESSAGES_DIR": {
+        "type": "str",
+        "derive": "@@ (I18N_PROJECT_DIR.rpartition('/')[0] ~ '/messages').lstrip('/') @@",
+        "help": "Derived from I18N_PROJECT_DIR; do not set directly",
+    },
+    # Extra commands only. The drift check the layer ships is already in the recipe:
+    # with both of these defaulting to empty, `just i18n` ran nothing, passed, and a
+    # fresh repository's first commit failed end-of-file-fixer on the blank line the
+    # empty answer left at the end of the fragment. Tuned rather than asked: a shell
+    # command indented four spaces is not something anybody types into a prompt.
     "I18N_PREPARE_COMMANDS": {
         "type": "str",
         "default": "",
-        "help": "Catalog preparation commands, indented four spaces",
+        "help": "Extra catalog preparation commands, indented four spaces",
+        "tune": True,
     },
     "I18N_CHECK_COMMANDS": {
         "type": "str",
         "default": "",
-        "help": "Recurring completeness commands, one per deployable, indented four spaces",
+        "help": "Extra completeness commands, e.g. one per deployable, indented four spaces",
+        "tune": True,
     },
     # One source of truth for the CDK destination. The raw form goes into JSON and
     # into path comparisons; the shell form is derived, because shell-quoting a value
@@ -591,8 +608,8 @@ EXTRA_TOKENS: dict[str, list[str]] = {
     # The layer that owns the destination declares it, so the interview asks for the
     # raw path before the shell form derived from it. lang-ts only reads it.
     "infra-aws-cdk": ["AWS_CDK_DEST"],
-    # Referenced only by a destination path, so the body scanner cannot find it.
-    "i18n": ["I18N_PROJECT_DIR"],
+    # Referenced only by a destination path, so the body scanner cannot find them.
+    "i18n": ["I18N_PROJECT_DIR", "I18N_MESSAGES_DIR", "BASE_LOCALE"],
 }
 
 # Task scripts live in tools/tasks/ and are copied into each layer that needs them,

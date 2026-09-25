@@ -918,3 +918,78 @@ def test_the_shell_form_of_the_cdk_path_is_derived_not_answered(tmp_path: Path):
     assert questions["AWS_CDK_DEST_SHELL"].derived
     assert "AWS_CDK_DEST" in questions["AWS_CDK_DEST_SHELL"].derived_from
     assert not questions["AWS_CDK_DEST"].derived
+
+
+# --------------------------------------------------------- the i18n layer's own gate
+
+
+def _text_files(root: Path):
+    for path in sorted(root.rglob("*")):
+        if path.is_file() and ".git" not in path.parts:
+            try:
+                yield path, path.read_text()
+            except UnicodeDecodeError:
+                continue
+
+
+@pytest.mark.parametrize("preset", sorted(p.stem for p in PRESETS.glob("*.yml")))
+def test_a_fresh_scaffold_passes_its_own_end_of_file_hook(tmp_path: Path, preset: str):
+    """web-app's first commit failed end-of-file-fixer on `.just.d/i18n.just`.
+
+    An empty I18N_CHECK_COMMANDS left a blank line at the end of the fragment. Nothing
+    ran the hooks over a staged scaffold, and `prek run --all-files` reads tracked files
+    only, so `just check` on the unstaged tree reported "(no files to check)" and passed.
+    """
+    scaffold(tmp_path, preset)
+    bad = [
+        str(path.relative_to(tmp_path))
+        for path, text in _text_files(tmp_path)
+        if text and (not text.endswith("\n") or text.endswith("\n\n"))
+    ]
+    assert bad == []
+
+
+def _needs(*tools: str) -> None:
+    import shutil
+
+    missing = [tool for tool in tools if shutil.which(tool) is None]
+    if missing:
+        pytest.skip(f"{', '.join(missing)} not on PATH")
+
+
+def test_the_i18n_gate_checks_the_catalog_it_ships(tmp_path: Path):
+    """`just i18n` ran nothing and passed: both command answers defaulted to empty.
+
+    The layer shipped a drift script no recipe called and settings naming a catalog it
+    never wrote, so the gate a web app got was an empty recipe.
+    """
+    import subprocess
+
+    _needs("just", "node")
+    scaffold(tmp_path, "web-app")
+    done = subprocess.run(["just", "i18n"], cwd=tmp_path, capture_output=True, text=True)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "en: complete (1 keys)" in done.stdout
+
+
+def test_a_nested_inlang_project_gets_its_catalog_beside_it(tmp_path: Path):
+    import subprocess
+
+    _needs("just", "node")
+    scaffold(tmp_path, "web-app", {"I18N_PROJECT_DIR": "apps/web/project.inlang"})
+    assert (tmp_path / "apps/web/messages/en.json").is_file()
+    assert not (tmp_path / "messages").exists()
+    done = subprocess.run(["just", "i18n"], cwd=tmp_path, capture_output=True, text=True)
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_a_declared_locale_with_no_catalog_says_what_to_write(tmp_path: Path):
+    """`LOCALES_JSON: ["en","de"]` failed on "cannot read catalog de ... ENOENT"."""
+    import subprocess
+
+    _needs("just", "node")
+    scaffold(tmp_path, "web-app", {"LOCALES_JSON": '["en", "de"]'})
+    done = subprocess.run(["just", "i18n"], cwd=tmp_path, capture_output=True, text=True)
+    assert done.returncode != 0
+    assert "de: no catalog at messages/de.json; start it from messages/en.json" in done.stderr
+    assert "ENOENT" not in done.stderr
