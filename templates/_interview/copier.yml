@@ -187,7 +187,7 @@ ACTIONLINT_VERSION:
 ZIZMOR_VERSION:
   type: str
   help: zizmor
-  default: 1.30.1
+  default: 1.28.0
   when: '@@ PIN_TOOL_VERSIONS @@'
 TAPLO_VERSION:
   type: str

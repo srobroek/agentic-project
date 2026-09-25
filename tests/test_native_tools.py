@@ -128,7 +128,7 @@ def test_the_go_format_recipe_stays_out_of_node_modules(tmp_path):
 
     if shutil.which("gofmt") is None:
         pytest.skip("gofmt is not installed")
-    recipe = (TEMPLATES / "lang-go/.just.d/go.just").read_text().split("go-fmt:\n", 1)[1]
+    recipe = (TEMPLATES / "lang-go/.just.d/go.just.jinja").read_text().split("go-fmt:\n", 1)[1]
     command = recipe.splitlines()[0].strip().replace("-w", "-l")
     (tmp_path / "main.go").write_text("package main\nfunc main(){}\n")
     broken = tmp_path / "infra/node_modules/aws-cdk/%name%.template.go"

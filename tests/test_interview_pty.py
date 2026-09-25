@@ -7,18 +7,19 @@ screen, and finally writes the answers file.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import os
 import re
 import select
 import signal
 import struct
+import subprocess
 import sys
 import termios
 import time
 from pathlib import Path
 
-import subprocess
 import pytest
 import yaml
 
@@ -54,7 +55,13 @@ MINIMAL_SEQUENCE = [
     "SECURITY_CONTACT",
     "DEFAULT_BRANCH",
 ]
-ASKED_BOOLS = {"PIN_TOOL_VERSIONS", "CUSTOMISE_DEFAULTS", "GO_VENDOR", "PY_SRC_LAYOUT", "RUST_LIBRARY"}
+ASKED_BOOLS = {
+    "PIN_TOOL_VERSIONS",
+    "CUSTOMISE_DEFAULTS",
+    "GO_VENDOR",
+    "PY_SRC_LAYOUT",
+    "RUST_LIBRARY",
+}
 OPTIONAL_LAYERS = [
     "release",
     "worktrunk",
@@ -180,6 +187,7 @@ class InterviewDriver:
             if not self._read(min(0.02, max(0.0, deadline - time.monotonic()))):
                 continue
         return self.output[len(before) :]
+
     def finish(self, timeout: float = 8.0) -> int:
         """Reap the child and drain the terminal, returning its process status."""
         deadline = time.monotonic() + timeout
@@ -198,21 +206,17 @@ class InterviewDriver:
         try:
             os.killpg(self._process.pid, signal.SIGKILL)
         except (ProcessLookupError, OSError):
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 self._process.kill()
-            except ProcessLookupError:
-                pass
 
     def close(self) -> None:
         if self._status is None:
             self._kill()
             self._status = self._process.wait()
-        try:
+        with contextlib.suppress(OSError):
             os.close(self._fd)
-        except OSError:
-            pass
 
-    def __enter__(self) -> "InterviewDriver":
+    def __enter__(self) -> InterviewDriver:
         return self
 
     def __exit__(self, *_exc) -> None:
@@ -302,7 +306,6 @@ def test_bool_y_then_enter_does_not_answer_the_following_question(tmp_path):
     assert answers["SPDX_ID"] == "MIT"
 
 
-
 def test_ctrl_c_mid_interview_stops_without_writing(tmp_path):
     dest = tmp_path / "cancel-c"
     with InterviewDriver(dest) as driver:
@@ -325,7 +328,6 @@ def test_ctrl_d_mid_interview_stops_without_writing(tmp_path):
         assert driver.finish() == 130
         assert "Traceback" not in driver.output
     assert not dest.exists() or not any(dest.iterdir())
-
 
 
 def test_interview_answers_file_records_typed_values_without_copier_path(tmp_path):

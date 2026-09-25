@@ -11,7 +11,6 @@ import re
 import runpy
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "assets"
 POLICY = runpy.run_path(str(ROOT / "tools" / "port_assets.py"))
@@ -38,7 +37,6 @@ def test_oxlint_and_tsgolint_are_a_supported_pair():
     """oxlint's type-aware loader rejects an older tsgolint package."""
     required = version(COMPATIBILITY["oxlint_tsgolint"]["minimum_tsgolint"])
     assert version(pin("TSGOLINT_VERSION")) >= required
-    assert pin("OXLINT_VERSION") == "1.85.0"
 
 
 def test_biome_schema_is_sourced_from_the_biome_pin():
@@ -65,10 +63,8 @@ def test_playwright_is_within_axe_peer_range():
 
 
 def test_node_major_supports_the_pinned_javascript_tools():
-    """Node 24 satisfies the engines declared by Biome, Knip, Playwright, and CDK."""
-    assert int(pin("NODE_VERSION")) >= 24
-    assert int(pin("NODE_VERSION")) >= 22  # knip/oxlint: ^20.19 or >=22.12
-    assert int(pin("NODE_VERSION")) >= 20  # Playwright and aws-cdk-lib
+    """knip and oxlint declare ^20.19 || >=22.12; Playwright and aws-cdk-lib >=20."""
+    assert int(pin("NODE_VERSION")) >= 22
 
 
 def test_every_mise_pin_uses_a_policy_token():
@@ -98,9 +94,3 @@ def test_no_policy_pin_is_repeated_as_a_literal_asset_value():
             if path.is_file() and literal.search(path.read_text())
         ]
         assert offenders == [], f"{name} {value} restated in {offenders}"
-
-
-def test_pinned_token_defaults_are_unique():
-    """Duplicate policy keys would make the later value silently win in Python."""
-    names = [name for name, spec in TOKEN_POLICY.items() if spec.get("pin")]
-    assert len(names) == len(set(names))

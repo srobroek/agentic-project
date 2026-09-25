@@ -6,6 +6,7 @@ The layer configs are the only source of truth. Nothing here hardcodes a questio
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -492,7 +493,62 @@ def repo_conflicts(dest: Path, data: dict) -> list[Problem]:
     reports it. A warning rather than an error in every case: the user may be one
     rename or one `git rm` away from meaning exactly what they answered.
     """
-    return _branch_conflict(dest, data) + _stale_forge_surface(dest, data)
+    return (
+        _branch_conflict(dest, data)
+        + _stale_forge_surface(dest, data)
+        + _members_without_manifest(dest, data)
+    )
+
+
+# The file a member needs before its CI job has anything to run against, per capability
+# key in MONOREPO_MEMBERS. The same four languages gen_caller.py emits member jobs for.
+MEMBER_MANIFEST: dict[str, str] = {
+    "go": "go.mod",
+    "ts": "package.json",
+    "python": "pyproject.toml",
+    "rust": "Cargo.toml",
+}
+
+
+def _members_without_manifest(dest: Path, data: dict) -> list[Problem]:
+    """A member CI job pointed at a directory with nothing in it.
+
+    The monorepo preset lists two example members, and apply writes each language's
+    starter at the root, where no member job looks. Each job runs only when files
+    under its member path change, so CI went green having linted and tested nothing,
+    and the code at the root had no job at all. Visibility rather than a refusal: the
+    member list is the one thing only its author knows, and a scaffold is the moment
+    it is least likely to exist yet.
+    """
+    raw = data.get("MONOREPO_MEMBERS")
+    try:
+        members = json.loads(raw) if isinstance(raw, str) else raw
+    except ValueError:
+        return []
+    if not isinstance(members, list):
+        return []
+    missing: list[str] = []
+    for member in members:
+        if not isinstance(member, dict) or not isinstance(member.get("path"), str):
+            continue
+        capabilities = member.get("capabilities")
+        for language in capabilities if isinstance(capabilities, dict) else {}:
+            manifest = MEMBER_MANIFEST.get(language)
+            if manifest and not (dest / member["path"] / manifest).is_file():
+                missing.append(f"{member['path']}/{manifest}")
+    if not missing:
+        return []
+    return [
+        Problem(
+            "warning",
+            "MEMBER_PATH_EMPTY",
+            f"MONOREPO_MEMBERS expects {', '.join(missing)}, which {dest} does not have "
+            f"yet. Each member job runs only when its own path changes, so CI checks "
+            f"nothing there, and code outside every member has no job at all. Move the "
+            f"code into each member path, or list the members that exist.",
+            "MONOREPO_MEMBERS",
+        )
+    ]
 
 
 def _branch_conflict(dest: Path, data: dict) -> list[Problem]:

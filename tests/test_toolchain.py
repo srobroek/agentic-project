@@ -122,13 +122,19 @@ def test_every_tool_a_recipe_calls_is_pinned_somewhere(layer: str):
 LANGUAGES = ("ts", "go", "python", "rust")
 
 
+def fragment(lang: str) -> str:
+    """A language's just fragment, whether it carries a token or not."""
+    base = ASSETS / f"lang/{lang}/.just.d/{lang}.just"
+    return (base if base.is_file() else base.with_name(base.name + ".template")).read_text()
+
+
 @pytest.mark.parametrize("lang", LANGUAGES)
 def test_the_language_aggregate_checks_formatting_without_writing(lang):
     """`just check` runs each language's aggregate. A check that formats cannot be run
     on a dirty checkout, and in CI it reports success having edited the tree it was
     asked to inspect. The writer stays available as `just <lang>-fmt`.
     """
-    body = (ASSETS / f"lang/{lang}/.just.d/{lang}.just").read_text()
+    body = fragment(lang)
     aggregate = next(line for line in body.splitlines() if line.startswith(f"{lang}:"))
     assert f"{lang}-fmt-check" in aggregate
     assert f" {lang}-fmt " not in f" {aggregate} "
@@ -147,7 +153,7 @@ def test_the_language_aggregate_checks_formatting_without_writing(lang):
 )
 def test_no_check_recipe_carries_a_writing_flag(recipe, forbidden):
     lang = recipe.split("-")[0]
-    body = (ASSETS / f"lang/{lang}/.just.d/{lang}.just").read_text()
+    body = fragment(lang)
     block = body.split(f"{recipe}:")[1].split("\n[group")[0]
     assert forbidden not in block, f"{recipe} still writes: {forbidden!r}"
 

@@ -242,6 +242,8 @@ def test_every_shipped_default_sits_behind_the_one_gate(interview):
         "CODE_OF_CONDUCT_CONTACT",
         "COMMIT_SCOPES",
         "HOOK_EXCLUDE_PATTERNS",
+        "I18N_CHECK_COMMANDS",
+        "I18N_PREPARE_COMMANDS",
         "INSTALL_COMMANDS",
         "JOB_TIMEOUT_MINUTES",
         "MAX_FILE_KB",

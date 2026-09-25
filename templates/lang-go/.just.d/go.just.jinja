@@ -35,10 +35,15 @@ go-lint:
 go-test:
     go test -race ./...
 
+# Built by the pinned Go at the pinned version, as the GitHub workflow builds it. A
+# binary mise cached is not rebuilt when GO_VERSION moves, and govulncheck built by
+# go1.26 refused a go1.27 module: "package requires newer Go version go1.27
+# (application built with go1.26)". `go run` keys its build cache on the toolchain.
+
 # Known vulnerabilities in the dependency graph
 [group('go')]
 go-vuln:
-    govulncheck ./...
+    go run golang.org/x/vuln/cmd/govulncheck@v@@GOVULNCHECK_VERSION@@ ./...
 
 # Fail when go.mod or go.sum is not tidy
 [group('go')]

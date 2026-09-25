@@ -201,7 +201,12 @@ TOKEN_POLICY: dict[str, dict] = {
     "TYPOS_VERSION": {"type": "str", "default": "1.50.2", "pin": True, "help": "typos"},
     "SHELLCHECK_VERSION": {"type": "str", "default": "0.11.0", "pin": True, "help": "shellcheck"},
     "ACTIONLINT_VERSION": {"type": "str", "default": "1.7.12", "pin": True, "help": "actionlint"},
-    "ZIZMOR_VERSION": {"type": "str", "default": "1.30.1", "pin": True, "help": "zizmor"},
+    # Held at 1.28.0. 1.30.1 adds the `self-repository` audit, which flags every
+    # `uses: ./.github/workflows/wc-*.yml` the CI caller writes and asks for GitHub's new
+    # `$/` syntax, so the hook failed all eleven GitHub scaffolds on their first
+    # `just check`. Moving the caller to `$/` is its own change, and actionlint has to
+    # accept it first.
+    "ZIZMOR_VERSION": {"type": "str", "default": "1.28.0", "pin": True, "help": "zizmor"},
     "TAPLO_VERSION": {"type": "str", "default": "0.10.0", "pin": True, "help": "taplo"},
     "LYCHEE_VERSION": {"type": "str", "default": "0.24.2", "pin": True, "help": "lychee"},
     "JUST_VERSION": {"type": "str", "default": "1.58.0", "pin": True, "help": "just"},
@@ -209,7 +214,12 @@ TOKEN_POLICY: dict[str, dict] = {
     "OPENGREP_VERSION": {"type": "str", "default": "1.26.0", "pin": True, "help": "opengrep"},
     "VACUUM_VERSION": {"type": "str", "default": "0.30.6", "pin": True, "help": "vacuum"},
     "OASDIFF_VERSION": {"type": "str", "default": "1.32.1", "pin": True, "help": "oasdiff"},
-    "CONVENTIONAL_PRECOMMIT_VERSION": {"type": "str", "default": "4.4.0", "pin": True, "help": "conventional-pre-commit"},
+    "CONVENTIONAL_PRECOMMIT_VERSION": {
+        "type": "str",
+        "default": "4.4.0",
+        "pin": True,
+        "help": "conventional-pre-commit",
+    },
     # Tool versions. Pinned, not resolved at run time: Renovate owns the bumps, and a
     # scaffold that reads "latest" builds something different next week. A user who
     # needs a specific one is asked -- once, behind PIN_GATE -- rather than never.
@@ -438,7 +448,6 @@ TOKEN_POLICY: dict[str, dict] = {
         "pin": True,
         "help": "@axe-core/playwright",
     },
-
     "ADRS": {
         "type": "str",
         "default": "[]",
@@ -502,8 +511,14 @@ EXTRA_VARS: dict[str, dict[str, dict]] = {
 # minimums observed in release metadata on 2026-09-25; tests consume this table
 # offline so a bump cannot silently create an impossible scaffold.
 VERSION_COMPATIBILITY: dict[str, dict] = {
-    "golangci_lint": {"minimum_go": "1.27", "source": "golangci-lint v2.14.0 version output built with go1.27.0"},
-    "oxlint_tsgolint": {"minimum_tsgolint": "7.0.2001", "source": "oxlint@1.85.0 npm peerDependencies"},
+    "golangci_lint": {
+        "minimum_go": "1.27",
+        "source": "golangci-lint v2.14.0 version output built with go1.27.0",
+    },
+    "oxlint_tsgolint": {
+        "minimum_tsgolint": "7.0.2001",
+        "source": "oxlint@1.85.0 npm peerDependencies",
+    },
     "rust_tools": {
         "minimum_rust": {
             "CARGO_NEXTEST_VERSION": "1.91",
@@ -513,7 +528,10 @@ VERSION_COMPATIBILITY: dict[str, dict] = {
         },
         "source": "crates.io package rust_version metadata, 2026-09-25",
     },
-    "playwright_axe": {"minimum_playwright": "1.0.0", "source": "@axe-core/playwright@4.13.0 npm peerDependencies"},
+    "playwright_axe": {
+        "minimum_playwright": "1.0.0",
+        "source": "@axe-core/playwright@4.13.0 npm peerDependencies",
+    },
 }
 
 

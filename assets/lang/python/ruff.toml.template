@@ -1,5 +1,11 @@
 target-version = "py@@PYTHON_VERSION_NODOT@@"
 line-length = 100
+# scripts/ is copied plumbing that hooks run under whatever `python3` they find, so it
+# keeps the syntax of the oldest interpreter it supports rather than the project's. At
+# py314 the formatter rewrites `except (A, B):` into the unparenthesised PEP 758 form,
+# which 3.13 cannot parse, and `python-fmt-check` failed a fresh scaffold over the
+# scripts it had just shipped.
+per-file-target-version = { "scripts/**" = "py312" }
 
 [lint]
 # S is bandit ported into ruff, so the security lint needs no separate tool.

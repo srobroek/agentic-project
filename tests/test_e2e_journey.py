@@ -54,3 +54,13 @@ def test_the_journey_refuses_a_tree_the_first_commit_left_dirty(tmp_path):
     with pytest.raises(e2e.Failure) as caught:
         e2e.journey_step(tmp_path, "clean", e2e.CLEAN_TREE)
     assert "untracked.txt" in str(caught.value)
+
+
+def test_only_the_absent_tools_own_manifests_are_excused():
+    """With cargo absent, e2e failed rust-cli on "expected files missing: Cargo.toml"
+    before the journey could report the skip, so a missing toolchain read as a defect.
+    """
+    warnings = [{"step": "lang-rust", "message": "native_init: WARNING cargo is not on PATH"}]
+    assert e2e.absent_tools(warnings) == {"cargo"}
+    assert "Cargo.toml" in e2e.NATIVE_OUTPUT["cargo"]
+    assert "go.mod" not in e2e.NATIVE_OUTPUT["cargo"]

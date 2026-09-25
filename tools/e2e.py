@@ -169,6 +169,20 @@ JOURNEY_TIMEOUT_SECONDS = 1800
 CLEAN_TREE = 'test -z "$(git status --porcelain)" || { git status --short; exit 1; }'
 
 
+# What each native init writes, by the tool apply names when it is absent.
+NATIVE_OUTPUT: dict[str, tuple[str, ...]] = {
+    "cargo": ("Cargo.toml", "src/main.rs", "src/lib.rs"),
+    "go": ("go.mod", "main.go"),
+    "bun": ("package.json", "index.ts", "index.test.ts"),
+    "uv": ("pyproject.toml",),
+}
+
+
+def absent_tools(warnings: list[dict]) -> set[str]:
+    """The tools apply reported missing: native init warns "<tool> is not on PATH"."""
+    return {m.group(1) for w in warnings if (m := ABSENT_TOOL.search(w.get("message", "")))}
+
+
 def journey_skip_reason(warnings: list[dict], which=shutil.which) -> str | None:
     """Why the journey cannot run for this scaffold, or None when it can.
 
@@ -179,9 +193,7 @@ def journey_skip_reason(warnings: list[dict], which=shutil.which) -> str | None:
     missing = [tool for tool in JOURNEY_TOOLS if which(tool) is None]
     if missing:
         return f"{', '.join(missing)} not on PATH"
-    absent = sorted(
-        {m.group(1) for w in warnings if (m := ABSENT_TOOL.search(w.get("message", "")))}
-    )
+    absent = sorted(absent_tools(warnings))
     if absent:
         return f"apply reported {', '.join(absent)} not on PATH"
     return None
@@ -288,7 +300,12 @@ def check_preset(preset: str, workdir: Path, run_journey: bool = True) -> dict:
         raise Failure(f"unresolved @@ tokens in {leftovers}")
 
     # 5. expected files present, forbidden files absent
-    missing = [f for f in EXPECTED.get(preset, []) if not (dest / f).exists()]
+    # A manifest a native init would have written is not expected when apply said that
+    # init's tool is absent: that is the documented degradation, and the journey below
+    # reports it as a skip rather than this check failing it as a missing file.
+    absent = absent_tools(result.get("warnings", []))
+    excused = {path for tool in absent for path in NATIVE_OUTPUT.get(tool, ())}
+    missing = [f for f in EXPECTED.get(preset, []) if not (dest / f).exists() and f not in excused]
     if missing:
         raise Failure(f"expected files missing: {missing}")
     present = [f for f in FORBIDDEN.get(preset, []) if (dest / f).exists()]

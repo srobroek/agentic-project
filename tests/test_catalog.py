@@ -5,6 +5,7 @@ These are the guarantees an agent depends on, so they are tested rather than ass
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -464,3 +465,38 @@ def test_a_mapping_of_choices_validates_against_its_values(catalog):
 
     bad = {**IDENTITY, "WANT_LANG_GO": True, "GO_VENDOR": "maybe"}
     assert [p for p in validate_data(catalog, bad) if p.code == "INVALID_CHOICE"]
+
+
+def test_a_member_with_no_manifest_is_named_rather_than_left_to_a_green_ci(tmp_path):
+    """The monorepo preset's CI jobs targeted services/api and apps/web, which no step
+    creates: apply wrote the Go and TypeScript starters at the root, where no member job
+    looks, and each job runs only when its own path changes.
+    """
+    from project_setup.catalog import repo_conflicts
+
+    members = json.dumps(
+        [
+            {"name": "api", "path": "services/api", "capabilities": {"go": ["lint"]}},
+            {"name": "web", "path": "apps/web", "capabilities": {"ts": ["test"]}},
+        ]
+    )
+    (tmp_path / "services/api").mkdir(parents=True)
+    (tmp_path / "services/api/go.mod").write_text("module api\n")
+
+    problems = repo_conflicts(tmp_path, {"MONOREPO_MEMBERS": members})
+    assert [(p.level, p.code, p.key) for p in problems] == [
+        ("warning", "MEMBER_PATH_EMPTY", "MONOREPO_MEMBERS")
+    ]
+    assert "apps/web/package.json" in problems[0].message
+    assert "services/api/go.mod" not in problems[0].message
+
+
+def test_members_that_exist_and_a_single_root_repository_raise_nothing(tmp_path):
+    from project_setup.catalog import repo_conflicts
+
+    (tmp_path / "apps/web").mkdir(parents=True)
+    (tmp_path / "apps/web/package.json").write_text("{}\n")
+    members = '[{"name": "web", "path": "apps/web", "capabilities": {"ts": ["lint"]}}]'
+    assert repo_conflicts(tmp_path, {"MONOREPO_MEMBERS": members}) == []
+    assert repo_conflicts(tmp_path, {"MONOREPO_MEMBERS": "[]"}) == []
+    assert repo_conflicts(tmp_path, {}) == []

@@ -310,8 +310,11 @@ def test_monorepo_members_reach_the_manifest(tmp_path: Path):
 
 def test_derived_python_version_needs_no_answer(tmp_path: Path):
     """PYTHON_VERSION_NODOT is computed from PYTHON_VERSION, not asked."""
+    import port_assets
+
     assert scaffold(tmp_path, "py-lib").ok
-    assert 'target-version = "py313"' in (tmp_path / "ruff.toml").read_text()
+    nodot = port_assets.TOKEN_POLICY["PYTHON_VERSION"]["default"].replace(".", "")
+    assert f'target-version = "py{nodot}"' in (tmp_path / "ruff.toml").read_text()
 
 
 def test_a_chosen_tool_version_reaches_the_files_that_pin_it(tmp_path: Path):
