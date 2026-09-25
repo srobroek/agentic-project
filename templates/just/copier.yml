@@ -15,3 +15,8 @@ _exclude:
 - .DS_Store
 _skip_if_exists:
 - justfile
+
+JUST_VERSION:
+  type: str
+  help: just
+  default: 1.58.0

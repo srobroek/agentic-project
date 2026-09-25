@@ -63,6 +63,10 @@ JOB_TIMEOUT_MINUTES:
   type: str
   help: Per-job CI timeout; a hung job holds a runner until it fires
   default: '15'
+OASDIFF_VERSION:
+  type: str
+  help: oasdiff
+  default: 1.32.1
 ORG:
   type: str
   help: Organisation or owner, used for the API contact
@@ -82,6 +86,10 @@ SPDX_ID:
   - AGPL-3.0-only
   - NONE
   default: Apache-2.0
+VACUUM_VERSION:
+  type: str
+  help: vacuum
+  default: 0.30.6
 API_BASELINE_REF:
   type: str
   help: Git ref the contract diff compares against

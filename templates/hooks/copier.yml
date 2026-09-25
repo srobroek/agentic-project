@@ -14,10 +14,22 @@ _exclude:
 - .ruff_cache
 - .DS_Store
 
+ACTIONLINT_VERSION:
+  type: str
+  help: actionlint
+  default: 1.7.12
+BETTERLEAKS_VERSION:
+  type: str
+  help: betterleaks
+  default: 1.8.1
 COMMIT_SCOPES:
   type: str
   help: Allowed commit scopes, comma separated. Empty leaves scopes unrestricted
   default: ''
+CONVENTIONAL_PRECOMMIT_VERSION:
+  type: str
+  help: conventional-pre-commit
+  default: 4.4.0
 DEFAULT_BRANCH:
   type: str
   help: Branch CI listens on and the force-push guard protects
@@ -28,11 +40,39 @@ HOOK_EXCLUDE_PATTERNS:
   type: str
   help: Paths excluded from hooks, joined with \|. Empty drops the block
   default: ''
+LYCHEE_VERSION:
+  type: str
+  help: lychee
+  default: 0.24.2
 MAX_FILE_KB:
   type: str
   help: Largest file the added-large-files hook accepts
   default: '512'
+PREK_VERSION:
+  type: str
+  help: prek hook runner
+  default: 0.4.11
+SHELLCHECK_VERSION:
+  type: str
+  help: shellcheck
+  default: 0.11.0
+TAPLO_VERSION:
+  type: str
+  help: taplo
+  default: 0.10.0
+TRUFFLEHOG_VERSION:
+  type: str
+  help: trufflehog
+  default: 3.97.9
+TYPOS_VERSION:
+  type: str
+  help: typos
+  default: 1.50.2
 UV_VERSION:
   type: str
   help: uv
-  default: 0.9.8
+  default: 0.12.18
+ZIZMOR_VERSION:
+  type: str
+  help: zizmor
+  default: 1.30.1

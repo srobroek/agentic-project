@@ -51,6 +51,14 @@ MONOREPO_MEMBERS:
   type: str
   help: JSON array of {name, path, capabilities}; [] is single-root
   default: '[]'
+OPENGREP_VERSION:
+  type: str
+  help: opengrep
+  default: 1.26.0
+PINACT_VERSION:
+  type: str
+  help: pinact
+  default: 5.0.0
 IS_MONOREPO:
   type: bool
   help: 'Per-member CI: true when MONOREPO_MEMBERS lists anybody'

@@ -9,8 +9,7 @@
 # lychee offline 64ms, taplo 399ms. The slow ones (cspell 1.7s, markdownlint 1.2s,
 # yamllint 1.1s, pinact 1.4s over the network) run in the quality workflow instead.
 #
-# Groups let a caller run a subset: `prek run --group security`. Verified against
-# prek 0.4.11.
+# Groups let a caller run a subset; the pinned runner provides the implementation.
 {%- if HOOK_EXCLUDE_PATTERNS %}
 exclude: "@@HOOK_EXCLUDE_PATTERNS@@"
 {%- endif %}
@@ -30,19 +29,19 @@ repos:
       - {id: detect-private-key, groups: [security]}
 
   - repo: https://github.com/betterleaks/betterleaks
-    rev: v1.7.1
+    rev: v@@BETTERLEAKS_VERSION@@
     hooks:
       - id: betterleaks-system
         groups: [security]
 
   - repo: https://github.com/crate-ci/typos
-    rev: v1.48.0
+    rev: v@@TYPOS_VERSION@@
     hooks:
       - id: typos
         groups: [docs]
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.11.0.1
+    rev: v@@SHELLCHECK_VERSION@@.1
     hooks:
       - id: shellcheck
         groups: [quality]
@@ -51,7 +50,7 @@ repos:
   # rejects a `fixup!` or merge subject, and the release tooling reads these
   # subjects to compute the next version.
   - repo: https://github.com/compilerla/conventional-pre-commit
-    rev: v4.4.0
+    rev: v@@CONVENTIONAL_PRECOMMIT_VERSION@@
     hooks:
       - id: conventional-pre-commit
         stages: [commit-msg]

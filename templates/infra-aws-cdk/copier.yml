@@ -38,7 +38,7 @@ AWS_CDK_DEST:
 AWS_CDK_VERSION:
   type: str
   help: aws-cdk CLI, exact stable release
-  default: 2.1142.0
+  default: 2.1143.0
 FORGE_PLATFORM:
   type: str
   help: Only github and gitlab are supported; other forges are an explicit gap
