@@ -219,17 +219,37 @@ survives. This repository has no ledger, so this list is the carrier.
    edited last. Check: `uvx slopvac` passes on all four, and the Python comments still read
    the way they do now.
 
-3. **`@types/bun` is `"latest"` in every TypeScript scaffold's `package.json`.** `bun init`
-   writes it, and `native_init.py` keeps it. `bun.lock` pins it from the first
-   `just setup`, so a committed scaffold is reproducible, but the manifest still floats.
-   Check: `package.json` names an exact `@types/bun` from `TOKEN_POLICY`.
-4. **`just setup` installs the developer's whole global mise toolset.** Bare `mise install`
-   reads every config in scope, so a minimal scaffold installed 116 tools on this machine.
-   Check: `just setup` installs only the tools under `.mise/conf.d/`.
-5. **Two host problems, not repository defects.** The `slopvac` on PATH here fails with
-   `ModuleNotFoundError: No module named 'slopvac.cli'`; `uvx slopvac` works. And
-   `proxy.golang.org` does not resolve on this network, so `just go-vuln` needs
-   `GOPROXY=direct` to run.
+3. **The owner's style call on `slopvac`** is the only one of these still open. Items 3 to 5
+   below were recorded here by the fifth round and have since been fixed; they are kept as
+   entries because each one's reasoning is worth more than its diff.
+
+## What the sixth round fixed
+
+1. **`@types/bun` was `"latest"` in every TypeScript scaffold.** `bun init` writes it, and the
+   task that adds the other dev tools only filled in missing keys, so the one floating version
+   in a manifest whose every other dependency is exact survived. `bun.lock` pinned it after
+   setup, but a fresh resolve elsewhere could take a different version of the types that define
+   the runtime. `TYPES_BUN_VERSION` now carries it. The task replaces `"latest"` and nothing
+   else: a brownfield repository's `^2.0.0` is somebody's decision. A `TOKEN_POLICY` entry alone
+   was not enough: a token referenced only by a task command must also be declared in
+   `EXTRA_TOKENS`, or it renders empty, which is how the first attempt wrote `"@types/bun": ""`.
+2. **`just setup` installed the developer's whole global mise toolset.** A minimal scaffold
+   declares 13 tools and installed 116 on a machine with a populated `~/.config/mise`, because
+   `mise install` with no scope reads every config in scope. No mise flag restricts it, and
+   `MISE_CONFIG_FILE=/dev/null` suppresses everything including the project's own. Pointing
+   `MISE_GLOBAL_CONFIG_FILE` at an empty real file for the install alone gives exactly the
+   project's 13 and leaves the rest of the environment untouched, so later steps still see
+   whatever the developer configured. `/dev/null` fails there too: mise cannot infer its type.
+3. **`slopvac` was unpinned in this repository**, so the gate's verdict depended on which
+   interpreter mise resolved in a given directory. Pinned as `pipx:slopvac`, which mise has
+   even though a bare `slopvac` is not in its registry.
+4. **`just go-vuln` failed with a bare timeout naming no fix.** `proxy.golang.org` does not
+   resolve on this network and `go run` downloads through it. The recipe now names
+   `GOPROXY=direct`, gated on the proxy really not answering so a genuine vulnerability report
+   never carries a network excuse, and on exit 127 so a missing `curl` is not read as a dead
+   proxy. Verified on four paths: dead proxy, reachable-but-failing, `GOPROXY=off`, success.
+   The exit-code shortcut was considered and rejected: `govulncheck` exits 1 here whether the
+   module is vulnerable or the database is unreachable, so the code cannot carry the diagnosis.
 
 ## What a second shake-out found, and fixed
 
