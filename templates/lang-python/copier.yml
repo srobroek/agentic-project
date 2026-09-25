@@ -58,7 +58,10 @@ PYTHON_VERSION:
   default: '3.13'
 PY_SRC_LAYOUT:
   type: bool
-  help: src/ layout? (false for a flat layout)
+  help: Package layout
+  choices:
+    src/ layout: true
+    Flat layout: false
   default: true
 UV_VERSION:
   type: str

@@ -53,7 +53,10 @@ GOVULNCHECK_VERSION:
   default: 1.1.4
 GO_VENDOR:
   type: bool
-  help: Commit vendor/?
+  help: Vendored dependencies
+  choices:
+    Do not commit vendor/: false
+    Commit vendor/: true
   default: false
 GO_VERSION:
   type: str

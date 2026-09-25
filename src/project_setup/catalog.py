@@ -80,7 +80,12 @@ class Question:
     type: str = "str"
     help: str = ""
     default: object = None
+    # Permitted values. Copier also accepts a {label: value} mapping, where the
+    # values are what an answer must match -- the labels are only what a human sees
+    # in the prompt. Both forms are normalised here, because comparing an answer
+    # against a mapping compares it against the labels and rejects every real value.
     choices: list | None = None
+    choice_labels: dict | None = None
     required: bool = False
     when: str = ""
     # An obviously-fake default, so a scaffold is never blocked on a value nobody
@@ -170,6 +175,21 @@ class Catalog:
         return names
 
 
+def _choice_values(choices: object) -> list | None:
+    """The values an answer may take, from either Copier choice form.
+
+    Copier accepts a list, or a {label: value} mapping where the values are what an
+    answer must match and the labels are only what a human sees. Comparing an answer
+    against the mapping compares it against the labels, which rejects every real
+    value -- that is exactly what happened when the asked bools gained choices.
+    """
+    if choices is None:
+        return None
+    if isinstance(choices, dict):
+        return list(choices.values())
+    return list(choices)
+
+
 def _parse_questions(
     cfg: dict,
     never_asked: frozenset[str] = frozenset(),
@@ -195,7 +215,8 @@ def _parse_questions(
             type=spec.get("type", "str"),
             help=spec.get("help", ""),
             default=default,
-            choices=spec.get("choices"),
+            choices=_choice_values(spec.get("choices")),
+            choice_labels=spec.get("choices") if isinstance(spec.get("choices"), dict) else None,
             required="default" not in spec,
             when=str(spec.get("when", "")),
             placeholder=str(spec.get("placeholder", "")),

@@ -71,7 +71,10 @@ PROJECT_NAME:
     -- my-app, flint, api2. It becomes the crate, package and module name{% endif %}'
 RUST_LIBRARY:
   type: bool
-  help: Library crate? (a binary crate commits Cargo.lock)
+  help: Crate kind
+  choices:
+    Library crate: true
+    Binary crate, which commits Cargo.lock: false
   default: true
 RUST_VERSION:
   type: str

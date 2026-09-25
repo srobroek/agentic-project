@@ -420,19 +420,31 @@ TOKEN_POLICY: dict[str, dict] = {
 
 # Booleans a layer needs for its OPTIONAL blocks (not tokens, so declared here).
 EXTRA_VARS: dict[str, dict[str, dict]] = {
-    "lang-go": {"GO_VENDOR": {"type": "bool", "default": False, "help": "Commit vendor/?"}},
+    "lang-go": {
+        "GO_VENDOR": {
+            "type": "bool",
+            "default": False,
+            "choices": {"Do not commit vendor/": False, "Commit vendor/": True},
+            "help": "Vendored dependencies",
+        }
+    },
     "lang-rust": {
         "RUST_LIBRARY": {
             "type": "bool",
             "default": True,
-            "help": "Library crate? (a binary crate commits Cargo.lock)",
+            "choices": {
+                "Library crate": True,
+                "Binary crate, which commits Cargo.lock": False,
+            },
+            "help": "Crate kind",
         }
     },
     "lang-python": {
         "PY_SRC_LAYOUT": {
             "type": "bool",
             "default": True,
-            "help": "src/ layout? (false for a flat layout)",
+            "choices": {"src/ layout": True, "Flat layout": False},
+            "help": "Package layout",
         }
     },
     # Derived, not asked. It was the eleventh prompt every project answered, and no
@@ -912,10 +924,20 @@ ASK_WHEN: dict[str, str] = {}
 # user who needs Python 3.12 or an older Rust had no way to say so short of editing
 # the answers file. Asking sixteen versions unprompted was the other wrong end.
 # PIN_GATE is imported above, so the port and the CLI cannot disagree about it.
+# Every bool the interview ASKS carries `choices`, which makes Copier render a select
+# instead of a confirm. A confirm submits on one keypress, so the Enter a user types
+# after `y` falls through to the next question and silently accepts its default --
+# measured: answering PIN_TOOL_VERSIONS with "y<Enter>" also declined
+# CUSTOMISE_DEFAULTS, a question the user never saw. A select consumes its own Enter.
+# The value stays a real bool, so every `when:` and every template body is unchanged.
 PIN_GATE_SPEC: dict = {
     "type": "bool",
     "default": False,
-    "help": "Choose tool versions yourself? No keeps the pinned set Renovate bumps",
+    "choices": {
+        "Keep the pinned versions Renovate bumps": False,
+        "Choose the tool versions myself": True,
+    },
+    "help": "Tool versions",
 }
 
 # The same trade, for the thresholds and commands whose defaults are already right:
@@ -926,7 +948,11 @@ PIN_GATE_SPEC: dict = {
 TUNE_GATE_SPEC: dict = {
     "type": "bool",
     "default": False,
-    "help": "Change the hook, CI and README defaults? No keeps the shipped set",
+    "choices": {
+        "Keep the shipped hook, CI and README defaults": False,
+        "Change some of them": True,
+    },
+    "help": "Hook, CI and README defaults",
 }
 
 

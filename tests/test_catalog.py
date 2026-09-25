@@ -448,3 +448,19 @@ def test_an_error_is_printed_before_the_warnings_nobody_has_to_act_on(capsys):
 
     assert code == 1
     assert lines[0].strip().startswith("ERROR")
+
+
+def test_a_mapping_of_choices_validates_against_its_values(catalog):
+    """Copier's {label: value} choice form lists what a human sees, not what an answer
+    must equal. Comparing an answer against the mapping compares it against the
+    labels, which rejected every real boolean the moment the asked bools became
+    selects."""
+    questions = catalog.questions_for(selected_layers(catalog, {"WANT_LANG_GO": True}))
+    assert questions["GO_VENDOR"].choices == [False, True]
+    assert questions["GO_VENDOR"].choice_labels is not None
+
+    data = {**IDENTITY, "WANT_LANG_GO": True, "GO_VENDOR": True}
+    assert [p for p in validate_data(catalog, data) if p.code == "INVALID_CHOICE"] == []
+
+    bad = {**IDENTITY, "WANT_LANG_GO": True, "GO_VENDOR": "maybe"}
+    assert [p for p in validate_data(catalog, bad) if p.code == "INVALID_CHOICE"]

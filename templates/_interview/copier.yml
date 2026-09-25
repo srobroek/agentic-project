@@ -83,11 +83,17 @@ FORGE_PLATFORM:
 PIN_TOOL_VERSIONS:
   type: bool
   default: false
-  help: Choose tool versions yourself? No keeps the pinned set Renovate bumps
+  choices:
+    Keep the pinned versions Renovate bumps: false
+    Choose the tool versions myself: true
+  help: Tool versions
 CUSTOMISE_DEFAULTS:
   type: bool
   default: false
-  help: Change the hook, CI and README defaults? No keeps the shipped set
+  choices:
+    Keep the shipped hook, CI and README defaults: false
+    Change some of them: true
+  help: Hook, CI and README defaults
 INSTALL_COMMANDS:
   type: str
   help: What a fresh clone runs to install dependencies; shown in the README
@@ -296,7 +302,10 @@ AWS_CDK_VERSION:
   when: '@@ (WANT_INFRA_AWS_CDK) and PIN_TOOL_VERSIONS @@'
 GO_VENDOR:
   type: bool
-  help: Commit vendor/?
+  help: Vendored dependencies
+  choices:
+    Do not commit vendor/: false
+    Commit vendor/: true
   default: false
   when: '@@ (WANT_LANG_GO) @@'
 GO_VERSION:
@@ -316,7 +325,10 @@ GOVULNCHECK_VERSION:
   when: '@@ (WANT_LANG_GO) and PIN_TOOL_VERSIONS @@'
 PY_SRC_LAYOUT:
   type: bool
-  help: src/ layout? (false for a flat layout)
+  help: Package layout
+  choices:
+    src/ layout: true
+    Flat layout: false
   default: true
   when: '@@ (WANT_LANG_PYTHON) @@'
 PYTHON_VERSION:
@@ -331,7 +343,10 @@ PYTHON_VERSION_NODOT:
   when: 'false'
 RUST_LIBRARY:
   type: bool
-  help: Library crate? (a binary crate commits Cargo.lock)
+  help: Crate kind
+  choices:
+    Library crate: true
+    Binary crate, which commits Cargo.lock: false
   default: true
   when: '@@ (WANT_LANG_RUST) @@'
 RUST_VERSION:

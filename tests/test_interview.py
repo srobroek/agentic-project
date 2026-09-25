@@ -597,3 +597,37 @@ def test_ending_the_input_stops_cleanly_and_leaves_nothing(tmp_path):
     assert "Traceback" not in done.stderr
     assert "interview stopped" in done.stderr
     assert not dest.exists()
+
+
+def test_every_asked_bool_is_a_select_not_a_confirm():
+    """A confirm submits on one keypress, so the Enter a user types after `y` falls
+    through to the next question and silently accepts its default. Measured: answering
+    PIN_TOOL_VERSIONS with "y<Enter>" also declined CUSTOMISE_DEFAULTS, a question the
+    user never saw. `choices` makes Copier render a select, which consumes its own
+    Enter, and the value stays a real bool so no consumer changes.
+    """
+    interview = yaml.safe_load((TEMPLATES / "_interview" / "copier.yml").read_text())
+    offenders = [
+        name
+        for name, spec in interview.items()
+        if isinstance(spec, dict)
+        and spec.get("type") == "bool"
+        and str(spec.get("when", "")).strip() != "false"
+        and not spec.get("choices")
+    ]
+    assert offenders == [], f"asked as a confirm, so the next question leaks: {offenders}"
+
+
+def test_a_bool_with_choices_still_answers_true_or_false():
+    """The select must not turn the answer into a label string: every `when:` clause
+    and every OPTIONAL block condition treats these as booleans."""
+    interview = yaml.safe_load((TEMPLATES / "_interview" / "copier.yml").read_text())
+    for name, spec in interview.items():
+        if not isinstance(spec, dict) or spec.get("type") != "bool":
+            continue
+        choices = spec.get("choices")
+        if not choices:
+            continue
+        values = sorted(choices.values(), key=str)
+        assert values == [False, True], f"{name} choices must map to booleans, got {values}"
+        assert spec.get("default") in (True, False), f"{name} default must be a bool"
