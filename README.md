@@ -208,8 +208,8 @@ the files; removing somebody's CI is not this tool's call.
 | Re-apply | byte-identical, 0 changes |
 | Unresolved tokens | 0 |
 | Empty directories | 0 |
-| Tests | 229 unit + 12 presets end to end, each in 4 plan dispositions |
-| Fresh scaffold | `just setup` and `just check` green, all four languages |
+| Tests | 287 unit + 12 presets end to end, each in 4 plan dispositions |
+| Fresh scaffold | `just setup`, `just check`, first commit and a clean tree on all 12 presets, with the pinned toolchain, gated by `tools/e2e.py` |
 
 CPU time rather than wall clock, because wall clock tracks machine load.
 

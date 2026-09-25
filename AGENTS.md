@@ -383,10 +383,44 @@ removes it when the branch ends; a manifest found beside it is its own, so it is
 
     just port          # regenerate templates/ from the vendored assets/
     just check         # ruff, format, and the unit suite
-    just e2e           # every preset: validate, plan, apply, re-apply, assertions
+    just e2e           # every preset: validate, plan, apply, re-apply, then the journey
     just omp-link      # link and health-check the plugin
     just omp-verify    # read the skill and rule back through OMP
 
-A change that breaks `just e2e` is a regression. The interview has no automated TTY driver in
-the suite: drive `project-setup interview --dest <tmp>` through a PTY when you change the
-question set or how the interview hands Copier its answers, and check what it asks first.
+A change that breaks `just e2e` is a regression. `tools/e2e.py --no-journey` is a shortcut
+while you iterate, not a pass.
+
+MUST walk the user's journey in every scaffold, not only check the scaffolder. After
+its own assertions, `tools/e2e.py` runs `mise exec -- just setup`, `git add -A`,
+`mise exec -- just check`, the first commit and a clean-tree check in each preset. A
+preset with the CDK layer repeats all of it after `just aws-cdk-init`. Every defect the
+fourth round found came from running that sequence by hand while pytest and e2e passed.
+The fifth round's first run through it failed eleven of twelve presets on a zizmor bump.
+
+Staging comes before `check` because `prek run --all-files` reads tracked files only. On
+an unstaged scaffold every hook said "(no files to check)", and web-app's first commit
+failed on a file `check` had never read. `mise exec` makes the pins the thing that runs,
+rather than the developer's newer toolchain. A toolchain apply reported absent skips the
+journey with that reason, and the summary line counts walked, not-walked and failed.
+`tests/test_e2e_journey.py` covers the skip and failure reporting.
+
+MUST drive the interview through a real terminal when the question set changes.
+`tests/test_interview_pty.py` runs `project-setup interview` under a PTY at 80 columns.
+It checks the minimal path's ten questions in order and `y` then Enter on every asked
+bool. It also checks Ctrl-C and Ctrl-D, the recorded answers, and `--preset rust-cli`
+deselecting Rust.
+
+MUST run a layer's own shipped check from its recipe, not from an answer that defaults
+to empty. `just i18n` ran nothing because both command answers were `''`. The layer
+shipped a drift script no recipe called, settings naming a catalog nothing wrote, and a
+trailing blank line that failed end-of-file-fixer on the first commit. The recipe now calls
+the script, the layer writes the base catalog beside the Inlang project, and
+`I18N_*_COMMANDS` only add to it, behind `CUSTOMISE_DEFAULTS`.
+`tests/test_scaffold.py::test_a_fresh_scaffold_passes_its_own_end_of_file_hook` checks
+every preset.
+
+MUST check a pin against what consumes it, not only against its registry.
+`tests/test_versions.py` holds the offline constraints in `VERSION_COMPATIBILITY`. The
+journey holds the rest: zizmor 1.30.1 flagged every `./.github/workflows/wc-*.yml` the
+caller writes, and Python 3.14 made ruff rewrite `scripts/` into syntax 3.13 cannot parse.
+Both passed every unit test.

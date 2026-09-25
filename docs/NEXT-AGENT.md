@@ -56,8 +56,8 @@ mutually compatible, not merely present: several pins are months stale.
 
 ```sh
 just port                          # regenerate templates/ from assets/
-.venv/bin/python -m pytest -q      # 201 unit tests
-.venv/bin/python tools/e2e.py      # 12 stacks, end to end, with tasks
+.venv/bin/python -m pytest -q      # 287 unit tests; addopts has -q, so -o addopts= for a count
+.venv/bin/python tools/e2e.py      # 12 stacks end to end, then setup/check/commit in each
 slopvac .                          # 7 authored docs fail on style; 8 unfixable are excluded
 ```
 
@@ -308,7 +308,7 @@ protects.
    `.sort()` calls in the i18n drift script. Also fixed: `go.mod` said the Go that ran
    `go mod init`, not the pinned one.
 
-Open: root `tsc --noEmit` still type-checks the CDK app's jest test, so `just check` on
+Resolved in the fourth round: root `tsc --noEmit` type-checked the CDK app's jest test, so `just check` on
 fullstack-web fails after `just aws-cdk-init` with TS2593. The fix needs the lang-ts
 tsconfig to exclude the CDK destination, which means one layer reading whether another is
 selected; nothing does that yet, and it is a design call.
@@ -338,6 +338,44 @@ All found by running apply, just setup, just check by hand. Every one of them pa
 - **A rejection message was cut off mid-sentence** at 80 columns. Context moved to `help`.
 - **The formatter owned the CDK app** the type-checker had already let go, so check passed on a
   fresh scaffold and failed the moment `aws-cdk-init` ran.
+
+## What the fifth round found, and fixed
+
+The journey is now a gate: `tools/e2e.py` walks setup, check, first commit and a clean tree in
+every preset with the pinned toolchain, and again after `just aws-cdk-init`. Measured before
+any fix, by hand over the same sequence: `just check` passed on 11 of 12 unstaged scaffolds,
+and after `git add -A` it failed on 3. After the fixes: 12 walked, 0 skipped, 0 failed.
+
+1. **`just check` on an unstaged scaffold checked nothing.** `prek run --all-files` reads
+   tracked files, so every hook said "(no files to check)". The journey stages first.
+2. **The i18n gate was empty.** `just i18n` ran nothing; the drift script had no caller and
+   no catalog to read; the fragment's trailing blank line failed the first commit on
+   web-app and fullstack-web. Fixed in the layer.
+3. **The monorepo preset failed its own `just check`** on biome formatting `.ci/members.json`,
+   a composed JSON answer no fixed layout satisfies. biome.json now skips it, as it skips the
+   a11y JSON.
+4. **The monorepo member CI path points at directories that do not exist.** Apply writes the
+   starters at the root; each member job runs only when its own path changes. `validate`,
+   `plan` and `apply` now report `MEMBER_PATH_EMPTY`. Not fixed: with the code moved into
+   `services/api` and `apps/web` by hand, every Go job step and the TypeScript biome, oxlint
+   and test steps pass, and `tsc` passes once the member has a one-line tsconfig extending the
+   root. `knip` still fails: it reports biome, oxlint and tsgolint as unused and
+   `index.test.ts` as an unused file, because it only detects plugins from the member's own
+   configs. Writing per-member configs means one layer placing files at a path another
+   answer names; it is a design call.
+5. **Version bumps broke scaffolds that every unit test passed.** zizmor 1.30.1's
+   `self-repository` audit failed eleven presets, so zizmor is held at 1.28.0. Python 3.14
+   made ruff rewrite `scripts/` into `except A, B:`, which 3.13 cannot parse; `scripts/**`
+   keeps `py312`. A govulncheck binary mise cached under go1.26 refused the go1.27 module;
+   `just go-vuln` builds it with `go run` at the pin.
+6. **Four oxlint warnings in shipped files**, from the a11y test's default import and the
+   drift script. Gone.
+
+Covered by: `tests/test_e2e_journey.py`, `tests/test_interview_pty.py`, `tests/test_versions.py`,
+the three i18n tests and the per-preset end-of-file test in `tests/test_scaffold.py`, and the
+two `MEMBER_PATH_EMPTY` tests in `tests/test_catalog.py`. `just go-vuln` has no permanent
+test: it needs the vulnerability database. On this machine `proxy.golang.org` does not
+resolve, so it was run with `GOPROXY=direct`.
 
 ## Rules
 

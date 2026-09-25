@@ -205,8 +205,8 @@ naming nobody. `catalog --json` gives the exact placeholder per question.
 
 MUST run `validate --json` to discover what is missing rather than reasoning about the
 catalog's `required` flags. It reports `MISSING_REQUIRED`, `INVALID_CHOICE`, `INVALID_VALUE`,
-`UNKNOWN_KEY`, `PLACEHOLDER_IN_USE`, `ANSWER_HAS_NO_EFFECT`, `ANSWER_CONTRADICTS_REPO` and
-`STALE_FORGE_SURFACE` for the layers actually selected, which is the only thing that matters.
+`UNKNOWN_KEY`, `PLACEHOLDER_IN_USE`, `ANSWER_HAS_NO_EFFECT`, `ANSWER_CONTRADICTS_REPO`,
+`STALE_FORGE_SURFACE` and `MEMBER_PATH_EMPTY` for the layers actually selected, which is the only thing that matters.
 `INVALID_VALUE` is a declared validator rejecting the value — `PROJECT_NAME` reaches a crate,
 module and package name, so it is the one most worth getting right before anything is written.
 
@@ -254,11 +254,11 @@ and these are the reason to involve a model at all:
 | `INSTALL_COMMANDS`, `USAGE_EXAMPLE` | derived from the accepted stack. Behind `CUSTOMISE_DEFAULTS`, so pass a composed value with `--set` rather than opening the gate |
 | `COMMIT_SCOPES` | the project's real module names. Behind the same gate |
 | `HOOK_EXCLUDE_PATTERNS` | paths that genuinely must be excluded. Behind the same gate |
-| `MONOREPO_MEMBERS` | a JSON array of `{name, path, capabilities}`, one per member. This drives per-member CI jobs, so a wrong path produces a job that tests nothing. `IS_MONOREPO` is derived from it: supply the members and do not set the flag |
+| `MONOREPO_MEMBERS` | a JSON array of `{name, path, capabilities}`, one per member. This drives per-member CI jobs, so a wrong path produces a job that tests nothing. `IS_MONOREPO` is derived from it: supply the members and do not set the flag. `validate` reports `MEMBER_PATH_EMPTY` for a member path with no manifest yet. Apply writes the language starters at the root, so tell the user their code has to move into the member paths |
 | `DEV_COMMAND` | only if the project actually serves something; empty drops the worktree dev-server block |
 | `ADRS` | a JSON array of decisions, each needing `title`, `decision`, `rationale`, `consequences`. One file is written per entry. An ADR without a decision and its rationale is refused |
 | `A11Y_SURFACES_JSON` | `{name, baseURL, routes}` per surface. `[]` records axe scanning as a gap rather than pretending to scan |
-| `LOCALES_JSON`, `I18N_PROJECT_DIR` | shipped locales, and where the Inlang project sits relative to the deployable |
+| `LOCALES_JSON`, `I18N_PROJECT_DIR` | shipped locales, and where the Inlang project sits relative to the deployable. The layer writes only the base locale's catalog, so `just i18n` fails for each other locale until its catalog exists, and names the file to write |
 
 MUST supply a JSON-bearing answer as a **string**, in a data file or a quoted `--set`. The CLI
 keeps it verbatim because these are declared `str`; a bare YAML list would render as a Python
