@@ -1,7 +1,12 @@
 {
   "$schema": "https://biomejs.dev/schemas/@@BIOME_VERSION@@/schema.json",
   "files": {
-    "includes": ["**", "!**/.a11y/surfaces.json", "!**/.a11y/web-servers.json"]
+    "includes": [
+      "**",
+      "!**/.a11y/surfaces.json",
+      "!**/.a11y/web-servers.json",
+      "!**/@@AWS_CDK_DEST@@/**"
+    ]
   },
   "vcs": {
     "enabled": true,

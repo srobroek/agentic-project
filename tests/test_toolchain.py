@@ -222,3 +222,15 @@ def test_an_empty_surface_set_is_a_gap_not_a_failure():
 def test_playwright_run_artifacts_are_ignored():
     body = (ASSETS / "a11y/ts/playwright/.gitignore.d/a11y").read_text()
     assert "test-results" in body
+
+
+def test_the_formatter_leaves_the_cdk_app_alone():
+    """`cdk init` generates a standalone project with its own conventions. The root
+    tsconfig already excludes it; the root formatter did not, so `just check` passed
+    on a fresh scaffold and then failed the moment `just aws-cdk-init` ran.
+    """
+    biome = (ASSETS / "lang/ts/biome.json.template").read_text()
+    assert "!**/@@AWS_CDK_DEST@@/**" in biome
+
+    tsconfig = (ASSETS / "lang/ts/tsconfig.json.template").read_text()
+    assert "@@AWS_CDK_DEST@@" in tsconfig, "the two exclusions must name the same answer"
