@@ -12,38 +12,45 @@ Read `README.md` for what it is, `AGENTS.md` for the invariants, and
 
 Do these four first, because each is a known gap rather than a hunch. Then range wider.
 
-### 1. Make `plan` provably honest
+### 1. Make the checks run the journey, not just the scaffolder
 
-`plan` is the only warning a user gets before files are written, and it has lied twice: it
-listed the justfile as both overwritten and merged, and promised "replaced outright" for a
-file it would not touch. Both were found by hand.
+Every defect found in the last round was found by hand, by running the sequence a user
+runs — `apply`, then `just setup`, then `just check` — and none of them was caught by
+`pytest` or `tools/e2e.py`, which both passed throughout. That is the gap.
 
-Replace the spot checks with a **property**: for every stack, and every disposition a file can
-have, assert that what `plan` reports is what `apply` actually does. Run `plan`, run `apply`,
-diff the claim against the result. A mismatch is a defect wherever it is.
+Fold the journey into `tools/e2e.py`: for each preset, after `apply`, run `just setup` and
+`just check` in the scaffolded repository and require both to exit 0. Where a language
+toolchain is missing, skip with a reported reason rather than passing silently. This is the
+single highest-value change available, because it converts the thing that keeps finding bugs
+from a manual habit into a gate.
 
-### 2. Decide what an interrupted `apply` leaves behind
+A fresh scaffold currently reaches `setup=0 check=0` on minimal, go-service, ts-service,
+rust-cli, py-lib, web-app and fullstack-web, and on fullstack-web again after
+`just aws-cdk-init`. That is the baseline to lock in.
 
-There is no handling and no test: `grep -r 'resume\|partial\|interrupt' src/ tests/` is empty.
-Kill an `apply` mid-run — between layers, and between generators — and answer plainly: what
-state is the repository in, can the user tell, and can they recover by re-running? Then make
-the answer acceptable. Re-running is already idempotent, which may be most of the work; if so,
-prove it and say so rather than adding machinery.
+### 2. Drive the interactive interview
 
-### 3. Remove the per-call flag friction
+`project-setup interview --dest .` prompts, and nothing automated drives a TTY, so it is
+still the least-verified surface in the repo. It can be driven: `pty.fork`, write
+keystrokes, read the answers file. That technique found the keypress leak — a `bool` was a
+confirm, which submits on one keypress, so the Enter a user typed after `y` silently
+answered the next question. All five asked bools are selects now; a test should hold that
+and check the question order and count.
 
-Outside a source checkout the CLI needs `--templates` and `--presets` on **every** invocation,
-because the templates belong to the plugin and are deliberately not bundled (see AGENTS.md).
-An agent must therefore thread two paths through every command, and a human must export two
-variables. That is a tax on the common case. Find a way to make the common case free without
-reintroducing the staleness the no-bundling rule exists to prevent.
+### 3. Verify the layers nothing has exercised end to end
 
-### 4. Exercise the two paths nothing has driven
+`just i18n`, `just api`, and the monorepo member CI path have never been run in a
+scaffolded repository. `just a11y` had never run either, and turned out to have never
+worked at all: its Playwright config used an ESM-only API that its own loader cannot take.
+Assume the same of anything unexercised.
 
-- `project-setup interview --dest .` — the interactive prompt path. No automated check drives a
-  TTY, so this is the least-verified surface in the repo. Judge the question count, order, and
-  whether deselecting a layer really silences its questions.
-- `tools/tasks/init_aws_cdk.py` — shipped, never executed. Needs `cdk` on PATH.
+### 4. Keep one source of truth for a version
+
+Thirteen tool versions were pinned in both `TOKEN_POLICY` and the preset parts, and the
+preset silently won — so bumping the policy did nothing and a fresh Go scaffold failed its
+own lint with golangci-lint built against an older Go than the pinned toolchain. Versions
+now live only in `TOKEN_POLICY` and a test forbids restating one. Check the pinned set is
+mutually compatible, not merely present: several pins are months stale.
 
 ## Prove it still works before you change anything
 
@@ -305,6 +312,32 @@ Open: root `tsc --noEmit` still type-checks the CDK app's jest test, so `just ch
 fullstack-web fails after `just aws-cdk-init` with TS2593. The fix needs the lang-ts
 tsconfig to exclude the CDK destination, which means one layer reading whether another is
 selected; nothing does that yet, and it is a design call.
+
+## What the fourth round fixed
+
+All found by running apply, just setup, just check by hand. Every one of them passed
+`pytest` and `tools/e2e.py` throughout, which is why target 1 exists.
+
+- **`just check` rewrote the tree.** Every language aggregate depended on a writing
+  formatter, and the description said so. Each language gained a `<lang>-fmt-check`; the
+  writer stays as `<lang>-fmt` and `just each fmt`.
+- **`just setup` failed whenever the CDK layer was selected.** `aws-cdk-install` did a bare
+  `cd` into a destination `aws-cdk-init` had not created. Both it and `aws-cdk-synth` now
+  stand down, install quietly because setup runs it unasked.
+- **A fresh Go scaffold failed its own lint.** golangci-lint pinned at 2.7.1, built against
+  go1.25, against a toolchain pinned at 1.26. Bumping the policy did nothing because the
+  preset restated the version and won.
+- **The a11y layer had never worked.** Its Playwright config used `import.meta.url`, which
+  the CJS transform that loads it cannot take, so it died before any test ran.
+- **The a11y answers could not be formatted.** A JSON answer has quoted keys, which no JS
+  formatter emits, and its length decides the layout — so no fixed layout in a `.ts` file
+  could satisfy every answer. The data moved to JSON files read at run time.
+- **The web-ui part shipped an example web server that did not exist**, so a fresh scaffold
+  failed trying to start it. It ships empty now, which the help already called a recorded gap.
+- **A keypress answered the next question.** All five asked bools are selects now.
+- **A rejection message was cut off mid-sentence** at 80 columns. Context moved to `help`.
+- **The formatter owned the CDK app** the type-checker had already let go, so check passed on a
+  fresh scaffold and failed the moment `aws-cdk-init` ran.
 
 ## Rules
 
