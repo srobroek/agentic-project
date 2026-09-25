@@ -432,6 +432,64 @@ two `MEMBER_PATH_EMPTY` tests in `tests/test_catalog.py`. `just go-vuln` has no 
 test: it needs the vulnerability database. On this machine `proxy.golang.org` does not
 resolve, so it was run with `GOPROXY=direct`.
 
+## What the seventh round fixed (journey gate flakiness)
+
+Only the first of the round's two targets: making the journey gate deterministic. The
+monorepo member-scoped apply is untouched.
+
+On 2026-09-26, seven full `tools/e2e.py` runs came back 12 walked, 0 failed: three
+before this fix, four after. The flakiness would not reproduce live.
+
+Every cache the journey touches was already warm from prior rounds: mise's tool
+installs, `~/.cargo/registry`, `uv`'s cache, bun's, and `~/.cache/prek`'s four cloned
+hook repos. The network itself answered every check. `curl` against npm, crates.io,
+PyPI, and GitHub all succeeded. Only `proxy.golang.org` failed to resolve, and nothing in
+the journey talks to it. Forcing a cold run would mean deleting those caches, and they
+are shared across every project on the machine, not scoped to this repository. That path
+was rejected as disproportionate, once the network-bound commands were identifiable
+directly from the recipes.
+
+So the fix targets the actual network surface instead of a reproduced failure:
+
+- `just setup` fetches the toolchain and every language's locked dependencies.
+- `just check` runs `hooks-all` first, which on a cold `prek` cache clones four remote
+  hook repos over https before anything local runs: betterleaks, typos, shellcheck-py,
+  and conventional-pre-commit, all declared in
+  `assets/hooks/.pre-commit.d/hygiene.yaml.template`.
+- `just aws-cdk-init` downloads the CDK CLI through `bunx`, then `bun install`s the app
+  it generates.
+
+Because a failed attempt leaves no partial state, all three fail closed and a retry
+never trips over a previous attempt's leftovers: `aws-cdk-init` only `os.replace`s its
+temp directory into place once both subprocesses succeed. `tools/e2e.py` now retries
+each step up to twice, with a short backoff. It retries only when the failed attempt's
+own stdout or stderr names a transport-level symptom. `NETWORK_TRANSIENT` matches DNS
+failures, connection resets, timeouts, TLS handshake timeouts, and a registry's own 429.
+It never matches a tool's verdict about the code, so a lint or test failure repeats
+identically on every attempt and a retry never turns it into a false pass. That regex is
+what keeps this from being "retry everything," which would satisfy the brief's letter
+while quietly widening what the gate excuses. `stage`, `commit`, and `clean` touch no
+network, so `tools/e2e.py` never retries them: retrying a deterministic failure only
+delays reporting it.
+
+A retry is not a skip. The preset still walks its full journey, but the run still hit a
+real transient symptom, so the summary names it rather than folding it silently into
+`ok`: `N preset(s) needed a retry for a transient network symptom`, one line per step.
+No step in the current journey gets a new skip disposition from this change.
+`journey_skip_reason` already covers the one skip case that exists, a toolchain apply
+reporting a tool absent, and nothing found on 2026-09-26 needed a second one.
+
+`tests/test_e2e_journey.py` covers four cases: a transient failure that succeeds on
+retry and gets reported, retries exhausting with the attempt count named in the failure
+message, a deterministic failure that a retry-allowing call never retries, and the
+`NETWORK_TRANSIENT` regex matching real transport-symptom strings while rejecting a
+tool's own verdict text.
+
+Judgement call: this round investigated `go-vuln`'s dead-proxy handling from the sixth
+round as a candidate cause, then ruled it out. It sits in neither `just check`'s
+aggregate (`go: go-fmt-check go-lint go-test`) nor any pre-commit hook. The brief's
+mention of it describes the state before the sixth round's fix, not a live gap.
+
 ## Rules
 
 - **Do not `git push`.** Commit locally, on a branch if the change is large.

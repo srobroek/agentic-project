@@ -164,6 +164,39 @@ ABSENT_TOOL = re.compile(r"(\S+) is not on PATH")
 
 JOURNEY_TIMEOUT_SECONDS = 1800
 
+# `setup` fetches the toolchain and every language's dependencies, and `check` runs
+# `prek run --all-files`, which on a fresh cache clones four hook repos over https
+# (assets/hooks/.pre-commit.d/hygiene.yaml.template) before it runs anything local.
+# `aws-cdk-init` downloads the CDK CLI through bunx and then `bun install`s the app
+# it generates. All three are read-only towards the destination on failure -- a
+# failed attempt leaves no partial state a retry would trip over -- so a transient
+# network symptom in their own output is worth one retry rather than an immediate
+# fail. `stage`, `commit`, and `clean` touch no network; a failure there is never
+# retried, because retrying a deterministic failure only delays reporting it.
+STEP_RETRIES: dict[str, int] = {"setup": 2, "check": 2, "aws-cdk-init": 2}
+
+RETRY_BACKOFF_SECONDS = (10, 30)
+
+# Matched against a failed step's own stdout+stderr. Each pattern was picked to name
+# a transport-level symptom -- DNS, TCP, TLS, or a registry's own throttling reply --
+# never a tool's verdict about the code, so a genuine lint or test failure repeats
+# unchanged on every attempt and is never masked by this.
+NETWORK_TRANSIENT = re.compile(
+    r"could not resolve host"
+    r"|temporary failure in name resolution"
+    r"|name or service not known"
+    r"|network is unreachable"
+    r"|connection (?:reset|refused|timed out)"
+    r"|(?:read|write|i/o|dial) tcp.*(?:timeout|refused|no such host)"
+    r"|tls handshake timeout"
+    r"|429 too many requests"
+    r"|rate limit exceeded"
+    r"|curl: \((?:6|7|28|35|56)\)"
+    r"|fetch failed"
+    r"|econnreset|enotfound|etimedout",
+    re.IGNORECASE,
+)
+
 # After the first commit: nothing modified, nothing untracked. A hook that rewrites a
 # file, or a setup step that writes one nobody ignores, both land here.
 CLEAN_TREE = 'test -z "$(git status --porcelain)" || { git status --short; exit 1; }'
@@ -199,33 +232,54 @@ def journey_skip_reason(warnings: list[dict], which=shutil.which) -> str | None:
     return None
 
 
-def journey_step(dest: Path, name: str, command: str) -> float:
+def journey_step(
+    dest: Path,
+    name: str,
+    command: str,
+    *,
+    retries: int = 0,
+    retried: list[str] | None = None,
+) -> float:
     started = time.perf_counter()
-    try:
-        proc = subprocess.run(
-            ["bash", "-c", command],
-            cwd=dest,
-            capture_output=True,
-            text=True,
-            check=False,
-            env={**os.environ, **JOURNEY_ENV},
-            timeout=JOURNEY_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise Failure(f"{name}: timed out after {JOURNEY_TIMEOUT_SECONDS}s") from exc
-    if proc.returncode != 0:
-        output = (proc.stdout + proc.stderr).strip().splitlines()
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            proc = subprocess.run(
+                ["bash", "-c", command],
+                cwd=dest,
+                capture_output=True,
+                text=True,
+                check=False,
+                env={**os.environ, **JOURNEY_ENV},
+                timeout=JOURNEY_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise Failure(f"{name}: timed out after {JOURNEY_TIMEOUT_SECONDS}s") from exc
+        if proc.returncode == 0:
+            if attempt > 1 and retried is not None:
+                retried.append(f"{name} (succeeded on attempt {attempt})")
+            return time.perf_counter() - started
+        output = (proc.stdout + proc.stderr).strip()
+        # Retried only when the failure names a transport symptom, never a tool's
+        # verdict about the code: a real lint or test failure repeats unchanged on
+        # every attempt, so it costs a bounded wait, never a false pass.
+        if attempt <= retries and NETWORK_TRANSIENT.search(output):
+            time.sleep(RETRY_BACKOFF_SECONDS[min(attempt - 1, len(RETRY_BACKOFF_SECONDS) - 1)])
+            continue
+        lines = output.splitlines()
         # The first failing line names the cause; the last lines are just's own summary.
-        cause = next((line for line in output if re.search(r"Failed|error|FAIL", line)), "")
-        shown = "\n      ".join(output[-12:])
+        cause = next((line for line in lines if re.search(r"Failed|error|FAIL", line)), "")
+        shown = "\n      ".join(lines[-12:])
+        note = f" after {attempt} attempts, still a transient symptom" if attempt > 1 else ""
         raise Failure(
-            f"{name} exited {proc.returncode} in {dest}\n    first failure: {cause}\n"
+            f"{name} exited {proc.returncode} in {dest}{note}\n"
+            f"    first failure: {cause}\n"
             f"    last lines:\n      {shown}"
         )
-    return time.perf_counter() - started
 
 
-def journey(dest: Path, *, label: str = "") -> dict[str, float]:
+def journey(dest: Path, *, label: str = "", retried: list[str] | None = None) -> dict[str, float]:
     """setup, stage, check, first commit, clean tree. Each must exit 0."""
     prefix = f"{label} " if label else ""
     steps = [
@@ -235,7 +289,12 @@ def journey(dest: Path, *, label: str = "") -> dict[str, float]:
         ("commit", f"git commit -q --allow-empty -m 'chore: {label or 'initial'} scaffold'"),
         ("clean", CLEAN_TREE),
     ]
-    return {name: journey_step(dest, prefix + name, command) for name, command in steps}
+    return {
+        name: journey_step(
+            dest, prefix + name, command, retries=STEP_RETRIES.get(name, 0), retried=retried
+        )
+        for name, command in steps
+    }
 
 
 def run(args: list[str]) -> subprocess.CompletedProcess:
@@ -365,22 +424,30 @@ def check_preset(preset: str, workdir: Path, run_journey: bool = True) -> dict:
 
     # 10. the user's journey, in the scaffold, with its own pins.
     journey_result = "off"
+    retried: list[str] = []
     if run_journey:
         reason = journey_skip_reason(result.get("warnings", []))
         if reason:
             journey_result = f"skip: {reason}"
         else:
-            journey(dest)
+            journey(dest, retried=retried)
             journey_result = "ok"
             # The CDK layer's app is generated on demand, and `just check` failed on
             # fullstack-web the moment it existed: the formatter, the type-checker and
             # go's ./... all walked into it. So the journey runs again after it.
             if "infra-aws-cdk" in result["layers"]:
-                journey_step(dest, "aws-cdk-init", "mise exec -- just aws-cdk-init")
-                journey(dest, label="aws-cdk-init")
+                journey_step(
+                    dest,
+                    "aws-cdk-init",
+                    "mise exec -- just aws-cdk-init",
+                    retries=STEP_RETRIES["aws-cdk-init"],
+                    retried=retried,
+                )
+                journey(dest, label="aws-cdk-init", retried=retried)
                 journey_result = "ok+cdk"
     return {
         "journey": journey_result,
+        "retried": retried,
         "layers": len(result["layers"]),
         "files": sum(1 for p in dest.rglob("*") if p.is_file() and ours(p, dest)),
         # Both are wall clock. Treat them as comparable only within one run:
@@ -420,6 +487,7 @@ def main() -> int:
 
     failures: list[tuple[str, str]] = []
     journeys: dict[str, str] = {}
+    retried: dict[str, list[str]] = {}
 
     def one(preset: str) -> tuple[str, dict | None, str]:
         try:
@@ -439,6 +507,8 @@ def main() -> int:
                     f"{stats['journey']}"
                 )
                 journeys[preset] = stats["journey"]
+                if stats["retried"]:
+                    retried[preset] = stats["retried"]
     print("-" * len(header))
 
     if failures:
@@ -461,6 +531,14 @@ def main() -> int:
     )
     for preset, why in skipped:
         print(f"  {preset}: {why}")
+    # A retry that succeeded is not a failure and not a skip, but it is still a
+    # transient network symptom this run hit, so it is named rather than folded
+    # silently into a plain "ok".
+    if retried:
+        print(f"\n{len(retried)} preset(s) needed a retry for a transient network symptom:")
+        for preset, steps in sorted(retried.items()):
+            for step in steps:
+                print(f"  {preset}: {step}")
 
     if args.keep:
         print(f"\noutput kept at {workdir}")
