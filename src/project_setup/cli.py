@@ -30,7 +30,10 @@ from .catalog import (
     Catalog,
     Problem,
     Question,
+    find_scaffold_root,
     load_catalog,
+    member_capabilities,
+    member_layers,
     repo_conflicts,
     selected_layers,
     validate_data,
@@ -38,10 +41,12 @@ from .catalog import (
 )
 from .runner import (
     INCOMPLETE_FILE,
+    MEMBERS_JSON,
     Changes,
     classify,
     deselected_layers,
     orphaned_files,
+    register_member,
     rehearse,
     scaffold,
     snapshot,
@@ -414,14 +419,16 @@ def answer_display(value: object, width: int = ANSWER_WIDTH) -> str:
     return text if len(text) <= width else text[: width - 1] + "\u2026"
 
 
-def checkout_problems(catalog: Catalog, dest: Path, data: dict) -> list[Problem]:
+def checkout_problems(
+    catalog: Catalog, dest: Path, data: dict, *, member: bool = False
+) -> list[Problem]:
     """Everything the destination contradicts, cheap checks first.
 
     `repo_conflicts` reads two files. The orphan scan dry-runs Copier once per
     deselected layer, so it runs only when the recorded answers say a layer was
     turned off -- which is never, for the greenfield case every preset takes.
     """
-    problems = repo_conflicts(dest, data)
+    problems = repo_conflicts(dest, data, member=member)
     if (dest / INCOMPLETE_FILE).is_file():
         # Nothing else tells a killed or failed apply from a finished one: every file
         # it got to is real, and a re-apply leaves the previous answers file in place.
@@ -455,8 +462,11 @@ def checkout_problems(catalog: Catalog, dest: Path, data: dict) -> list[Problem]
 
 def cmd_validate(args: argparse.Namespace, catalog: Catalog) -> int:
     data = load_data(args, catalog)
-    problems = validate_data(catalog, data) + checkout_problems(catalog, Path(args.dest), data)
-    layers = selected_layers(catalog, data)
+    member = getattr(args, "member", False)
+    layers = member_layers(catalog, data) if member else selected_layers(catalog, data)
+    problems = validate_data(catalog, data, layers=layers) + checkout_problems(
+        catalog, Path(args.dest), data, member=member
+    )
     errors = [p for p in problems if p.level == "error"]
 
     if args.json:
@@ -721,7 +731,36 @@ def _files_report(result, changes: Changes) -> None:
         print("\n  Commit or move anything you want to keep before applying.")
 
 
-def _report(result, changes: Changes, *, json_out: bool, verb: str) -> int:
+def _register_member_if_applicable(dest: Path, result) -> str:
+    """Record a successful member-scoped apply in the root it belongs to.
+
+    `_refuse_checkout` already guaranteed a root exists above `dest` before apply
+    ran, so this only has to name the member: gen_caller.py needs a language to
+    build a job around, so a member with no `lang-*` layer is placed but left
+    unregistered, and said so, rather than writing a capabilities object it would
+    then refuse to read.
+    """
+    root = find_scaffold_root(dest)
+    assert root is not None  # _refuse_checkout already required this
+    capabilities = member_capabilities(result.layers)
+    if not capabilities:
+        return (
+            f"not registered in {root}: none of {', '.join(result.layers) or '(no layers)'} "
+            f"is a language layer, so there is no CI job capability to describe. Add one "
+            f"with --set WANT_LANG_<X>=true, or register {dest} in {root / MEMBERS_JSON} "
+            f"by hand."
+        )
+    return register_member(
+        root,
+        dest.resolve().name,
+        dest.resolve().relative_to(root.resolve()).as_posix(),
+        capabilities,
+    )
+
+
+def _report(
+    result, changes: Changes, *, json_out: bool, verb: str, member_note: str | None = None
+) -> int:
     if json_out:
         print(
             json.dumps(
@@ -730,6 +769,7 @@ def _report(result, changes: Changes, *, json_out: bool, verb: str) -> int:
                     "pretend": result.pretend,
                     "dest": str(result.dest),
                     "layers": result.layers,
+                    "member": member_note,
                     "placed": [
                         {
                             "layer": s.name,
@@ -783,6 +823,8 @@ def _report(result, changes: Changes, *, json_out: bool, verb: str) -> int:
             print(f"           {line.strip()}")
     print(f"total {result.seconds:.2f}s")
     _files_report(result, changes)
+    if member_note:
+        print(f"\n{member_note}")
     if not result.ok:
         print(
             f"\n{'apply would stop' if result.pretend else 'apply stopped'} at the step "
@@ -792,13 +834,30 @@ def _report(result, changes: Changes, *, json_out: bool, verb: str) -> int:
     return 0 if result.ok else 1
 
 
-def _refuse_incomplete(catalog: Catalog, data: dict, verb: str) -> bool:
-    problems = [p for p in validate_data(catalog, data) if p.level == "error"]
+def _refuse_incomplete(catalog: Catalog, data: dict, verb: str, *, member: bool = False) -> bool:
+    layers = member_layers(catalog, data) if member else None
+    problems = [p for p in validate_data(catalog, data, layers=layers) if p.level == "error"]
     for p in problems:
         print(f"  {p}", file=sys.stderr)
     if problems:
         print(f"refusing to {verb} against an incomplete answer set", file=sys.stderr)
     return bool(problems)
+
+
+def _refuse_checkout(catalog: Catalog, dest: Path, data: dict, *, member: bool, verb: str) -> bool:
+    """Print every checkout conflict, and say whether any of them is a refusal.
+
+    Every conflict before NESTED_SCAFFOLD and MEMBER_NO_ROOT existed is a warning
+    printed and continued past. Those two are errors: nesting a repository or
+    scaffolding a member with nowhere to register it is not a warning.
+    """
+    problems = checkout_problems(catalog, dest, data, member=member)
+    for p in problems:
+        print(f"  {p}", file=sys.stderr)
+    errors = [p for p in problems if p.level == "error"]
+    if errors:
+        print(f"refusing to {verb} {dest}", file=sys.stderr)
+    return bool(errors)
 
 
 def cmd_plan(args: argparse.Namespace, catalog: Catalog) -> int:
@@ -808,15 +867,17 @@ def cmd_plan(args: argparse.Namespace, catalog: Catalog) -> int:
     prediction of it: two predictions were caught lying by hand before this.
     """
     data = load_data(args, catalog)
-    if _refuse_incomplete(catalog, data, "plan"):
+    member = args.member
+    if _refuse_incomplete(catalog, data, "plan", member=member):
         return 1
     dest = Path(args.dest)
     if (problem := unusable_dest(dest)) is not None:
         print(problem, file=sys.stderr)
         return 1
-    for conflict in checkout_problems(catalog, dest, data):
-        print(f"  {conflict}", file=sys.stderr)
-    result, changes = rehearse(catalog, dest, data)
+    if _refuse_checkout(catalog, dest, data, member=member, verb="plan"):
+        return 1
+    layers = member_layers(catalog, data) if member else None
+    result, changes = rehearse(catalog, dest, data, layers=layers)
     code = _report(result, changes, json_out=args.json, verb="would place")
     if not args.json:
         _warnings_report(result)
@@ -825,14 +886,16 @@ def cmd_plan(args: argparse.Namespace, catalog: Catalog) -> int:
 
 def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
     data = load_data(args, catalog)
-    if _refuse_incomplete(catalog, data, "apply"):
+    member = args.member
+    if _refuse_incomplete(catalog, data, "apply", member=member):
         return 1
     dest = Path(args.dest)
     if (problem := unusable_dest(dest)) is not None:
         print(problem, file=sys.stderr)
         return 1
-    for conflict in checkout_problems(catalog, dest, data):
-        print(f"  {conflict}", file=sys.stderr)
+    if _refuse_checkout(catalog, dest, data, member=member, verb="apply"):
+        return 1
+    layers = member_layers(catalog, data) if member else None
     before = snapshot(dest)
     try:
         result = scaffold(
@@ -842,6 +905,7 @@ def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
             keep_dirs=before.dirs,
             run_tasks=not args.no_tasks,
             quiet=args.json,
+            layers=layers,
         )
     except KeyboardInterrupt:
         print(
@@ -850,16 +914,23 @@ def cmd_apply(args: argparse.Namespace, catalog: Catalog) -> int:
             file=sys.stderr,
         )
         return 130
-    code = _report(result, classify(before, snapshot(dest)), json_out=args.json, verb="placed")
+    member_note = _register_member_if_applicable(dest, result) if member and result.ok else None
+    code = _report(
+        result,
+        classify(before, snapshot(dest)),
+        json_out=args.json,
+        verb="placed",
+        member_note=member_note,
+    )
 
     # Last, so these are what is left on screen: what still needs a real value, and
     # what the run skipped. A placeholder is a reminder; a skipped `cargo init` means
     # the manifest is not there, so it goes after.
     if result.ok and not args.json:
-        questions = catalog.questions_for(selected_layers(catalog, data))
+        questions = catalog.questions_for(result.layers)
         holders = [
             (p.key, data.get(p.key) or questions[p.key].placeholder)
-            for p in validate_data(catalog, data)
+            for p in validate_data(catalog, data, layers=result.layers)
             if p.code == "PLACEHOLDER_IN_USE"
         ]
         if holders:
@@ -918,6 +989,17 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--data-file", help="YAML answer file")
         sp.add_argument("--set", action="append", metavar="KEY=VALUE", help="override one answer")
 
+    def add_member_arg(sp: argparse.ArgumentParser) -> None:
+        sp.add_argument(
+            "--member",
+            action="store_true",
+            help=(
+                "this destination is a monorepo member, not a root: drop the root-only "
+                "layers (git init, LICENSE, CI, ...) and register the result in the "
+                "existing root above --dest"
+            ),
+        )
+
     c = sub.add_parser("catalog", help="list layers and the questions they declare")
     c.add_argument("--json", action="store_true")
     c.set_defaults(func=cmd_catalog)
@@ -931,6 +1013,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_data_args(v)
     v.add_argument("--dest", default=".", help="checkout the answers are checked against")
     v.add_argument("--json", action="store_true")
+    add_member_arg(v)
     v.set_defaults(func=cmd_validate)
 
     i = sub.add_parser("interview", help="ask the questions (Copier prompts, no LLM)")
@@ -942,6 +1025,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_data_args(pl)
     pl.add_argument("--dest", default=".")
     pl.add_argument("--json", action="store_true")
+    add_member_arg(pl)
     pl.set_defaults(func=cmd_plan)
 
     ap = sub.add_parser("apply", help="scaffold for real")
@@ -949,6 +1033,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--dest", default=".")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--no-tasks", action="store_true", help="skip Copier _tasks")
+    add_member_arg(ap)
     ap.set_defaults(func=cmd_apply)
 
     return p

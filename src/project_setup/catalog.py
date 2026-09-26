@@ -307,6 +307,65 @@ def selected_layers(catalog: Catalog, data: dict) -> list[str]:
     return sorted(chosen, key=order.index)
 
 
+def member_layers(catalog: Catalog, data: dict) -> list[str]:
+    """Layers to apply into a monorepo member: `selected_layers`, minus the root-only set.
+
+    ALWAYS_ON is exactly the root-only surface -- base (git_init, mise, the managed
+    .gitignore), governance (LICENSE, CODEOWNERS), hooks, just, ci, forge, steering --
+    so a member selects none of it. Measured: applying a language part straight into
+    a member directory wrote a nested `.git`, a second LICENSE, CODEOWNERS,
+    CONTRIBUTING.md, docs/agents/, AGENTS.md, CLAUDE.md and .github/, because that
+    surface is applied unconditionally and no answer can exclude it.
+    """
+    return [n for n in selected_layers(catalog, data) if n not in ALWAYS_ON]
+
+
+# gen_caller.py's accepted check kinds per language, restated nowhere else in this
+# repo: both example members in presets/parts/monorepo.yml already ask for both.
+MEMBER_CHECK_KINDS: tuple[str, ...] = ("lint", "test")
+
+
+def member_capabilities(layers: list[str]) -> dict[str, list[str]]:
+    """The MONOREPO_MEMBERS `capabilities` object implied by a member's own layers.
+
+    `lang-go` -> `{"go": ["lint", "test"]}`, the same shape MEMBER_MANIFEST's keys
+    already use. A member with no `lang-*` layer gets an empty object, which
+    gen_caller.py refuses to register -- there is no CI job capability to describe.
+    """
+    return {
+        layer.removeprefix("lang-"): list(MEMBER_CHECK_KINDS)
+        for layer in layers
+        if layer.startswith("lang-")
+    }
+
+
+def find_scaffold_root(dest: Path) -> Path | None:
+    """The nearest ancestor of `dest` -- never `dest` itself -- that is already a git
+    repository or a recorded scaffold.
+
+    `dest` itself is excluded: applying into a repository's own root is the ordinary
+    brownfield case, already supported. An *ancestor* holding one means `dest` is a
+    subdirectory of something already scaffolded, which is what makes a plain apply's
+    root-only surface -- a nested `.git` foremost -- a hazard rather than a normal
+    write.
+    """
+    for parent in dest.resolve().parents:
+        if _is_git_repo(parent) or (parent / ANSWERS_FILE).is_file():
+            return parent
+    return None
+
+
+def _is_git_repo(path: Path) -> bool:
+    """A real repository, not just a directory that happens to be named `.git`.
+
+    Measured on this machine: `/tmp/.git` exists with `hooks/` and `info/` but no
+    `HEAD`, a stray template skeleton rather than a repository. `.exists()` alone
+    made every destination under `/tmp` look nested inside one.
+    """
+    git = path / ".git"
+    return (git / "HEAD").is_file() or git.is_file()
+
+
 @dataclass
 class Problem:
     level: str  # "error" | "warning"
@@ -319,15 +378,22 @@ class Problem:
         return f"{self.level.upper()} {self.code}{where}: {self.message}"
 
 
-def validate_data(catalog: Catalog, data: dict) -> list[Problem]:
+def validate_data(
+    catalog: Catalog, data: dict, *, layers: list[str] | None = None
+) -> list[Problem]:
     """Static checks that produce better messages than a template traceback.
 
     Copier remains the enforcer of choices and validators at render time; this
     catches the two classes it reports less legibly: an unanswered required
     question, and a key no layer will ever read.
+
+    `layers` overrides which layers' own questions are checked as required or
+    placeholder-bearing. A member-scoped apply passes `member_layers`: its answers
+    never touch governance's CODEOWNER or hooks' SECURITY_CONTACT, and reporting
+    those as still-a-placeholder named a question the member never asked.
     """
     problems: list[Problem] = []
-    layers = selected_layers(catalog, data)
+    layers = selected_layers(catalog, data) if layers is None else layers
     known = catalog.all_question_names()
     want_names = {want_var(n) for n in catalog.optional_layers()}
 
@@ -486,18 +552,74 @@ def _inert_answers(data: dict) -> list[Problem]:
     ]
 
 
-def repo_conflicts(dest: Path, data: dict) -> list[Problem]:
+def repo_conflicts(dest: Path, data: dict, *, member: bool = False) -> list[Problem]:
     """Answers that contradict the repository they are about to be written into.
 
     The scaffolder is standing in that checkout and can see the difference, so it
-    reports it. A warning rather than an error in every case: the user may be one
-    rename or one `git rm` away from meaning exactly what they answered.
+    reports it. Everything below `_nested_scaffold` and `_member_without_root` is a
+    warning: the user may be one rename or one `git rm` away from meaning exactly
+    what they answered. Those two are errors, because nesting a repository or a
+    second licence is not something to warn about after the fact.
     """
     return (
-        _branch_conflict(dest, data)
+        _nested_scaffold(dest, member=member)
+        + _member_without_root(dest, member=member)
+        + _branch_conflict(dest, data)
         + _stale_forge_surface(dest, data)
         + _members_without_manifest(dest, data)
     )
+
+
+def _nested_scaffold(dest: Path, *, member: bool) -> list[Problem]:
+    """A destination inside an existing scaffold, about to receive the root-only
+    surface a second time.
+
+    Measured: `project-setup apply --preset parts/lang-ts --dest R/services/api`
+    after `R` was already scaffolded wrote a nested `.git`, a second LICENSE,
+    CODEOWNERS, CONTRIBUTING.md, docs/agents/, AGENTS.md, CLAUDE.md and .github/ --
+    the whole root-only surface, because ALWAYS_ON has no answer that excludes it.
+    `--member` is the caller saying it knows, which drops that surface instead of
+    writing it; refusing without it is the whole fix.
+    """
+    if member:
+        return []
+    root = find_scaffold_root(dest)
+    if root is None:
+        return []
+    return [
+        Problem(
+            "error",
+            "NESTED_SCAFFOLD",
+            f"{dest} is inside the existing repository at {root}. A plain apply would "
+            f"write a second .git, LICENSE, CODEOWNERS and the rest of the root-only "
+            f"surface into it. Pass --member to scaffold this as a monorepo member "
+            f"instead, which applies only the layers you selected.",
+        )
+    ]
+
+
+def _member_without_root(dest: Path, *, member: bool) -> list[Problem]:
+    """`--member` with nothing above `dest` to register it into.
+
+    A member-scoped apply has to record itself somewhere: the root's own
+    MONOREPO_MEMBERS and `.ci/members.json`. With no scaffolded root above `dest`
+    there is nothing to update, and applying anyway would leave a directory with
+    none of the root-only surface and no CI ever pointed at it.
+    """
+    if not member:
+        return []
+    if find_scaffold_root(dest) is not None:
+        return []
+    return [
+        Problem(
+            "error",
+            "MEMBER_NO_ROOT",
+            f"--member was given but no scaffolded root (a directory with .git or "
+            f"{ANSWERS_FILE}) exists above {dest}. Scaffold the root first with "
+            f"project-setup apply --preset <stack> --dest <root>, or drop --member if "
+            f"{dest} is meant to be its own repository.",
+        )
+    ]
 
 
 # The file a member needs before its CI job has anything to run against, per capability

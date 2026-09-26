@@ -7,6 +7,7 @@ whole scaffold instead of one per layer.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import re
 import subprocess
@@ -20,7 +21,7 @@ from pathlib import Path
 import copier
 import yaml
 
-from .catalog import Catalog, selected_layers, want_var
+from .catalog import ANSWERS_FILE, Catalog, selected_layers, want_var
 
 
 @contextlib.contextmanager
@@ -422,13 +423,14 @@ def scaffold(
     keep_dirs: frozenset[str],
     run_tasks: bool = True,
     quiet: bool = True,
+    layers: list[str] | None = None,
 ) -> RunResult:
     """Everything apply does to a destination, in order, and the one place it is done.
 
-    `plan` calls this too, on a copy, which is what makes the plan the apply.
+    `plan` calls this too, on a copy, which is what makes the plan the apply. `layers`
+    is how a member-scoped apply narrows this to the layers it selected: `None` means
+    the ordinary case, every always-on layer plus whatever the answers select.
     """
-    from .catalog import ANSWERS_FILE
-
     dest.mkdir(parents=True, exist_ok=True)
     marker = dest / INCOMPLETE_FILE
     marker.write_text(
@@ -436,7 +438,7 @@ def scaffold(
         "a step failed. The files it placed are real, but the scaffold is incomplete.\n"
         "Re-run the same apply to finish it; every step is safe to repeat.\n"
     )
-    result = place_layers(catalog, dest, data, run_tasks=run_tasks, quiet=quiet)
+    result = place_layers(catalog, dest, data, run_tasks=run_tasks, quiet=quiet, layers=layers)
     if result.ok:
         prune_empty_dirs(dest, keep=keep_dirs)
         run_generators(
@@ -456,7 +458,9 @@ def scaffold(
     return result
 
 
-def rehearse(catalog: Catalog, dest: Path, data: dict) -> tuple[RunResult, Changes]:
+def rehearse(
+    catalog: Catalog, dest: Path, data: dict, *, layers: list[str] | None = None
+) -> tuple[RunResult, Changes]:
     """Run the real apply, tasks and generators included, in a copy of `dest`.
 
     The difference between the copy before and after is the plan. Nothing is
@@ -471,7 +475,7 @@ def rehearse(catalog: Catalog, dest: Path, data: dict) -> tuple[RunResult, Chang
         # crate after its directory when it is not told otherwise.
         stage = Path(scratch) / (dest.resolve().name or "repo")
         outside = _copy_for_rehearsal(dest, stage)
-        result = scaffold(catalog, stage, data, keep_dirs=before.dirs, quiet=True)
+        result = scaffold(catalog, stage, data, keep_dirs=before.dirs, quiet=True, layers=layers)
         after = snapshot(stage)
         for relative, (target, copied) in outside.items():
             if after.files.get(relative) == copied:
@@ -620,3 +624,37 @@ def run_generators(
         if not quiet and detail:
             print(f"  {rel}: {detail}")
     return result
+
+
+# What the ci layer renders MONOREPO_MEMBERS into, byte for byte:
+# assets/ci/.ci/members.json.template is `{"members": @@MONOREPO_MEMBERS@@}`. A
+# member-scoped apply rewrites this one file directly rather than re-running the
+# whole ci layer at the root, which would also rewrite every other file that layer
+# owns -- the root's own generated files are not this apply's to touch.
+MEMBERS_JSON = ".ci/members.json"
+
+
+def register_member(root: Path, name: str, path: str, capabilities: dict[str, list[str]]) -> str:
+    """Upsert one member into the root scaffold's MONOREPO_MEMBERS, by path.
+
+    Rewrites `.ci/members.json` -- what gen_caller.py actually reads -- and the
+    root's own recorded answer, so a later full re-apply at the root reproduces the
+    same member list instead of the two example members `monorepo.yml` shipped.
+    """
+    answers_file = root / ANSWERS_FILE
+    recorded = (yaml.safe_load(answers_file.read_text()) if answers_file.is_file() else {}) or {}
+    raw = recorded.get("MONOREPO_MEMBERS", "[]")
+    members = json.loads(raw) if isinstance(raw, str) else list(raw or [])
+    members = [m for m in members if m.get("path") != path]
+    members.append({"name": name, "path": path, "capabilities": capabilities})
+    members.sort(key=lambda m: m["path"])
+
+    recorded["MONOREPO_MEMBERS"] = json.dumps(members)
+    answers_file.write_text(
+        "# Written by project-setup apply. Re-run with --data-file to reproduce.\n"
+        + yaml.safe_dump(recorded, sort_keys=True)
+    )
+    members_file = root / MEMBERS_JSON
+    members_file.parent.mkdir(parents=True, exist_ok=True)
+    members_file.write_text(json.dumps({"members": members}, indent=2) + "\n")
+    return f"registered {name!r} at {path} in {members_file}"

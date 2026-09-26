@@ -100,6 +100,89 @@ def test_applying_twice_changes_nothing(tmp_path: Path):
     assert fingerprint(tmp_path) == before
 
 
+# Root-only files a member-scoped apply must never write. Each one was measured
+# present after `apply --preset parts/lang-ts --dest <member>` with no --member.
+MEMBER_HAZARDS = (
+    ".git",
+    "LICENSE",
+    "CODEOWNERS",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "docs/agents",
+    ".pre-commit-config.yaml",
+    "justfile",
+)
+
+
+def test_a_member_scoped_apply_never_nests_a_repository_or_a_licence(tmp_path: Path):
+    """The hazard this round exists to close. Measured before the fix:
+    `apply --preset parts/lang-go --dest <root>/services/api` wrote a nested `.git`,
+    a second LICENSE, CODEOWNERS, CONTRIBUTING.md, docs/agents/, AGENTS.md, CLAUDE.md
+    and .github/ into the member -- the whole root-only surface, applied twice.
+    --set --no-tasks keeps this offline: no bun, no cargo, no go toolchain.
+    """
+    from project_setup.cli import main
+
+    root = tmp_path / "monorepo"
+    member = root / "services" / "api"
+    common = ["--templates", str(TEMPLATES), "--presets", str(PRESETS)]
+
+    assert (
+        main(
+            [
+                *common,
+                "apply",
+                "--preset",
+                "minimal",
+                "--set",
+                "PROJECT_NAME=monorepo",
+                "--set",
+                "DESCRIPTION=root",
+                "--dest",
+                str(root),
+                "--no-tasks",
+            ]
+        )
+        == 0
+    )
+    # apply's own git_init task is skipped by --no-tasks; a member scaffold only
+    # has anything to nest into once the root really is a repository.
+    (root / ".git").mkdir()
+    (root / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+
+    member_argv = [
+        *common,
+        "apply",
+        "--preset",
+        "parts/lang-go",
+        "--set",
+        "PROJECT_NAME=api",
+        "--set",
+        "DESCRIPTION=member",
+        "--dest",
+        str(member),
+        "--no-tasks",
+    ]
+    assert main(member_argv) == 1
+    assert not member.exists()
+
+    assert main([*member_argv, "--member"]) == 0
+    for hazard in MEMBER_HAZARDS:
+        assert not (member / hazard).exists(), f"{hazard} should not exist in a member"
+    assert (member / ".golangci.yml").is_file()  # the layer's own, member-local output
+
+    members = json.loads((root / ".ci" / "members.json").read_text())
+    assert members == {
+        "members": [
+            {"name": "api", "path": "services/api", "capabilities": {"go": ["lint", "test"]}}
+        ]
+    }
+    recorded = yaml.safe_load((root / ".project-setup-answers.yml").read_text())
+    assert json.loads(recorded["MONOREPO_MEMBERS"]) == members["members"]
+
+
 def test_overlapping_layers_fold_into_one_gitignore(scaffolded: Path):
     fragments = sorted(p.name for p in (scaffolded / ".gitignore.d").iterdir())
     assert fragments == ["go", "os", "scripts", "ts"]

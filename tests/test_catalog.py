@@ -500,3 +500,65 @@ def test_members_that_exist_and_a_single_root_repository_raise_nothing(tmp_path)
     assert repo_conflicts(tmp_path, {"MONOREPO_MEMBERS": members}) == []
     assert repo_conflicts(tmp_path, {"MONOREPO_MEMBERS": "[]"}) == []
     assert repo_conflicts(tmp_path, {}) == []
+
+
+def test_member_layers_drops_the_root_only_set(catalog):
+    from project_setup.catalog import member_layers
+
+    data = {"WANT_LANG_TS": True, "WANT_API": True}
+    assert member_layers(catalog, data) == ["api", "lang-ts"]
+    assert set(member_layers(catalog, data)) & set(ALWAYS_ON) == set()
+
+
+def test_member_capabilities_reads_off_the_lang_layers():
+    from project_setup.catalog import member_capabilities
+
+    assert member_capabilities(["lang-go", "lang-ts", "api"]) == {
+        "go": ["lint", "test"],
+        "ts": ["lint", "test"],
+    }
+    assert member_capabilities(["api", "i18n"]) == {}
+
+
+def test_a_plain_apply_under_an_existing_scaffold_root_is_refused(tmp_path):
+    """This is the hazard the round exists to close: applying straight into a
+    subdirectory of an already-scaffolded repository would write a second `.git`,
+    LICENSE and the rest of the root-only surface. `--member` is the only way past
+    it."""
+    from project_setup.catalog import repo_conflicts
+
+    root = tmp_path / "monorepo"
+    member = root / "services" / "api"
+    member.mkdir(parents=True)
+    (root / ".git").mkdir()
+    (root / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+
+    problems = repo_conflicts(member, {})
+    assert [(p.level, p.code) for p in problems] == [("error", "NESTED_SCAFFOLD")]
+    assert str(root) in problems[0].message
+
+    assert repo_conflicts(member, {}, member=True) == []
+
+
+def test_a_member_scoped_apply_needs_a_root_above_it(tmp_path):
+    from project_setup.catalog import repo_conflicts
+
+    lonely = tmp_path / "not-a-member"
+    lonely.mkdir()
+
+    problems = repo_conflicts(lonely, {}, member=True)
+    assert [(p.level, p.code) for p in problems] == [("error", "MEMBER_NO_ROOT")]
+    assert repo_conflicts(lonely, {}, member=False) == []
+
+
+def test_recorded_answers_also_count_as_a_scaffold_root(tmp_path):
+    """A root scaffolded before its first commit has no `.git` yet, but it does have
+    the answers file apply always writes last."""
+    from project_setup.catalog import ANSWERS_FILE, repo_conflicts
+
+    root = tmp_path / "monorepo"
+    member = root / "services" / "api"
+    member.mkdir(parents=True)
+    (root / ANSWERS_FILE).write_text("PROJECT_NAME: monorepo\n")
+
+    assert [p.code for p in repo_conflicts(member, {})] == ["NESTED_SCAFFOLD"]
