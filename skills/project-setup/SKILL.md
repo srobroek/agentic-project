@@ -328,6 +328,34 @@ into `.pre-commit-config.yaml`; a new value replaces that hook and `merge_hooks.
 which entry it replaced. Anything no fragment declares is left alone, so a repository's own
 hooks survive. Report the replacement line — it is the confirmation the change landed.
 
+## Monorepo members
+
+The root-only surface — `.git`, LICENSE, CODEOWNERS, CI, steering — is `ALWAYS_ON` and cannot
+be deselected, so a plain `apply` into a subdirectory of an already-scaffolded root nests a
+second repository into it. `apply` refuses with `NESTED_SCAFFOLD` and names the fix: pass
+`--member`.
+
+```
+project-setup apply --preset <stack> --dest R                    # the root, once
+project-setup apply --preset parts/lang-go --dest R/services/api --member
+```
+
+`--member` applies only the layers you selected — no root-only surface — and registers the
+result by path into the root's `.ci/members.json` and its own `MONOREPO_MEMBERS` answer.
+Refuses `MEMBER_NO_ROOT` if nothing scaffolded is found above `--dest`.
+
+MUST select the same language layer at the root before scaffolding a member in it.
+`gen_caller.py` builds each member's CI job from a reusable workflow (`wc-lint-<lang>.yml`,
+`wc-test-<lang>.yml`) that a `lang-*` layer places only at the root, never at a member —
+so a rust member under a go+ts-only root has no workflow to build a job from. `--member`
+checks this before writing anything and refuses `MEMBER_LANGUAGE_UNSUPPORTED`, naming the
+layer to add at the root.
+
+MUST re-apply the root after registering a member that was not already in its
+`MONOREPO_MEMBERS`. `--member` updates `.ci/members.json` immediately, but `ci.yml` itself is
+only regenerated the next time `apply` runs generators at the root — so a member added this
+way has no CI job until that happens. Tell the user this is the last step, not an optional one.
+
 ## Rules
 
 MUST NOT write a secret-shaped value into a file. Say the value now sits in a transcript and
