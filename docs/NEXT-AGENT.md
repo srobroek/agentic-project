@@ -514,6 +514,23 @@ schema-aware diff for one file type, which would cut against "measure the real d
 never special-case a file type." Left alone -- recorded here because `lines_lost` is exactly
 the number a caller is told to trust, and for this one file it overstates the loss.
 
+## Open, recorded rather than guessed at
+
+1. **A rejected answer ends the interview instead of re-asking.** Copier validates a `str`
+   answer after the prompt returns, not inline, so it raises and the interview stops. The
+   invalid value reaches no file and the user is told why, which is the important half, but
+   a typo in `PROJECT_NAME` costs the whole conversation. Settled by deciding whether the
+   validator should move into the prompt, where questionary can re-ask, and whether that is
+   worth losing Copier's own single source for the rule. Covered as measured behaviour by
+   `test_an_invalid_name_stops_the_interview_and_records_nothing`.
+
+2. **The validation-width budget measures the wrong thing.** Copier prefixes every message
+   with `Validation error for question 'X': ` -- 45 characters before ours begins -- so at
+   80 columns a 71-character rule wraps rather than truncating, and it wraps mid-word. No
+   message needs shortening, because wrapping is not truncation, but
+   `test_a_rejection_message_fits_an_eighty_column_terminal` is asserting a narrower
+   property than its name claims. Either rename it or budget for the prefix.
+
 ## What the eighth round fixed
 
 Both of the seventh round's targets, plus what looking at them turned up.
