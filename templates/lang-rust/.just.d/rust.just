@@ -22,11 +22,12 @@ rust-fmt-check:
 rust-lint:
     cargo clippy --all-targets --all-features -- -D warnings
 
-# Test through nextest.
-#
 # `--no-tests=pass` because nextest exits 4 on an empty run, and `cargo init --bin`
-# writes no test: a scaffold nobody has touched failed its own `just check`. Unlike
-# Python, a seeded test would prove nothing here that `cargo build` does not.
+# writes no test: a scaffold nobody has touched failed its own `just check`.
+# Unlike Python, a seeded test would prove nothing here that `cargo build` does
+# not.
+#
+# Test through nextest
 [group('rust')]
 rust-test:
     cargo nextest run --all-features --no-tests=pass

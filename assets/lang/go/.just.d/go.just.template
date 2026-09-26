@@ -4,8 +4,10 @@
 [group('go')]
 go: go-fmt-check go-lint go-test
 
-# Format. Not `gofmt -w .`, which walked into node_modules: a CDK app ships Go
-# templates named `%name%.template.go` that do not parse, and gofmt rewrote the rest.
+# Not `gofmt -w .`, which walked into node_modules: a CDK app ships Go templates
+# named `%name%.template.go` that do not parse, and gofmt rewrote the rest.
+#
+# Format
 [group('go')]
 go-fmt:
     find . \( -name node_modules -o -name vendor -o -name .git \) -prune -o -name '*.go' -type f -exec gofmt -w {} +

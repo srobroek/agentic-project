@@ -1236,3 +1236,60 @@ def test_a_declared_locale_with_no_catalog_says_what_to_write(tmp_path: Path):
     assert done.returncode != 0
     assert "de: no catalog at messages/de.json; start it from messages/en.json" in done.stderr
     assert "ENOENT" not in done.stderr
+
+
+def test_just_list_descriptions_are_not_sentence_fragments(tmp_path: Path):
+    """`just --list` shows only the last `#` line directly above a recipe, not the
+    whole leading comment block. `check`, `go-fmt`, `ts-fmt` and `i18n` put their
+    one-line summary first and their rationale last, so a wrapped sentence left a
+    fragment of its own rationale as the description: "success having edited the
+    tree it was asked to inspect.", "templates named `%name%.template.go` that do
+    not parse, and gofmt rewrote the rest.", "files away.", and "layer runs it.
+    I18N_CHECK_COMMANDS adds to it, one line per further deployable." `rust-test`
+    wrapped "Unlike" onto the line above, leaving "Python, a seeded test would
+    prove nothing here that `cargo build` does not." Fixed by moving each
+    recipe's one-line summary to the end of its comment block, matching the
+    convention the justfile itself documents above `check`.
+    """
+    import re
+    import subprocess
+
+    _needs("just")
+    scaffold(tmp_path, "fullstack-web")
+    listed = subprocess.run(
+        ["just", "--list"], cwd=tmp_path, capture_output=True, text=True
+    ).stdout
+    descriptions = {
+        "check": "Check formatting, lint, type-check, and test every language present",
+        "go-fmt": "Format",
+        "ts-fmt": "Format and organise imports. biome owns this half of the split.",
+        "i18n": "Reject missing, orphaned, or invalid messages",
+    }
+    for recipe, description in descriptions.items():
+        assert re.search(rf"^\s*{re.escape(recipe)}\s+# {re.escape(description)}$", listed, re.M), (
+            f"{recipe!r} description changed: {listed}"
+        )
+    for fragment in (
+        "success having edited the tree it was asked to inspect.",
+        "templates named",
+        "files away.",
+        "layer runs it.",
+    ):
+        assert fragment not in listed
+
+
+def test_rust_test_description_does_not_start_mid_sentence(tmp_path: Path):
+    """A wrapped "Unlike" onto the comment line above `rust-test` left "Python, a
+    seeded test would prove nothing here that `cargo build` does not." as the
+    `just --list` description -- a sentence fragment starting mid-thought.
+    """
+    import re
+    import subprocess
+
+    _needs("just")
+    scaffold(tmp_path, "desktop-rust-ts")
+    listed = subprocess.run(
+        ["just", "--list"], cwd=tmp_path, capture_output=True, text=True
+    ).stdout
+    assert re.search(r"^\s*rust-test\s+# Test through nextest$", listed, re.M), listed
+    assert "Python, a seeded test" not in listed

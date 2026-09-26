@@ -505,8 +505,10 @@ def checkout_problems(
                 "STALE_LAYER_FILES",
                 f"the {layer} layer is no longer selected, but {len(files)} file(s) it wrote "
                 f"are still in {dest}: {shown}. Deselecting a layer stops it being written, "
-                f"it does not remove what an earlier apply wrote. Delete them to finish "
-                f"dropping the layer.",
+                f"it does not remove what an earlier apply wrote -- and gen_caller.py and "
+                f"gen_justfile.py wire CI and the justfile from which files are on disk, not "
+                f"from this answer, so the layer keeps being built, linted and tested until "
+                f"they are gone. Delete them to finish dropping the layer.",
                 want_var(layer),
             )
         )
