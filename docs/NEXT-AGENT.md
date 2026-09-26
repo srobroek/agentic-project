@@ -8,72 +8,33 @@ places where the tool is merely adequate.
 Read `README.md` for what it is, `AGENTS.md` for the invariants, and
 `skills/project-setup/SKILL.md` for how an agent is meant to drive it.
 
-## This round: two named targets, then your own judgement
+## This round: the two open questions, then your own judgement
 
-The previous round's four are delivered: the journey gate runs in `tools/e2e.py`, the
-interview is driven through a PTY, `just check` dispatches `api`, `aws-cdk`, `i18n` and
-`a11y` so `fullstack-web` exercises them, and tool versions live only in `TOKEN_POLICY`.
-Two things replace them.
+Both previous targets are done and every area anyone had listed as unexercised has now
+been driven: the journey gate is deterministic and scaffolds monorepo members, brownfield
+was exercised against a repository with its own licence, hooks, justfile and manifest, all
+28 recipes the gate never runs were run, and the interview is driven through a PTY
+including its rejection path.
 
-### 1. The journey gate is flaky, which is worse than absent
+So this round starts from the two questions recorded under "Open, recorded rather than
+guessed at" above, both of which need a decision rather than a discovery:
 
-Three consecutive full runs of `tools/e2e.py` gave `12 walked / 0 failed`, then
-`11 walked / 1 failed`, then `12 / 0`. It passes on retry. A gate that fails one run in
-three for environmental reasons teaches everybody to re-run instead of read it, and it
-was installed to be trusted.
+1. Should a rejected answer re-ask instead of ending the interview?
+2. Should the validation-width budget account for Copier's 45-character prefix, or should
+   the test be renamed to the narrower property it actually asserts?
 
-The cause is structural rather than a bug: `just setup` and `just check` do real network
-work. `bun install`, `cargo fetch`, `uv sync`, prek hook downloads, and `go-vuln` through
-a module proxy that does not resolve on this network at all. `go-service` passed three
-times in isolation, so the failing preset was not reproducible, which is itself the point.
+Then range wider. The places least likely to have been looked at now:
 
-Find every network-dependent step the journey runs, then decide **per step** whether it
-retries, skips with a reported reason, or leaves the gate. A step that skips must say so
-in the summary: `0 not walked` is a number the run already prints, and a silent skip is
-the failure this whole project keeps finding. Do not make the gate pass by weakening what
-it checks.
-
-### 2. Scaffold a monorepo member by running project-setup in it
-
-This is the owner's answer to the member-config design call, and it is better than the
-three options put to them: the monorepo shell is scaffolded, then `project-setup` runs
-again per member. Nothing is hand-built and nothing guesses at architecture. It also
-dissolves the `knip` failure at its root: `knip` only detects plugins from a member's own
-configs, and a member scaffolded by the tool has its own.
-
-It does not work yet. Measured today:
-
-```
-project-setup apply --preset monorepo --dest R                    # 25 files, a git repo
-project-setup apply --preset parts/lang-ts --dest R/services/api  # 69 files
-```
-
-The member received the entire root-only surface: a **nested `.git`**, `CODEOWNERS`,
-`CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, `docs/agents/`, `AGENTS.md`, `CLAUDE.md`,
-`.github/`, its own `.pre-commit-config.yaml`. A nested repository inside a member is a
-trap on its own. The cause is that the root-only layers are `ALWAYS_ON`, so no selection
-can exclude them.
-
-What a member-scoped apply has to do, and the shape is already in the catalog:
-
-- Apply only the member-safe layers. The current `ALWAYS_ON` set is exactly the root-only
-  set, so the distinction exists; it just has no mode that honours it.
-- Not run `git_init`. It probes `.git` relative to the destination, so in a member it
-  creates a nested repository instead of finding the root's.
-- Register the member in the root's `.ci/members.json`, which is what drives per-member CI
-  and today reports `MEMBER_PATH_EMPTY` for paths nobody created.
-- Leave the root's generated files alone. The `.d/` fragments and their generators are
-  root-scoped.
-
-Decide the interface and say why. A `--member` flag, a `member` preset tier, and a
-separate `add-member` subcommand are all defensible; what matters is that a member cannot
-silently receive a nested repository or a second licence. Cover it in the journey gate:
-scaffold the monorepo, scaffold both members, then require the root's `just check` and
-each member's own checks to pass.
-
-If this turns out to be larger than one round, say so and land the safety half first:
-refusing a member-scoped apply that would nest a repository is worth more than the
-feature.
+- **A scaffold that is six months old.** Every test applies with today's pins. Nothing has
+  applied with deliberately stale versions, or re-applied a scaffold whose pins moved
+  under it, which is what Renovate does continuously.
+- **Two scaffolds in one repository.** Not a monorepo member: two unrelated roots, or a
+  root inside a git submodule.
+- **The generators against a hostile file.** A `.gitignore` whose managed markers were
+  edited, duplicated, or reversed. A `.pre-commit-config.yaml` that is valid YAML but not a
+  hook config. A `members.json` naming a path outside the repository.
+- **Windows path semantics**, if anybody will ever run this there. Every path assumption in
+  the port and the generators is POSIX today.
 
 ## Prove it still works before you change anything
 
