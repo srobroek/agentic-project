@@ -257,9 +257,7 @@ test("greet names the caller", () => {
 # duplicate config, so a member is linted by the root and has no use for their packages.
 # knip is the same: the root walks the member. Leaving them in a member's manifest made
 # knip report three unused devDependencies in a scaffold nobody had touched.
-ROOT_ONLY_DEV_TOOLS = frozenset(
-    {"@biomejs/biome", "oxlint", "oxlint-tsgolint", "knip"}
-)
+ROOT_ONLY_DEV_TOOLS = frozenset({"@biomejs/biome", "oxlint", "oxlint-tsgolint", "knip"})
 
 
 def _declare_ts_dev_tools(pinned: str, *, member: bool = False) -> None:

@@ -7,6 +7,7 @@ last time, so the reason is the scaffolder's own warning, never a guess.
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import e2e
 import pytest
@@ -130,3 +131,21 @@ def test_network_transient_matches_real_transport_symptoms(line):
 def test_network_transient_does_not_match_a_tool_verdict():
     assert not e2e.NETWORK_TRANSIENT.search("cargo fmt --check failed: 3 files need formatting")
     assert not e2e.NETWORK_TRANSIENT.search("AssertionError: expected 2, got 3")
+
+
+def test_every_member_capability_maps_to_a_part_the_gate_can_scaffold():
+    """`.ci/members.json` capabilities drive both the gate and gen_caller's CI jobs, so a
+    capability the gate cannot scaffold is a member CI cannot test either."""
+    parts = Path(e2e.PRESETS) / "parts"
+    languages = {p.stem.removeprefix("lang-") for p in parts.glob("lang-*.yml")}
+    assert languages, "no language parts found; the mapping this guards has moved"
+    missing = sorted(languages - set(e2e.MEMBER_PART))
+    assert missing == [], f"a member declaring {missing} could not be scaffolded by the gate"
+
+
+def test_the_member_gate_applies_with_the_member_flag():
+    """Without --member a member receives a nested .git and a second licence, so the gate
+    must exercise the supported path rather than a plain apply into a subdirectory."""
+    source = Path(e2e.__file__).read_text()
+    block = source.split("def scaffold_members")[1].split("\ndef ")[0]
+    assert '"--member"' in block

@@ -297,6 +297,52 @@ def journey(dest: Path, *, label: str = "", retried: list[str] | None = None) ->
     }
 
 
+# Which language part scaffolds a member, from the capabilities its own entry declares.
+# gen_caller.py reads the same file to build each member's CI job, so a member the gate
+# cannot scaffold is a member CI cannot test either.
+MEMBER_PART = {
+    "go": "parts/lang-go",
+    "python": "parts/lang-python",
+    "rust": "parts/lang-rust",
+    "ts": "parts/lang-ts",
+}
+
+
+def scaffold_members(dest: Path, retried: list[str]) -> int:
+    """Scaffold every member `.ci/members.json` names, the way the owner's design says.
+
+    The shell is scaffolded first, then project-setup runs again per member. Each member
+    is applied with --member, which is what keeps a nested .git, a second LICENSE and the
+    root's fragment directories out of it.
+    """
+    manifest = dest / ".ci/members.json"
+    if not manifest.is_file():
+        return 0
+    members = json.loads(manifest.read_text()).get("members", [])
+    for member in members:
+        languages = sorted(member.get("capabilities", {}))
+        parts = [MEMBER_PART[lang] for lang in languages if lang in MEMBER_PART]
+        if not parts:
+            raise Failure(f"member {member['name']!r} declares no language this gate can scaffold")
+        args = ["apply", "--member", "--dest", str(dest / member["path"])]
+        for part in parts:
+            args += ["--preset", part]
+        args += [
+            "--set",
+            f"PROJECT_NAME={member['name']}",
+            "--set",
+            f"DESCRIPTION=the {member['name']} member",
+            "--json",
+        ]
+        proc = run(args)
+        if proc.returncode != 0:
+            raise Failure(
+                f"member {member['name']!r} would not scaffold:\n"
+                f"    {(proc.stdout + proc.stderr).strip()[:400]}"
+            )
+    return len(members)
+
+
 def run(args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run([str(CLI), *args], capture_output=True, text=True, check=False, cwd=REPO)
 
@@ -445,6 +491,13 @@ def check_preset(preset: str, workdir: Path, run_journey: bool = True) -> dict:
                 )
                 journey(dest, label="aws-cdk-init", retried=retried)
                 journey_result = "ok+cdk"
+            # The owner's design for a monorepo: scaffold the shell, then run
+            # project-setup per member. The root's own check has to survive them:
+            # biome and oxlint each refused a member's nested config and broke it.
+            count = scaffold_members(dest, retried)
+            if count:
+                journey(dest, label="members", retried=retried)
+                journey_result = f"ok+{count} members"
     return {
         "journey": journey_result,
         "retried": retried,
