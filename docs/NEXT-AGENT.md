@@ -142,7 +142,9 @@ reader does not repeat it.
    `justfile`, `AGENTS.md` and `CLAUDE.md`, on `master`. The merges hold: every hand-written
    hook and ignore line survived. Two defects: the apply failed outright on the existing
    `CLAUDE.md` naming a flag no caller can pass, and `plan` never mentioned the four files the
-   generators were about to rewrite. Both fixed.
+   generators were about to rewrite. Both fixed. A ninth round went further -- `tsconfig.json`,
+   `biome.json`, `package.json` with real dependencies, an MIT `LICENSE` against an
+   `SPDX_ID=Apache-2.0` answer, and a dirty working tree -- see "What the ninth round fixed".
 4. **`init_aws_cdk.py`** runs. `just aws-cdk-init` generated the app, `bun install` resolved
    294 packages, and `just aws-cdk` synthesized CloudFormation. It removes the `.npmignore`
    `cdk init` leaves; `cdk`'s own `infrastructure/.gitignore` stays, which is correct for its
@@ -431,6 +433,86 @@ the three i18n tests and the per-preset end-of-file test in `tests/test_scaffold
 two `MEMBER_PATH_EMPTY` tests in `tests/test_catalog.py`. `just go-vuln` has no permanent
 test: it needs the vulnerability database. On this machine `proxy.golang.org` does not
 resolve, so it was run with `GOPROXY=direct`.
+
+## What the ninth round fixed (brownfield)
+
+A fixture repo, not a toy: a real MIT `LICENSE`, its own `.pre-commit-config.yaml` with a
+pinned `black` rev, a `justfile` with `setup`/`test`/`check` recipes, `tsconfig.json`,
+`biome.json`, a `package.json` with real dependencies and its own lint/typecheck/test
+scripts, a `.github/workflows/ci.yml`, a hand-written `.gitignore` and `README.md`, a
+committed `src/index.ts`, and a dirty working tree. Applied `fullstack-web` on top with
+`project-setup apply --preset fullstack-web --dest .`. Four defects, all silent -- `apply`
+exited 0 and reported a clean run every time -- and all four now print a
+`<script>: WARNING ...` line that `apply`'s top-level `warnings` carries.
+
+1. **A brownfield `package.json` or `pyproject.toml` never got the tools its own recipes
+   call.** `native_init.py`'s `ts`/`py` branches return before running `bun`/`uv` at all when
+   the manifest already exists, which is correct -- but the early return also skipped
+   `_declare_ts_dev_tools`/`_declare_dev_tools`, the one step that is safe and desired
+   regardless of freshness. Measured: `just check`'s `bunx biome`/`bunx oxlint` would have
+   fallen through to an unversioned mise shim or PATH, exactly the failure mode the
+   functions' own docstrings describe, and nothing said so. Both branches now call the
+   declare step on the early-return path too; `_declare_ts_dev_tools` and
+   `_declare_dev_tools` already merge by missing key, so an existing version is never
+   overwritten. `tests/test_native_tools.py::test_a_brownfield_package_json_still_gets_the_dev_tools`
+   and `::test_a_brownfield_pyproject_still_gets_the_dev_tools`, each asserting `run` is
+   never called.
+2. **An SPDX_ID answer that disagreed with an existing LICENSE was accepted with no warning
+   at all.** `materialise_license.py` prints "LICENSE already present, leaving it alone" with
+   no `WARNING` marker, so `SPDX_ID=Apache-2.0` against a committed MIT `LICENSE` scaffolds
+   clean and the repository keeps stating MIT, with nothing in `plan`, `apply`, or `validate`
+   naming the disagreement -- `ANSWER_CONTRADICTS_REPO` in `catalog.py` is the forge/CI check
+   only, not this. Fixed by adding the marker and naming the fix (delete `LICENSE` and
+   re-run). `tests/test_scaffold.py::test_a_brownfield_licence_mismatch_is_a_warning_not_silence`.
+3. **A hook a fragment declares under `repo: builtin` and a hook the repository already ran
+   under the classic `pre-commit/pre-commit-hooks` repo are a different `(url, id)` key, so
+   `merge_hooks.py` correctly leaves the brownfield entry alone -- and `trailing-whitespace`
+   and `end-of-file-fixer` then run twice on every commit, with nothing said about it.** This
+   is deliberate on the fragment's side (`repo: builtin` is faster and needs no clone or rev),
+   so the fix is a warning, not a merge: `merge_hooks.py` now reports any hook id that appears
+   under both a fragment-owned repo and a repository-owned one.
+   `tests/test_scaffold.py::test_a_hook_id_the_repository_already_ran_gets_a_duplicate_warning`.
+4. **The `just` layer's own justfile -- `setup`, `check`, `each`, and the rest -- is skipped
+   whole when a justfile already exists, so a repository whose own `setup` or `check` predates
+   the scaffold now shadows the built-in recipe of the same name.** `just check` runs only the
+   repository's own recipe; the built-in one that runs `hooks-all` and every language's own
+   check is simply never placed, and CI calling the same name gets the same silence. Fixed by
+   having `gen_justfile.py` warn when the justfile (wherever it came from) defines a name the
+   layer's own justfile also defines. `tests/test_scaffold.py::test_a_recipe_name_the_scaffold_also_wants_is_a_warning`.
+
+Both (3) and (4) had a second bug once fixed: **the warning went quiet on a second apply.**
+`merge_hooks.py` tracks per-hook ownership to decide who wins a real conflict, but the
+tracking was only updated when a fragment's hook *changed* something; when a re-applied
+fragment's value matched what was already on disk (itself, from the first apply) the early
+`continue` skipped the ownership update, so the second run's duplicate check no longer saw
+`builtin` as fragment-owned. `gen_justfile.py`'s collision check lived only in the
+"no import block yet" branch, which by construction runs exactly once -- the second apply
+takes the "block already present, rewrite between the markers" branch and never re-checked.
+Both are standing properties of the file, not one-time transitions, and both are fixed the
+same way: check on every run, and keep ownership correct even when nothing changes.
+`tests/test_scaffold.py::test_the_duplicate_hook_warning_survives_a_reapply` and the second
+`scaffold()` call inside `test_a_recipe_name_the_scaffold_also_wants_is_a_warning`. Found by
+applying the fixture twice by hand and diffing the warning lists -- the property test suite
+scaffolds once per case, so neither gap had a test until this round.
+
+Checked and found correct, no fix needed: `.gitignore` and `justfile` merges keep every
+hand-written line (`fold_gitignore.py`, `gen_justfile.py`'s append path); a dirty
+uncommitted change in `src/index.ts` survived byte-for-byte, because nothing in the TS
+layer writes there; `tsconfig.json`, `biome.json`, and `README.md` are correctly classified
+`overwrite` with an accurate `lines_lost` count -- they carry `@@` tokens (`AWS_CDK_DEST`,
+`BIOME_VERSION`, `PROJECT_NAME`), so `SKIP_IF_EXISTS` cannot apply, and `plan` says so before
+`apply` does it; a hand-owned `.github/workflows/ci.yml` is left alone with the existing
+`gen_caller` warning naming the orphaned `wc-*.yml` files; re-applying the fully-collided
+fixture a second time changed zero bytes (`create/overwrite/merge/remove` all `0`) with the
+same six warnings repeated verbatim, not merely "still ok".
+
+`lines_lost` counts raw text lines, not semantic content: `.pre-commit-config.yaml` shows
+`lines_lost: 9` for a 9-line brownfield file even though every hook in it survives, because
+`merge_hooks.py` re-serialises the whole file through `yaml.dump`, changing every line's
+formatting. Nothing is actually lost; `plan --json` has no way to say that short of a
+schema-aware diff for one file type, which would cut against "measure the real difference,
+never special-case a file type." Left alone -- recorded here because `lines_lost` is exactly
+the number a caller is told to trust, and for this one file it overstates the loss.
 
 ## What the eighth round fixed
 

@@ -47,7 +47,11 @@ def main() -> int:
         return 1
     dest = Path("LICENSE")
     if dest.exists():
-        print("materialise_license: LICENSE already present, leaving it alone")
+        print(
+            f"materialise_license: WARNING LICENSE already present, leaving it alone. "
+            f"SPDX_ID is {spdx!r}; if the existing file states a different licence, "
+            "delete LICENSE and re-run apply to write the answered one."
+        )
     else:
         shutil.copyfile(src, dest)
         print(f"materialise_license: wrote LICENSE from {spdx}")

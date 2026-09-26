@@ -747,6 +747,57 @@ def test_a_brownfield_hook_config_survives_and_only_shared_ids_are_replaced(tmp_
     assert "--mine" not in str(builtin["trailing-whitespace"])
 
 
+def test_a_hook_id_the_repository_already_ran_gets_a_duplicate_warning(tmp_path: Path):
+    """The hygiene fragment declares `trailing-whitespace` under `repo: builtin`; a
+    brownfield config naming the classic `pre-commit/pre-commit-hooks` repo for the
+    same id is a different key by URL, so merge_hooks correctly leaves it alone --
+    and the same check then runs twice on every commit with nothing said about it.
+    """
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        "repos:\n"
+        "  - repo: https://github.com/pre-commit/pre-commit-hooks\n"
+        "    rev: v4.6.0\n"
+        "    hooks:\n"
+        "      - id: trailing-whitespace\n"
+        "      - id: end-of-file-fixer\n"
+    )
+
+    result = scaffold(tmp_path, "go-service")
+
+    merge = next(s for s in result.generated if "merge_hooks" in s.name)
+    assert merge.ok
+    assert any("trailing-whitespace" in w for w in merge.warnings)
+    assert any("pre-commit/pre-commit-hooks" in w for w in merge.warnings)
+    # Nothing was deleted -- the repository's own entry survives beside the fragment's.
+    merged = yaml.safe_load(config.read_text())
+    entries = {entry["repo"]: entry for entry in merged["repos"]}
+    assert "https://github.com/pre-commit/pre-commit-hooks" in entries
+
+
+def test_the_duplicate_hook_warning_survives_a_reapply(tmp_path: Path):
+    """A second run loads the first run's own output as `existing`, non-authoritative
+    by default. When a fragment's hooks come back byte-identical to what is already
+    there, nothing needs to change -- but ownership still has to be re-asserted, or
+    the duplicate check forgets `builtin` was ever fragment-owned and goes quiet.
+    """
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        "repos:\n"
+        "  - repo: https://github.com/pre-commit/pre-commit-hooks\n"
+        "    rev: v4.6.0\n"
+        "    hooks:\n"
+        "      - id: trailing-whitespace\n"
+    )
+    scaffold(tmp_path, "go-service")
+
+    result = scaffold(tmp_path, "go-service")
+
+    merge = next(s for s in result.generated if "merge_hooks" in s.name)
+    assert merge.ok
+    assert any("trailing-whitespace" in w for w in merge.warnings), merge.warnings
+
+
 def test_two_fragments_disagreeing_is_still_a_hard_error(tmp_path: Path):
     """A template bug, which no answer can resolve, stays a refusal."""
     scaffold(tmp_path, "go-service")
@@ -792,6 +843,43 @@ def test_a_repositorys_own_justfile_survives_and_gains_the_imports(tmp_path: Pat
     assert "justfile" not in result.files("overwrite")
     gen = next(s for s in result.generated if "gen_justfile" in s.name)
     assert gen.ok and "appended" in gen.detail
+
+
+def test_a_recipe_name_the_scaffold_also_wants_is_a_warning(tmp_path: Path):
+    """The layer's own justfile -- with `setup`, `check`, and the rest -- is skipped
+    whenever one already exists, all or nothing. A repository whose own `check` or
+    `setup` predates the scaffold now shadows the built-in recipe of the same name
+    with no warning anywhere: `just check` silently stops running hooks-all and
+    every language's own check, and CI calling the same name gets the same silence.
+    """
+    (tmp_path / "justfile").write_text(
+        "setup:\n    npm install\n\ntest:\n    npm test\n\ncheck:\n    npm run lint\n"
+    )
+
+    result = scaffold(tmp_path, "py-lib")
+
+    gen = next(s for s in result.generated if "gen_justfile" in s.name)
+    assert gen.ok
+    assert any("'check'" in w for w in gen.warnings)
+    assert any("'setup'" in w for w in gen.warnings)
+    # `test` collides with nothing the scaffold's own justfile defines.
+    assert not any("'test'" in w for w in gen.warnings)
+
+    # The collision is a standing property of the file, not a one-time transition
+    # from "no import block" to "has one" -- a second run must still name it.
+    result = scaffold(tmp_path, "py-lib")
+    gen = next(s for s in result.generated if "gen_justfile" in s.name)
+    assert any("'check'" in w for w in gen.warnings), gen.warnings
+
+
+def test_a_fresh_scaffolds_own_justfile_does_not_warn_about_itself(tmp_path: Path):
+    """The layer's own justfile defines `setup` and `check` too, outside the
+    generated block same as anyone else's recipes would be -- so the collision
+    check above warned about a fresh scaffold's own file on every single preset."""
+    result = scaffold(tmp_path, "py-lib")
+
+    gen = next(s for s in result.generated if "gen_justfile" in s.name)
+    assert gen.warnings == []
 
 
 # --------------------------------------------------------------------------- tasks
@@ -865,6 +953,22 @@ def test_a_project_can_state_no_licence_at_all(tmp_path: Path):
     assert not (tmp_path / "licenses").exists(), "unused licence texts were left behind"
     # A deliberate answer, so it is not a degradation.
     assert result.warnings == []
+
+
+def test_a_brownfield_licence_mismatch_is_a_warning_not_silence(tmp_path: Path):
+    """SPDX_ID=Apache-2.0 against a repository already stating MIT used to leave the
+    repository silently stating MIT: the task printed that it left LICENSE alone, but
+    with no `WARNING` prefix nothing surfaced it, so an answered licence and the file
+    on disk could disagree with no warning anywhere in `plan` or `apply`.
+    """
+    (tmp_path / "LICENSE").write_text("MIT License\n\nCopyright (c) 2022 Somebody\n")
+
+    result = scaffold_with_tasks(tmp_path, "minimal", extra={"SPDX_ID": "Apache-2.0"})
+
+    assert result.ok, [s.detail for s in result.placed if not s.ok]
+    assert (tmp_path / "LICENSE").read_text() == "MIT License\n\nCopyright (c) 2022 Somebody\n"
+    messages = [message for _, message in result.warnings]
+    assert any("LICENSE already present" in m and "Apache-2.0" in m for m in messages), messages
 
 
 def test_an_unlicensed_rust_crate_passes_its_own_licence_gate(tmp_path: Path):

@@ -252,6 +252,26 @@ def test_an_existing_dependency_group_is_not_duplicated(native_init, tmp_path, m
     assert (tmp_path / "pyproject.toml").read_text() == before
 
 
+def test_a_brownfield_pyproject_still_gets_the_dev_tools(native_init, tmp_path, monkeypatch):
+    """`main()` used to skip the whole py branch when pyproject.toml pre-existed,
+    including the dev-tool declaration -- so `uv run ruff` in a brownfield repository
+    had nothing to run, silently, with no warning naming the gap."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "brownfield"\n')
+    monkeypatch.setattr("sys.argv", ["native_init.py", "py", "brownfield:src:3.12"])
+
+    def fail_if_called(cmd, owns=""):
+        raise AssertionError(f"uv should not run against an existing manifest: {cmd}")
+
+    monkeypatch.setattr(native_init, "run", fail_if_called)
+
+    assert native_init.main() == 0
+
+    manifest = (tmp_path / "pyproject.toml").read_text()
+    assert "[dependency-groups]" in manifest
+    assert 'name = "brownfield"' in manifest  # the repository's own name is untouched
+
+
 def test_an_empty_test_run_is_not_left_to_fail_the_gate(native_init, tmp_path, monkeypatch):
     """pytest exits 5 with nothing collected, and the layer's pytest.ini makes the
     missing-testpaths warning an error, so a fresh scaffold was red either way."""
@@ -323,6 +343,30 @@ def test_a_version_the_project_already_chose_is_not_overwritten(native_init, tmp
 
     dev = json.loads((tmp_path / "package.json").read_text())["devDependencies"]
     assert dev == {"oxlint": "1.0.0"}
+
+
+def test_a_brownfield_package_json_still_gets_the_dev_tools(native_init, tmp_path, monkeypatch):
+    """`main()` used to skip the whole ts branch when package.json pre-existed,
+    including the dev-tool declaration -- so `bunx biome` in a brownfield repository
+    fell through to PATH or a mise shim, unversioned, with no warning naming the gap."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "package.json").write_text(
+        json.dumps({"name": "brownfield-widget", "scripts": {"test": "vitest run"}}) + "\n"
+    )
+    monkeypatch.setattr(
+        "sys.argv", ["native_init.py", "ts", "brownfield-widget", "oxlint=1.85.0"]
+    )
+
+    def fail_if_called(cmd, owns=""):
+        raise AssertionError(f"bun should not run against an existing manifest: {cmd}")
+
+    monkeypatch.setattr(native_init, "run", fail_if_called)
+
+    assert native_init.main() == 0
+
+    data = json.loads((tmp_path / "package.json").read_text())
+    assert data["devDependencies"] == {"oxlint": "1.85.0"}
+    assert data["scripts"] == {"test": "vitest run"}  # the repository's own script survives
 
 
 def test_the_entry_point_bun_names_keeps_existing(native_init, tmp_path, monkeypatch):

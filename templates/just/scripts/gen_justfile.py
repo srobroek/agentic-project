@@ -28,6 +28,20 @@ END = "# END GENERATED: imports"
 # A recipe name at the start of a line, with any parameters after it.
 RECIPE = re.compile(r"^([a-z][a-z0-9-]*)(?:\s+[^:]*)?:", re.M)
 
+# The top-level recipes the `just` layer's own justfile defines. `_skip_if_exists`
+# keeps that file out of a destination that already has one, all or nothing, so a
+# same-named recipe in the kept file does not fail loudly -- it just quietly
+# receives none of what the built-in one would have done: `setup` installs the
+# toolchain and every language's dependencies, `check` runs every hook group and
+# every language's own check. Mirrors assets/just/justfile; keep the two in step.
+RESERVED = {"setup", "setup-worktree", "check", "each", "just-sync", "just-add", "just-check"}
+
+# The layer's own justfile defines every RESERVED name too -- outside the generated
+# block, same as a brownfield file's own recipes would be -- so a fresh scaffold's own
+# file would otherwise flag itself. This line opens it, and nothing else plausibly
+# opens a hand-written one the same way.
+OWN_HEADER = "# justfile -- the task surface."
+
 PREAMBLE = f"""\
 {BEGIN}
 # One line per .just.d fragment, rebuilt by `just just-sync`. Do not edit by hand.
@@ -95,18 +109,33 @@ def main() -> int:
         # to be added to whatever is there. The end of the file is the one safe place:
         # `import?` is position-independent in just, and everything already written
         # keeps its meaning.
+        outside = body
         justfile.write_text(body.rstrip("\n") + "\n\n" + block(dest))
         print(
             f"justfile had no import block; appended one for {count} fragment(s), "
             "your recipes untouched"
         )
-        return 0
+    else:
+        head, _, rest = body.partition(BEGIN)
+        _, _, tail = rest.partition(END + "\n")
+        outside = head + tail
+        justfile.write_text(head + block(dest) + tail)
+        print(f"justfile imports {count} fragment(s)")
 
-    head, _, rest = body.partition(BEGIN)
-    _, _, tail = rest.partition(END + "\n")
-    justfile.write_text(head + block(dest) + tail)
-
-    print(f"justfile imports {count} fragment(s)")
+    # A brownfield recipe does not stop shadowing the built-in one just because this
+    # is not the first run: the collision is a standing property of the file, not a
+    # one-time transition, so it is checked on every run rather than only the first --
+    # but only for a file that is not the layer's own. A fresh scaffold's own justfile
+    # defines every RESERVED name too, outside the generated block same as anyone
+    # else's would be, so without OWN_HEADER this warned about itself on every run.
+    if OWN_HEADER not in outside:
+        for name in sorted(RESERVED & set(RECIPE.findall(outside))):
+            print(
+                f"gen_justfile: WARNING your justfile already defines '{name}', so the "
+                f"just layer's own justfile -- with its own '{name}' -- was never placed. "
+                f"`just {name}` runs only your recipe; rename it or invoke the fragments "
+                "it would have dispatched to directly (`just --list` names them)."
+            )
     return 0
 
 

@@ -7,8 +7,11 @@
     native_init.py go   <module-path> [<go-version>]
 
 Templating a lockfile is a mistake; the native tool should generate it. Each branch
-is a no-op when the manifest already exists, and degrades to a warning when the
-tool is absent, so a scaffold never hard-fails on a missing toolchain.
+skips the native tool itself when the manifest already exists, and degrades to a
+warning when the tool is absent, so a scaffold never hard-fails on a missing
+toolchain. ts and py still reconcile the dev tools their own just recipes call into
+a pre-existing manifest -- `bunx biome` or `uv run ruff` with none declared falls
+through to whatever mise or PATH happens to answer, unversioned.
 
 A manifest that exists is only proof of a finished init if nothing interrupted it.
 Each branch writes the manifest first and reconciles afterwards, so an apply killed
@@ -111,6 +114,10 @@ def main() -> int:
         # the repository brought with it.
         pre_existing = begin(kind, "package.json", BUN_LEFTOVERS)
         if pre_existing is None:
+            # bun did not run, but a brownfield package.json still needs the tools
+            # the just recipes call: `bunx biome`/`bunx oxlint` with none declared
+            # falls through to whatever mise or PATH happens to answer, unversioned.
+            _declare_ts_dev_tools(extra, member=scope == "member")
             return 0
         code = run(["bun", "init", "-y"], owns="package.json")
         if code == 0 and Path("package.json").is_file():
@@ -122,6 +129,10 @@ def main() -> int:
     if kind == "py":
         pre_existing = begin(kind, "pyproject.toml", UV_LEFTOVERS)
         if pre_existing is None:
+            # uv did not run, but a brownfield pyproject.toml still needs the tools
+            # the just recipes call: `uv run ruff`/`uv run ty` with no dependency
+            # group resolves nothing and dies "Failed to spawn".
+            _declare_dev_tools()
             return 0
         name, layout, python = arg.split(":", 2)
         # --lib gives src/<name>/ with py.typed; --app gives the same tree without

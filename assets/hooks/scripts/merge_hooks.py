@@ -105,7 +105,7 @@ def _merge_excludes(config: dict, fragment_excludes: list[str]) -> None:
         )
 
 
-def merge(fragments: list[Path], existing: dict | None = None) -> tuple[dict, list[str]]:
+def merge(fragments: list[Path], existing: dict | None = None) -> tuple[dict, list[str], list[str]]:
     """Merge existing config first, then fragments. Fragments own what they declare.
 
     Two authorities meet in this file. A fragment is generated from a layer and an
@@ -182,6 +182,13 @@ def merge(fragments: list[Path], existing: dict | None = None) -> tuple[dict, li
                     hook_owned[url, hook_id] = authoritative
                     continue
                 if existing_hooks[positions[hook_id]] == hook:
+                    # Nothing to change, but a fragment reasserting a value it
+                    # already wrote is still the fragment's: on a second run the
+                    # existing config is this same value, loaded non-authoritative,
+                    # and without this the duplicate-hook check below would forget
+                    # this id was ever fragment-owned the moment nothing changed.
+                    if authoritative:
+                        hook_owned[url, hook_id] = True
                     continue
                 if hook_owned.get((url, hook_id)) and authoritative:
                     _conflict(f"{url} hook {hook_id!r} differs between {previous} and {source}")
@@ -233,7 +240,36 @@ def merge(fragments: list[Path], existing: dict | None = None) -> tuple[dict, li
     )
     config["default_install_hook_types"] = ordered_stages
     config["repos"] = [repos[url] for url in sorted(repos)]
-    return config, warnings
+    return config, warnings, _cross_repo_duplicates(repos, hook_owned)
+
+
+def _cross_repo_duplicates(
+    repos: dict[str, dict], hook_owned: dict[tuple[str, str], bool]
+) -> list[str]:
+    """Name a hook id a fragment now runs that the repository's own config also runs.
+
+    `repo: builtin` and the classic `pre-commit/pre-commit-hooks` repo share hook
+    ids -- trailing-whitespace, end-of-file-fixer, and the rest -- by design: prek
+    implements the builtin form natively, with no clone and no rev to pin. Neither
+    repo url is one this script already merges by, so a brownfield config naming
+    the classic repo keeps its entry untouched, correctly, and now runs the same
+    check twice on every commit with nothing said about it.
+    """
+    by_id: dict[str, list[str]] = {}
+    for url, repo in repos.items():
+        for hook in repo.get("hooks", []):
+            by_id.setdefault(str(hook.get("id")), []).append(url)
+    found = []
+    for hook_id, urls in sorted(by_id.items()):
+        fragment_urls = sorted({url for url in urls if hook_owned.get((url, hook_id))})
+        other_urls = sorted({url for url in urls if not hook_owned.get((url, hook_id))})
+        if fragment_urls and other_urls:
+            found.append(
+                f"hook {hook_id!r} now runs from both {fragment_urls[0]} and "
+                f"{other_urls[0]}; remove the duplicate from {other_urls[0]} if it "
+                "does the same thing"
+            )
+    return found
 
 
 def main() -> int:
@@ -250,7 +286,7 @@ def main() -> int:
         return 0
 
     existing = load(target) if target.is_file() else None
-    config, warnings = merge(fragments, existing)
+    config, warnings, duplicates = merge(fragments, existing)
     if (target.exists() and not os.access(target, os.W_OK)) or (
         not target.exists() and not os.access(target.parent, os.W_OK)
     ):
@@ -275,6 +311,8 @@ def main() -> int:
     print(f"merged {len(fragments)} fragment(s) into .pre-commit-config.yaml ({stages}){replaced}")
     for warning in warnings:
         print(f"  replaced: {warning}")
+    for duplicate in duplicates:
+        print(f"merge_hooks: WARNING {duplicate}")
     return 0
 
 
