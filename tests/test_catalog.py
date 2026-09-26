@@ -562,3 +562,28 @@ def test_recorded_answers_also_count_as_a_scaffold_root(tmp_path):
     (root / ANSWERS_FILE).write_text("PROJECT_NAME: monorepo\n")
 
     assert [p.code for p in repo_conflicts(member, {})] == ["NESTED_SCAFFOLD"]
+
+
+def test_a_members_own_answers_file_is_not_mistaken_for_the_root(tmp_path):
+    """A member-scoped apply also writes ANSWERS_FILE at its own destination, for the
+    re-apply diffing `deselected_layers` does per member. `find_scaffold_root` must
+    skip a member's own file and keep climbing to the real root, or a member-of-a-
+    member registers into the member's own orphaned `.ci/members.json` -- which no
+    CI workflow reads -- under a path relative to the member rather than the root.
+
+    Measured before the fix: `--member` into `root/services/api/sub` found
+    `services/api` as "the root" and wrote `services/api/.ci/members.json` naming
+    `sub` at path `sub`, leaving the real root's members.json untouched.
+    """
+    from project_setup.catalog import ANSWERS_FILE, find_scaffold_root
+
+    root = tmp_path / "monorepo"
+    member = root / "services" / "api"
+    grandchild = member / "sub"
+    grandchild.mkdir(parents=True)
+    (root / ".git").mkdir()
+    (root / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+    (member / ANSWERS_FILE).write_text("PROJECT_NAME: api\n_MEMBER: true\n")
+
+    assert find_scaffold_root(grandchild) == root
+    assert find_scaffold_root(member) == root

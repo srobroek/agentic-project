@@ -340,19 +340,35 @@ def member_capabilities(layers: list[str]) -> dict[str, list[str]]:
 
 
 def find_scaffold_root(dest: Path) -> Path | None:
-    """The nearest ancestor of `dest` -- never `dest` itself -- that is already a git
-    repository or a recorded scaffold.
+    """The nearest ancestor of `dest` -- never `dest` itself -- that is a git
+    repository or a recorded *root* scaffold.
 
     `dest` itself is excluded: applying into a repository's own root is the ordinary
     brownfield case, already supported. An *ancestor* holding one means `dest` is a
     subdirectory of something already scaffolded, which is what makes a plain apply's
     root-only surface -- a nested `.git` foremost -- a hazard rather than a normal
     write.
+
+    A member's own answers file is skipped rather than accepted: `scaffold` writes
+    `_MEMBER: true` into it, because member-scoped apply also writes ANSWERS_FILE at
+    its own destination, for the re-apply diffing `deselected_layers` already does
+    per member. Without the skip, `--member` into a path inside an existing member
+    registered into *that member's own* `.ci/members.json` -- a file no CI workflow
+    reads -- under the member's own relative path, instead of the true root's, and
+    reported success.
     """
     for parent in dest.resolve().parents:
-        if _is_git_repo(parent) or (parent / ANSWERS_FILE).is_file():
+        if _is_git_repo(parent):
+            return parent
+        answers = parent / ANSWERS_FILE
+        if answers.is_file() and not _is_member_scaffold(answers):
             return parent
     return None
+
+
+def _is_member_scaffold(answers_file: Path) -> bool:
+    recorded = yaml.safe_load(answers_file.read_text()) or {}
+    return bool(isinstance(recorded, dict) and recorded.get("_MEMBER"))
 
 
 def _is_git_repo(path: Path) -> bool:

@@ -179,6 +179,96 @@ def test_a_member_scoped_apply_never_nests_a_repository_or_a_licence(tmp_path: P
             {"name": "api", "path": "services/api", "capabilities": {"go": ["lint", "test"]}}
         ]
     }
+
+
+def test_a_member_of_a_member_registers_in_the_true_root(tmp_path: Path):
+    """A member-scoped apply also writes ANSWERS_FILE at its own destination, for
+    `deselected_layers` to diff a later re-apply against. `find_scaffold_root` has
+    to skip that file rather than treat the member as a root: measured before the
+    fix, `--member` into `services/api/sub` found `services/api` as "the root" and
+    registered `sub` at path `sub` in `services/api/.ci/members.json` -- a file no
+    CI workflow reads -- leaving the real root's members.json untouched.
+    """
+    from project_setup.cli import main
+
+    root = tmp_path / "monorepo"
+    member = root / "services" / "api"
+    grandchild = member / "sub"
+    common = ["--templates", str(TEMPLATES), "--presets", str(PRESETS)]
+
+    assert (
+        main(
+            [
+                *common,
+                "apply",
+                "--preset",
+                "minimal",
+                "--set",
+                "PROJECT_NAME=monorepo",
+                "--set",
+                "DESCRIPTION=root",
+                "--dest",
+                str(root),
+                "--no-tasks",
+            ]
+        )
+        == 0
+    )
+    (root / ".git").mkdir()
+    (root / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+
+    assert (
+        main(
+            [
+                *common,
+                "apply",
+                "--preset",
+                "parts/lang-go",
+                "--set",
+                "PROJECT_NAME=api",
+                "--set",
+                "DESCRIPTION=member",
+                "--dest",
+                str(member),
+                "--no-tasks",
+                "--member",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        main(
+            [
+                *common,
+                "apply",
+                "--preset",
+                "parts/lang-rust",
+                "--set",
+                "PROJECT_NAME=sub",
+                "--set",
+                "DESCRIPTION=grandchild",
+                "--dest",
+                str(grandchild),
+                "--no-tasks",
+                "--member",
+            ]
+        )
+        == 0
+    )
+
+    assert not (member / ".ci").exists()
+    members = json.loads((root / ".ci" / "members.json").read_text())
+    assert members == {
+        "members": [
+            {"name": "api", "path": "services/api", "capabilities": {"go": ["lint", "test"]}},
+            {
+                "name": "sub",
+                "path": "services/api/sub",
+                "capabilities": {"rust": ["lint", "test"]},
+            },
+        ]
+    }
     recorded = yaml.safe_load((root / ".project-setup-answers.yml").read_text())
     assert json.loads(recorded["MONOREPO_MEMBERS"]) == members["members"]
 

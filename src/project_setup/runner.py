@@ -450,9 +450,13 @@ def scaffold(
             quiet=True,
         )
     if result.ok:
+        # `layers` is only ever narrowed for a member-scoped apply (see cli.py's
+        # `--member`), so its presence is the signal `find_scaffold_root` uses to
+        # skip this file rather than mistake this member for the root above it.
+        recorded = {**data, "_MEMBER": True} if layers is not None else data
         (dest / ANSWERS_FILE).write_text(
             "# Written by project-setup apply. Re-run with --data-file to reproduce.\n"
-            + yaml.safe_dump(data, sort_keys=True)
+            + yaml.safe_dump(recorded, sort_keys=True)
         )
         marker.unlink()
     return result
