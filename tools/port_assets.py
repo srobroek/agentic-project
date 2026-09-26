@@ -256,6 +256,8 @@ TOKEN_POLICY: dict[str, dict] = {
         "pin": True,
         "help": "oxlint-tsgolint, which oxlint's type-aware rules require",
     },
+    # knip.json declares this, and knip's own schema URL carries the version, so the
+    # two cannot drift apart silently.
     "KNIP_VERSION": {"type": "str", "default": "6.38.0", "pin": True, "help": "knip"},
     # `bun init` writes `"@types/bun": "latest"`, the one floating version in a
     # scaffold whose every other dependency is exact. bun.lock pins it once setup

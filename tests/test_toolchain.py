@@ -8,6 +8,7 @@ a fresh scaffold died on "No version is set for shim: biome". `python-types` cal
 
 from __future__ import annotations
 
+import json
 import tomllib
 from pathlib import Path
 
@@ -342,3 +343,24 @@ def test_biome_config_carries_no_json_comment():
     body = (ASSETS / "lang/ts/biome.json.template").read_text()
     for line in body.splitlines():
         assert not line.strip().startswith("//"), f"a JSON comment reaches biome.json: {line!r}"
+
+
+def test_the_ts_layer_ships_a_knip_config():
+    """`just ts-dead` failed on every fresh TypeScript scaffold. knip reported four files
+    as unused that are not: the .a11y package, which has its own package.json and its own
+    recipe, a test file, and a script a just recipe invokes rather than an import reaches.
+    Scoping the project to TypeScript and negating the nested package fixes all four with
+    no configuration hints, which an `ignore` entry produced on presets without a11y.
+    """
+    config = json.loads((ASSETS / "lang/ts/knip.json").read_text())
+    assert config["entry"] == ["index.test.ts"]
+    assert "!.a11y/**" in config["project"], "the nested a11y package must leave knip's scope"
+
+
+def test_the_knip_config_carries_no_token():
+    """It is a verbatim asset, not a template. The schema URL once carried
+    @@@KNIP_VERSION@@ -- three @ against the @@ delimiter -- and Copier refused the whole
+    layer with "unexpected char '@'", which is the right failure and the wrong file."""
+    body = (ASSETS / "lang/ts/knip.json").read_text()
+    assert "@@" not in body
+    assert not (ASSETS / "lang/ts/knip.json.template").exists()

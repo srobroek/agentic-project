@@ -1360,9 +1360,7 @@ def test_just_list_descriptions_are_not_sentence_fragments(tmp_path: Path):
 
     _needs("just")
     scaffold(tmp_path, "fullstack-web")
-    listed = subprocess.run(
-        ["just", "--list"], cwd=tmp_path, capture_output=True, text=True
-    ).stdout
+    listed = subprocess.run(["just", "--list"], cwd=tmp_path, capture_output=True, text=True).stdout
     descriptions = {
         "check": "Check formatting, lint, type-check, and test every language present",
         "go-fmt": "Format",
@@ -1392,8 +1390,6 @@ def test_rust_test_description_does_not_start_mid_sentence(tmp_path: Path):
 
     _needs("just")
     scaffold(tmp_path, "desktop-rust-ts")
-    listed = subprocess.run(
-        ["just", "--list"], cwd=tmp_path, capture_output=True, text=True
-    ).stdout
+    listed = subprocess.run(["just", "--list"], cwd=tmp_path, capture_output=True, text=True).stdout
     assert re.search(r"^\s*rust-test\s+# Test through nextest$", listed, re.M), listed
     assert "Python, a seeded test" not in listed

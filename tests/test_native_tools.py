@@ -353,9 +353,7 @@ def test_a_brownfield_package_json_still_gets_the_dev_tools(native_init, tmp_pat
     (tmp_path / "package.json").write_text(
         json.dumps({"name": "brownfield-widget", "scripts": {"test": "vitest run"}}) + "\n"
     )
-    monkeypatch.setattr(
-        "sys.argv", ["native_init.py", "ts", "brownfield-widget", "oxlint=1.85.0"]
-    )
+    monkeypatch.setattr("sys.argv", ["native_init.py", "ts", "brownfield-widget", "oxlint=1.85.0"])
 
     def fail_if_called(cmd, owns=""):
         raise AssertionError(f"bun should not run against an existing manifest: {cmd}")
