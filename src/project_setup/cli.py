@@ -424,6 +424,53 @@ def answer_display(value: object, width: int = ANSWER_WIDTH) -> str:
     return text if len(text) <= width else text[: width - 1] + "\u2026"
 
 
+# gen_caller.py's own constant, duplicated for the same reason MEMBER_MANIFEST
+# duplicates its languages: the check below has to match what gen_caller.py will
+# refuse later, without importing an asset script that is not part of this package.
+MEMBER_WORKFLOWS_DIR = ".github/workflows"
+
+
+def _member_language_unsupported(
+    catalog: Catalog, dest: Path, data: dict, *, member: bool
+) -> list[Problem]:
+    """A member declaring a language the root has no reusable CI workflow for.
+
+    Measured: `--member` apply into a go+ts-only monorepo, with a rust member,
+    registered it into `.ci/members.json` and printed "registered ... in
+    .ci/members.json" as if it had succeeded. The mismatch surfaced only on the
+    next, unrelated root re-apply, as `gen_caller.py` refusing with a message that
+    names `.ci/members.json` and nothing about `--member` at all -- by then, the
+    step that actually caused it is long past. Checked here so the refusal lands
+    where the mistake was made.
+    """
+    if not member:
+        return []
+    root = find_scaffold_root(dest)
+    if root is None:
+        return []  # MEMBER_NO_ROOT already covers this
+    workflows = root / MEMBER_WORKFLOWS_DIR
+    if not workflows.is_dir():
+        return []  # no GitHub caller to check against, e.g. a GitLab-only root
+    lint = {p.stem.removeprefix("wc-lint-") for p in workflows.glob("wc-lint-*.yml")}
+    test = {p.stem.removeprefix("wc-test-") for p in workflows.glob("wc-test-*.yml")}
+    have = lint & test
+    capabilities = member_capabilities(member_layers(catalog, data))
+    missing = sorted(lang for lang in capabilities if lang not in have)
+    if not missing:
+        return []
+    return [
+        Problem(
+            "error",
+            "MEMBER_LANGUAGE_UNSUPPORTED",
+            f"{root} has no CI workflow for {', '.join(missing)}. Registering this "
+            f"member would sit in .ci/members.json unbuilt until a later root apply "
+            f"refuses, for a reason that no longer mentions this command. Re-apply "
+            f"the root with lang-{missing[0]} selected first, or drop that layer "
+            f"from this member.",
+        )
+    ]
+
+
 def checkout_problems(
     catalog: Catalog, dest: Path, data: dict, *, member: bool = False
 ) -> list[Problem]:
@@ -434,6 +481,7 @@ def checkout_problems(
     turned off -- which is never, for the greenfield case every preset takes.
     """
     problems = repo_conflicts(dest, data, member=member)
+    problems += _member_language_unsupported(catalog, dest, data, member=member)
     if (dest / INCOMPLETE_FILE).is_file():
         # Nothing else tells a killed or failed apply from a finished one: every file
         # it got to is real, and a re-apply leaves the previous answers file in place.

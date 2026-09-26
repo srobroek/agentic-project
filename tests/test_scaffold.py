@@ -140,6 +140,11 @@ def test_a_member_scoped_apply_never_nests_a_repository_or_a_licence(tmp_path: P
                 "PROJECT_NAME=monorepo",
                 "--set",
                 "DESCRIPTION=root",
+                # The member below is lang-go: gen_caller.py builds its CI job from a
+                # reusable workflow that only lands at the root when the root selects
+                # the same language layer, so the root has to select it too.
+                "--set",
+                "WANT_LANG_GO=true",
                 "--dest",
                 str(root),
                 "--no-tasks",
@@ -179,6 +184,8 @@ def test_a_member_scoped_apply_never_nests_a_repository_or_a_licence(tmp_path: P
             {"name": "api", "path": "services/api", "capabilities": {"go": ["lint", "test"]}}
         ]
     }
+    recorded = yaml.safe_load((root / ".project-setup-answers.yml").read_text())
+    assert json.loads(recorded["MONOREPO_MEMBERS"]) == members["members"]
 
 
 def test_a_member_of_a_member_registers_in_the_true_root(tmp_path: Path):
@@ -196,6 +203,9 @@ def test_a_member_of_a_member_registers_in_the_true_root(tmp_path: Path):
     grandchild = member / "sub"
     common = ["--templates", str(TEMPLATES), "--presets", str(PRESETS)]
 
+    # gen_caller.py builds each member's CI job from a reusable workflow that only
+    # lands at the root when the root selects the same language layer, so the root
+    # selects both languages the two members below will use.
     assert (
         main(
             [
@@ -207,6 +217,10 @@ def test_a_member_of_a_member_registers_in_the_true_root(tmp_path: Path):
                 "PROJECT_NAME=monorepo",
                 "--set",
                 "DESCRIPTION=root",
+                "--set",
+                "WANT_LANG_GO=true",
+                "--set",
+                "WANT_LANG_RUST=true",
                 "--dest",
                 str(root),
                 "--no-tasks",
@@ -269,8 +283,61 @@ def test_a_member_of_a_member_registers_in_the_true_root(tmp_path: Path):
             },
         ]
     }
-    recorded = yaml.safe_load((root / ".project-setup-answers.yml").read_text())
-    assert json.loads(recorded["MONOREPO_MEMBERS"]) == members["members"]
+
+
+def test_a_member_language_the_root_never_selected_is_refused(tmp_path: Path):
+    """Measured: `--member` apply into a go+ts-only monorepo, with a rust member,
+    registered it into `.ci/members.json` and reported success. The mismatch
+    surfaced only on the next, unrelated root re-apply, as `gen_caller.py` refusing
+    with a message that names `.ci/members.json` and never `--member`. Refused here
+    instead, before anything is written, so the message names the actual mistake.
+    """
+    from project_setup.cli import main
+
+    root = tmp_path / "monorepo"
+    member = root / "services" / "rust-thing"
+    common = ["--templates", str(TEMPLATES), "--presets", str(PRESETS)]
+
+    assert (
+        main(
+            [
+                *common,
+                "apply",
+                "--preset",
+                "minimal",
+                "--set",
+                "PROJECT_NAME=monorepo",
+                "--set",
+                "DESCRIPTION=root",
+                "--dest",
+                str(root),
+                "--no-tasks",
+            ]
+        )
+        == 0
+    )
+    (root / ".git").mkdir()
+    (root / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+
+    code = main(
+        [
+            *common,
+            "apply",
+            "--preset",
+            "parts/lang-rust",
+            "--set",
+            "PROJECT_NAME=rust-thing",
+            "--set",
+            "DESCRIPTION=member",
+            "--dest",
+            str(member),
+            "--no-tasks",
+            "--member",
+        ]
+    )
+    assert code == 1
+    assert not member.exists()
+    assert not (root / ".ci" / "members.json").exists()
 
 
 def test_overlapping_layers_fold_into_one_gitignore(scaffolded: Path):
