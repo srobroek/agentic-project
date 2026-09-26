@@ -103,6 +103,11 @@ USAGE_EXAMPLE:
   help: One command the README shows for running the project
   default: just dev
   when: '@@ CUSTOMISE_DEFAULTS @@'
+IS_MEMBER:
+  type: bool
+  help: Scaffolding a monorepo member rather than a repository root
+  default: false
+  when: 'false'
 SPDX_ID:
   type: str
   help: Licence, or NONE for an unpublished repository. Writes LICENSE

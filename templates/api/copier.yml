@@ -28,6 +28,25 @@ _exclude:
   {% endif %}
 
   '
+- '{% if IS_MEMBER %}
+
+  /.github/
+
+  /.gitlab/
+
+  /.just.d/
+
+  /.gitignore.d/
+
+  /.pre-commit.d/
+
+  /biome.json
+
+  /.oxlintrc.json
+
+  {% endif %}
+
+  '
 
 API_FAIL_SEVERITY:
   type: str
@@ -59,6 +78,10 @@ FORGE_PLATFORM:
   - github
   - gitlab
   default: github
+IS_MEMBER:
+  type: bool
+  help: Scaffolding a monorepo member rather than a repository root
+  default: false
 JOB_TIMEOUT_MINUTES:
   type: str
   help: Per-job CI timeout; a hung job holds a runner until it fires

@@ -28,6 +28,25 @@ _exclude:
   {% endif %}
 
   '
+- '{% if IS_MEMBER %}
+
+  /.github/
+
+  /.gitlab/
+
+  /.just.d/
+
+  /.gitignore.d/
+
+  /.pre-commit.d/
+
+  /biome.json
+
+  /.oxlintrc.json
+
+  {% endif %}
+
+  '
 
 FORGE_PLATFORM:
   type: str
@@ -36,3 +55,7 @@ FORGE_PLATFORM:
   - github
   - gitlab
   default: github
+IS_MEMBER:
+  type: bool
+  help: Scaffolding a monorepo member rather than a repository root
+  default: false

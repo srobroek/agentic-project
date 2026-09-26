@@ -13,7 +13,30 @@ _exclude:
 - .pytest_cache
 - .ruff_cache
 - .DS_Store
+- '{% if IS_MEMBER %}
 
+  /.github/
+
+  /.gitlab/
+
+  /.just.d/
+
+  /.gitignore.d/
+
+  /.pre-commit.d/
+
+  /biome.json
+
+  /.oxlintrc.json
+
+  {% endif %}
+
+  '
+
+IS_MEMBER:
+  type: bool
+  help: Scaffolding a monorepo member rather than a repository root
+  default: false
 PROJECT_NAME:
   type: str
   help: Repository name. Becomes the crate, package and module name

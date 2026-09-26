@@ -183,6 +183,11 @@ def load_data(args: argparse.Namespace, catalog: Catalog | None = None) -> dict:
         key, _, raw = pair.partition("=")
         key = key.strip()
         data[key] = parse_scalar(raw, declared.get(key))
+    # Set here rather than per command so plan, validate and apply cannot disagree about
+    # it. The flag is the command's intent, so it wins over a --set: a member-scoped apply
+    # whose layers exclude the root fragments must also exclude them from the render.
+    if getattr(args, "member", False):
+        data["IS_MEMBER"] = True
     # Copier records provenance keys in the answers file; they are not questions.
     return {k: v for k, v in data.items() if not k.startswith("_")}
 

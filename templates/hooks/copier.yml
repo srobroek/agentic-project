@@ -13,6 +13,25 @@ _exclude:
 - .pytest_cache
 - .ruff_cache
 - .DS_Store
+- '{% if IS_MEMBER %}
+
+  /.github/
+
+  /.gitlab/
+
+  /.just.d/
+
+  /.gitignore.d/
+
+  /.pre-commit.d/
+
+  /biome.json
+
+  /.oxlintrc.json
+
+  {% endif %}
+
+  '
 
 ACTIONLINT_VERSION:
   type: str
@@ -40,6 +59,10 @@ HOOK_EXCLUDE_PATTERNS:
   type: str
   help: Paths excluded from hooks, joined with \|. Empty drops the block
   default: ''
+IS_MEMBER:
+  type: bool
+  help: Scaffolding a monorepo member rather than a repository root
+  default: false
 LYCHEE_VERSION:
   type: str
   help: lychee

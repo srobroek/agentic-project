@@ -458,6 +458,14 @@ TOKEN_POLICY: dict[str, dict] = {
         "pin": True,
         "help": "@axe-core/playwright",
     },
+    # Set by `apply --member`, never asked: whether a destination is a monorepo member
+    # is a property of the command, not a choice about the project.
+    "IS_MEMBER": {
+        "type": "bool",
+        "default": False,
+        "cli": True,
+        "help": "Scaffolding a monorepo member rather than a repository root",
+    },
     "ADRS": {
         "type": "str",
         "default": "[]",
@@ -624,6 +632,7 @@ TASKS: dict[str, list[dict]] = {
                     "knip=@@ KNIP_VERSION @@,"
                     "@types/bun=@@ TYPES_BUN_VERSION @@"
                 ),
+                "@@ 'member' if IS_MEMBER else 'root' @@",
             ],
         }
     ],
@@ -779,6 +788,23 @@ FORGE_EXCLUDE = """{% if FORGE_PLATFORM != 'github' %}
 {% endif %}
 """
 
+# A monorepo member gets its own package manifest, its own tsconfig and its own linter
+# config -- that is the point, and it is what lets knip detect plugins from the member's
+# own configs. It must NOT get the fragments a root generator consumes: GitHub reads only
+# the repository root, and fold_gitignore, merge_hooks and gen_justfile all run at the
+# root. Measured: a member received 8 files with no consumer beside them, every one
+# already present at the root.
+MEMBER_EXCLUDE = """{% if IS_MEMBER %}
+/.github/
+/.gitlab/
+/.just.d/
+/.gitignore.d/
+/.pre-commit.d/
+/biome.json
+/.oxlintrc.json
+{% endif %}
+"""
+
 MONOREPO_EXCLUDE = """{% if not IS_MONOREPO %}
 /.ci/members.json
 {% endif %}
@@ -832,6 +858,11 @@ def write_copier_yml(
         tokens = tokens | {"FORGE_PLATFORM"}
     if any(d == ".ci/members.json" for d in dests):
         cfg["_exclude"].append(MONOREPO_EXCLUDE)
+    root_scoped = (".github/", ".gitlab/", ".just.d/", ".gitignore.d/", ".pre-commit.d/")
+    root_walking = ("biome.json", ".oxlintrc.json")
+    if any(d.startswith(root_scoped) or d in root_walking for d in dests):
+        cfg["_exclude"].append(MEMBER_EXCLUDE)
+        tokens = tokens | {"IS_MEMBER"}
     if layer in TASKS:
         cfg["_tasks"] = TASKS[layer]
 
@@ -1050,6 +1081,11 @@ def is_tuned(name: str) -> bool:
     return bool(TOKEN_POLICY.get(name, {}).get("tune"))
 
 
+def is_cli_set(name: str) -> bool:
+    """Set by a command-line flag, not a question. Never asked; data still carries it."""
+    return bool(TOKEN_POLICY.get(name, {}).get("cli"))
+
+
 def is_composed(name: str) -> bool:
     """An answer assembled from the conversation, never typed at a prompt.
 
@@ -1263,7 +1299,7 @@ def build_interview(out: Path, declared: dict[str, dict[str, dict]]) -> int:
             # A gated question must have a default, or an unselected layer would
             # make Copier demand an answer it will never use.
             spec.setdefault("default", "")
-        if is_composed(name):
+        if is_composed(name) or is_cli_set(name):
             # Assembled from the conversation, not typed at a prompt. Not asked at
             # all, and `--set` and a data file still carry it.
             spec["when"] = "false"

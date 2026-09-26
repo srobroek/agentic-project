@@ -283,3 +283,62 @@ def test_the_vulnerability_check_names_its_own_workaround():
     assert "go env GOPROXY" in recipe, "the hint must probe the configured proxy, not a guess"
     assert '[ "$status" -ne 0 ]' in recipe, "the hint must fire only on failure"
     assert "-ne 127" in recipe, "a missing curl must not be read as a dead proxy"
+
+
+# ------------------------------------------------- a member carries no root-only file
+
+
+MEMBER_FORBIDDEN = (
+    ".github",
+    ".gitlab",
+    ".just.d",
+    ".gitignore.d",
+    ".pre-commit.d",
+    "biome.json",
+    ".oxlintrc.json",
+)
+
+
+def test_the_member_exclude_covers_every_root_scoped_path():
+    """Two classes, and both were measured wrong before this.
+
+    Fragment directories are consumed by a generator that runs at the root, so a copy in
+    a member has no consumer beside it: a member received 8 such files, every one already
+    present at the root. And biome and oxlint walk the whole tree from the root and
+    REFUSE a nested duplicate -- "found a nested root configuration", and "typeAware is
+    only supported in the root config" -- which broke the root's own `just check` the
+    moment a member existed.
+    """
+    source = (Path(__file__).resolve().parents[1] / "tools" / "port_assets.py").read_text()
+    exclude = source.split("MEMBER_EXCLUDE = ")[1].split('"""')[1]
+    assert "IS_MEMBER" in exclude
+    for path in MEMBER_FORBIDDEN:
+        assert path in exclude, f"{path} would be written into a monorepo member"
+
+
+def test_a_member_is_not_given_the_root_walking_lint_packages():
+    """A member linted by the root's biome and oxlint has no use for their packages, and
+    knip reported all three as unused devDependencies in a scaffold nobody had touched."""
+    native = (
+        Path(__file__).resolve().parents[1] / "tools" / "tasks" / "native_init.py"
+    ).read_text()
+    for tool in ("@biomejs/biome", "oxlint", "oxlint-tsgolint", "knip"):
+        assert tool in native.split("ROOT_ONLY_DEV_TOOLS")[1].split(")")[0], tool
+
+
+def test_the_member_flag_is_never_asked_as_a_question():
+    """Whether a destination is a monorepo member is a property of the command, not a
+    choice about the project."""
+    interview = yaml.safe_load((TEMPLATES / "_interview" / "copier.yml").read_text())
+    spec = interview.get("IS_MEMBER")
+    if spec is not None:
+        assert str(spec.get("when", "")).strip() == "false"
+
+
+def test_biome_config_carries_no_json_comment():
+    """biome silently stops honouring `root` when the file carries `//` comments, and
+    reports a nested-root error rather than a parse error. Reasoning belongs in a Jinja
+    comment, which never reaches the rendered config."""
+    body = (ASSETS / "lang/ts/biome.json.template").read_text()
+    for line in body.splitlines():
+        assert not line.strip().startswith("//"), f"a JSON comment reaches biome.json: {line!r}"

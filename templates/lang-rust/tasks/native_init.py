@@ -81,11 +81,14 @@ def finish(kind: str, code: int) -> int:
 
 
 def main() -> int:
-    if not 3 <= len(sys.argv) <= 4:
+    if not 3 <= len(sys.argv) <= 5:
         print(__doc__, file=sys.stderr)
         return 2
     kind, arg = sys.argv[1], sys.argv[2]
-    extra = sys.argv[3] if len(sys.argv) == 4 else ""
+    extra = sys.argv[3] if len(sys.argv) >= 4 else ""
+    # "member" or "root". Optional so an older invocation still works, and a value
+    # that is neither is treated as root rather than guessed at.
+    scope = sys.argv[4] if len(sys.argv) == 5 else "root"
 
     # Every reconciliation below is guarded on the manifest actually being there. When
     # the tool is absent `run` degrades to a warning and returns 0, and a tidy pass
@@ -112,7 +115,7 @@ def main() -> int:
         code = run(["bun", "init", "-y"], owns="package.json")
         if code == 0 and Path("package.json").is_file():
             _tidy_after_bun(arg, pre_existing)
-            _declare_ts_dev_tools(extra)
+            _declare_ts_dev_tools(extra, member=scope == "member")
             _seed_ts_entry_point()
         return finish(kind, code)
 
@@ -250,7 +253,16 @@ test("greet names the caller", () => {
 """
 
 
-def _declare_ts_dev_tools(pinned: str) -> None:
+# biome and oxlint walk the whole tree from the repository root and reject a nested
+# duplicate config, so a member is linted by the root and has no use for their packages.
+# knip is the same: the root walks the member. Leaving them in a member's manifest made
+# knip report three unused devDependencies in a scaffold nobody had touched.
+ROOT_ONLY_DEV_TOOLS = frozenset(
+    {"@biomejs/biome", "oxlint", "oxlint-tsgolint", "knip"}
+)
+
+
+def _declare_ts_dev_tools(pinned: str, *, member: bool = False) -> None:
     """Add the tools the ts recipes call, which `bun init` does not.
 
     Two failures come from this being absent. `bunx <tool>` with nothing installed
@@ -261,6 +273,8 @@ def _declare_ts_dev_tools(pinned: str) -> None:
     here, so apply needs no network; `just setup` resolves and locks them.
     """
     entries = dict(item.split("=", 1) for item in pinned.split(",") if "=" in item)
+    if member:
+        entries = {k: v for k, v in entries.items() if k not in ROOT_ONLY_DEV_TOOLS}
     manifest = Path("package.json")
     if not entries or not manifest.is_file():
         return
