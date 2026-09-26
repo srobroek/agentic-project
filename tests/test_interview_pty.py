@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import errno
+import json
 import os
 import re
 import select
@@ -156,6 +157,20 @@ class InterviewDriver:
                 return
             self._read(min(0.05, max(0.0, deadline - time.monotonic())))
         raise AssertionError(f"did not see {key} ({token!r}) in:\n{self.output[-2000:]}")
+
+    def wait_for_text(self, needle: str, timeout: float = 5.0) -> None:
+        """Read until ``needle`` reaches the PTY, for output that is not a prompt.
+
+        A validation message is not a question, so `wait_for` cannot see it, and sending
+        the next answer without waiting concatenates both into one: "Not A Valid Name"
+        followed immediately by "pty-recovered" arrived as a single answer.
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if needle in self.output:
+                return
+            self._read(min(0.05, max(0.0, deadline - time.monotonic())))
+        raise AssertionError(f"did not see {needle!r} in:\n{self.output[-2000:]}")
 
     def wait_for_any(self, keys: set[str], timeout: float = 5.0) -> str:
         """Identify the next prompt from a set of possible runtime questions."""
@@ -365,3 +380,61 @@ def test_rust_preset_keeps_layers_multiselect_and_deselects_rust_questions(tmp_p
     assert "RUST_VERSION" not in driver.sequence
     answers = yaml.safe_load((dest / ".project-setup-answers.yml").read_text())
     assert "lang-rust" not in answers["LAYERS"]
+
+
+def test_an_invalid_name_stops_the_interview_and_records_nothing(tmp_path):
+    """Measured behaviour, and it is worth knowing: Copier validates after the prompt
+    returns rather than inline, so a rejected answer raises and ENDS the interview. It
+    does not re-ask. What matters most is the second half -- the invalid value reaches no
+    file -- and that a user who typos a name is told why rather than left with a
+    traceback.
+
+    Copier prefixes the message with "Validation error for question 'X': ", 45 characters
+    before ours begins, so at 80 columns the text wraps rather than truncating. It wraps
+    mid-word, which is why this asserts on a fragment.
+    """
+    dest = tmp_path / "invalid-name"
+    with InterviewDriver(dest) as driver:
+        driver.wait_for("PROJECT_NAME")
+        driver.send(b"Not A Valid Name\r")
+        driver.wait_for_text("must be lowercase")
+        code = driver.finish()
+
+    assert code != 0, "a rejected answer must not look like a successful interview"
+    assert "Validation error" in driver.output
+    assert not (dest / ".project-setup-answers.yml").exists(), (
+        "the rejected value reached the answers file"
+    )
+
+
+def test_accepting_every_default_produces_an_answer_set_that_applies(tmp_path):
+    """The path a hurried user takes: Enter at every prompt. The result has to be a
+    complete answer set, not one that fails at apply."""
+    dest = tmp_path / "all-defaults"
+    with InterviewDriver(dest) as driver:
+        for key in MINIMAL_SEQUENCE:
+            driver.wait_for(key)
+            if key == "PROJECT_NAME":
+                driver.send(b"pty-defaults\r")
+            elif key == "DESCRIPTION":
+                driver.send(b"Everything default\r")
+            else:
+                driver.send(b"\r")
+        assert driver.finish() == 0
+
+    applied = subprocess.run(
+        [
+            "project-setup",
+            "apply",
+            "--data-file",
+            str(dest / ".project-setup-answers.yml"),
+            "--dest",
+            str(dest),
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert applied.returncode == 0, applied.stdout + applied.stderr
+    assert json.loads(applied.stdout)["ok"] is True
