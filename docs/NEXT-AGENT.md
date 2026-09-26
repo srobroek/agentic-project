@@ -432,6 +432,42 @@ two `MEMBER_PATH_EMPTY` tests in `tests/test_catalog.py`. `just go-vuln` has no 
 test: it needs the vulnerability database. On this machine `proxy.golang.org` does not
 resolve, so it was run with `GOPROXY=direct`.
 
+## What the eighth round fixed
+
+Both of the seventh round's targets, plus what looking at them turned up.
+
+1. **The journey gate was flaky.** Retries are now scoped to the three network-bound
+   steps and matched on transport symptoms only, never a tool's verdict, and a retry that
+   succeeded is named in the summary. Six consecutive full runs since: 12 walked, 0 failed,
+   0 retries needed.
+2. **A monorepo member carried the root's surface.** `--member` applied the right layers
+   but still wrote 8 fragment files with no consumer beside them, and both `biome.json` and
+   `.oxlintrc.json`, which biome and oxlint each refuse as a nested duplicate: the root's
+   own `just check` failed the moment a member existed. A member is 7 files now, from 69.
+3. **A member of a member registered in the wrong root.** Any answers file counted as a
+   root marker, so a grandchild wrote into the member's own orphaned `.ci/members.json`
+   and reported success. A member-scoped write is marked, and the search keeps climbing.
+4. **A member whose language the root lacks was accepted.** Registered, reported success,
+   and surfaced later as an unrelated generator failure naming `.ci/members.json`. Refused
+   up front now, naming both fixes.
+5. **`just --list` showed fragments of rationales as descriptions.** `just` takes only the
+   last comment line above a recipe, and several put the summary first: `check` read
+   "success having edited the tree it was asked to inspect." One of those comments was
+   added earlier in the same round, so the convention was documented and still not applied.
+6. **The gate stopped at the monorepo shell.** It now scaffolds every member
+   `.ci/members.json` names and re-runs the root's journey. Proven to catch what it exists
+   for: with the two excludes removed it reports FAIL and names biome's own failing line.
+   Its language mapping immediately earned a test by missing rust.
+7. **`--member` was undocumented in SKILL.md**, so an agent following it would hit
+   NESTED_SCAFFOLD with no way to learn the fix lives in a flag.
+
+Looked at and found nothing: **deselecting a layer**. `STALE_LAYER_FILES` already fires
+from validate, plan and apply, names the count, lists the files and explains that
+gen_caller and gen_justfile wire from what is on disk rather than from the answer. The
+first test of it reported a false negative because the destination's answers file had
+already recorded the new value, which is the flawed-setup mistake this document warns
+about, from the other direction.
+
 ## What the seventh round fixed (journey gate flakiness)
 
 Only the first of the round's two targets: making the journey gate deterministic. The
