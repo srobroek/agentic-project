@@ -8,28 +8,36 @@ places where the tool is merely adequate.
 Read `README.md` for what it is, `AGENTS.md` for the invariants, and
 `skills/project-setup/SKILL.md` for how an agent is meant to drive it.
 
-## This round: the two open questions, then your own judgement
+## This round: audit the tests, then your own judgement
 
-Both previous targets are done and every area anyone had listed as unexercised has now
-been driven: the journey gate is deterministic and scaffolds monorepo members, brownfield
-was exercised against a repository with its own licence, hooks, justfile and manifest, all
-28 recipes the gate never runs were run, and the interview is driven through a PTY
-including its rejection path.
+Nothing is recorded as open. Every area anyone had listed as unexercised has been driven:
+the journey gate is deterministic and scaffolds monorepo members, brownfield was exercised
+against a repository with its own licence, hooks, justfile and manifest, all 28 recipes the
+gate never runs were run, and the interview is driven through a pty including its rejection
+path.
 
-So this round starts from the two questions recorded under "Open, recorded rather than
-guessed at" above, both of which need a decision rather than a discovery:
+So the highest-value work is no longer finding untested surface. It is **checking that the
+331 tests assert what their names claim**, because this project has now produced three that
+did not, and one of those would have kept passing if the behaviour it covered had broken:
 
-1. Should a rejected answer re-ask instead of ending the interview?
-2. Should the validation-width budget account for Copier's 45-character prefix, or should
-   the test be renamed to the narrower property it actually asserts?
+- a width budget that measured our half of a line and called it the whole line
+- a recipe-parser test that reported `curl` as an unpinned tool
+- a pty test that asserted a rejection ends the interview, when it was measuring its own
+  harness SIGKILLing a prompt that was correctly waiting
 
-Then range wider. The places least likely to have been looked at now:
+Look for the same shape elsewhere. A test asserting a failure is the place to start: check
+that the failure it observes is the one it names. `assert x != 0`, `assert not ok`, `pytest.raises`
+with no message match, and any assertion satisfied by a timeout, a kill, or an empty result
+are all worth reading twice. Where you find one, fix what it asserts and say whether the
+behaviour underneath was right all along.
+
+Then range wider. Places nobody has looked:
 
 - **A scaffold that is six months old.** Every test applies with today's pins. Nothing has
-  applied with deliberately stale versions, or re-applied a scaffold whose pins moved
-  under it, which is what Renovate does continuously.
-- **Two scaffolds in one repository.** Not a monorepo member: two unrelated roots, or a
-  root inside a git submodule.
+  applied with deliberately stale versions, or re-applied a scaffold whose pins moved under
+  it, which is what Renovate does continuously.
+- **Two scaffolds in one repository.** Not a monorepo member: two unrelated roots, or a root
+  inside a git submodule.
 - **The generators against a hostile file.** A `.gitignore` whose managed markers were
   edited, duplicated, or reversed. A `.pre-commit-config.yaml` that is valid YAML but not a
   hook config. A `members.json` naming a path outside the repository.
@@ -475,22 +483,42 @@ schema-aware diff for one file type, which would cut against "measure the real d
 never special-case a file type." Left alone -- recorded here because `lines_lost` is exactly
 the number a caller is told to trust, and for this one file it overstates the loss.
 
-## Open, recorded rather than guessed at
+## What the ninth round settled
 
-1. **A rejected answer ends the interview instead of re-asking.** Copier validates a `str`
-   answer after the prompt returns, not inline, so it raises and the interview stops. The
-   invalid value reaches no file and the user is told why, which is the important half, but
-   a typo in `PROJECT_NAME` costs the whole conversation. Settled by deciding whether the
-   validator should move into the prompt, where questionary can re-ask, and whether that is
-   worth losing Copier's own single source for the rule. Covered as measured behaviour by
-   `test_an_invalid_name_stops_the_interview_and_records_nothing`.
+Both questions the eighth round left open, and the first was a false finding of the
+previous round's own making.
 
-2. **The validation-width budget measures the wrong thing.** Copier prefixes every message
-   with `Validation error for question 'X': ` -- 45 characters before ours begins -- so at
-   80 columns a 71-character rule wraps rather than truncating, and it wraps mid-word. No
-   message needs shortening, because wrapping is not truncation, but
-   `test_a_rejection_message_fits_an_eighty_column_terminal` is asserting a narrower
-   property than its name claims. Either rename it or budget for the prefix.
+1. **A rejected answer always re-asked.** Copier attaches its validator to the questionary
+   prompt for an `input` question, so the error shows and the prompt comes back. Measured
+   through a pty: the name prompt appears twice, and Ctrl-U followed by a valid name
+   completes the interview with exit 0 and records the correction.
+
+   The claim that it ended the interview was an artifact of the test harness.
+   `InterviewDriver.finish()` SIGKILLs a process still alive after eight seconds, which is
+   precisely what a prompt waiting for a new answer looks like, so `assert code != 0`
+   passed while measuring the harness. **That test would have gone on passing if the
+   behaviour had broken**, which is the failure this project exists to catch, committed by
+   the project itself. Replaced by two tests that assert the correction is taken, that the
+   rejected value reaches no file, and that the prompt is counted to prove it returned.
+
+   Worth knowing and not worth changing: questionary keeps the rejected text in the buffer
+   so it can be edited, so a new answer typed without clearing the line appends to the old
+   one. That is ordinary line editing, and it is why the tests send Ctrl-U.
+
+2. **Every validator message repeated the name Copier had already printed.** The prefix is
+   `Validation error for question 'X': `, so a user read
+   `...question 'PROJECT_NAME': PROJECT_NAME must be...`, spending 13 to 17 characters of
+   the first line saying it twice. The name is gone from the message and the four lines
+   drop from 110-121 characters to 97-106.
+
+   The width test was measuring our half and calling it the whole line. It now measures
+   prefix plus rule against a budget of two wrapped 80-column lines rather than pretending
+   one: wrapping is not truncation, which is why nothing needed shortening for width alone.
+   A second test forbids the repetition returning.
+
+The lesson worth carrying: when a test asserts a failure, check that the failure it
+observes is the one it names. Three of this project's own tests have now measured something
+narrower than their name claimed, and this one measured the harness instead of the tool.
 
 ## What the eighth round fixed
 
