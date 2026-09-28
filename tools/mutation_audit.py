@@ -195,6 +195,20 @@ MUTATIONS = [
         new='("setup", "true"),',
         tests="tests/test_e2e_journey.py",
     ),
+    Mutation(
+        name="a gate failure is printed but never written down",
+        path="tools/e2e.py",
+        old="        log.write_text(",
+        new="        _ = (",
+        tests="tests/test_e2e_journey.py -k truncated_read",
+    ),
+    Mutation(
+        name="the failure log is no longer ignored, so a failed gate dirties the tree",
+        path=".gitignore",
+        old="e2e-failures.log",
+        new="# e2e-failures.log",
+        tests="tests/test_e2e_journey.py -k not_committed",
+    ),
 ]
 
 

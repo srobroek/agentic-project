@@ -164,6 +164,9 @@ ABSENT_TOOL = re.compile(r"(\S+) is not on PATH")
 
 JOURNEY_TIMEOUT_SECONDS = 1800
 
+# Where a failure's detail survives a truncated read of stdout.
+FAILURE_LOG = "e2e-failures.log"
+
 # `setup` fetches the toolchain and every language's dependencies, and `check` runs
 # `prek run --all-files`, which on a fresh cache clones four hook repos over https
 # (assets/hooks/.pre-commit.d/hygiene.yaml.template) before it runs anything local.
@@ -565,7 +568,14 @@ def main() -> int:
     print("-" * len(header))
 
     if failures:
-        print(f"\n{len(failures)} preset(s) failed:\n")
+        # Written as well as printed. A reader who pipes this through `tail` sees the
+        # count and loses the cause, which has now cost two sessions: the detail below
+        # was on stdout both times and discarded before anyone read it.
+        log = Path(FAILURE_LOG)
+        log.write_text(
+            "\n\n".join(f"{preset}: {reason}" for preset, reason in failures) + "\n"
+        )
+        print(f"\n{len(failures)} preset(s) failed (also written to {log}):\n")
         for preset, reason in failures:
             print(f"  {preset}: {reason}\n")
     else:

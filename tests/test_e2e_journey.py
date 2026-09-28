@@ -178,3 +178,26 @@ def test_the_journey_runs_the_commands_its_summary_names():
     # stub takes rather than trusting the pair above to catch every one.
     for stub in ('"true"', '":"', '"echo', "'true'"):
         assert stub not in block, f"a journey step was stubbed with {stub}"
+
+
+def test_a_failure_is_written_where_a_truncated_read_cannot_lose_it():
+    """A gate failure printed only to stdout is lost to any reader who pipes it.
+
+    That has now happened twice in this project's history: the run printed the failing
+    step, the exit code, and the last twelve lines of output, and both readers took
+    `tail -3` of it and saw only the count. The detail has to outlive the pipe.
+    """
+    source = Path(e2e.__file__).read_text()
+    block = source.split("if failures:")[1].split("else:")[0]
+
+    assert "FAILURE_LOG" in block, "the failure detail is printed but never written"
+    assert "write_text" in block, "FAILURE_LOG is named but nothing writes to it"
+    # The printed line has to say where the file is, or nobody looks for it.
+    assert "{log}" in block, "the run does not tell the reader where the log went"
+
+
+def test_the_failure_log_is_not_committed():
+    """It is run output, so a dirty tree after a failed gate would be the gate's fault."""
+    repo = Path(e2e.__file__).resolve().parents[1]
+    ignored = (repo / ".gitignore").read_text().splitlines()
+    assert e2e.FAILURE_LOG in ignored, f"{e2e.FAILURE_LOG} is not in .gitignore"
