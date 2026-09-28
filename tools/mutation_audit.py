@@ -209,6 +209,45 @@ MUTATIONS = [
         new="# e2e-failures.log",
         tests="tests/test_e2e_journey.py -k not_committed",
     ),
+    Mutation(
+        name="uv's placeholder description survives into the wheel",
+        path="tools/tasks/native_init.py",
+        old="text = text.replace(f'\"{UV_PLACEHOLDER_DESCRIPTION}\"', f'\"{escaped}\"', 1)",
+        new="pass",
+        tests="tests/test_native_tools.py -k answered_description",
+    ),
+    Mutation(
+        name="the license line goes back to re.sub and its escaped backslashes",
+        path="tools/tasks/native_init.py",
+        old='text = f\'{text[: where.end()]}\\nlicense = "{spdx}"{text[where.end() :]}\'',
+        new=(
+            'text = re.sub(r"^(description\\s*=.*)$", '
+            'rf"\\1\\nlicense = \\\\"{spdx}\\\\"", '
+            "text, count=1, flags=re.MULTILINE)"
+        ),
+        tests="tests/test_native_tools.py -k valid_toml",
+    ),
+    Mutation(
+        name="a license is claimed even when the project states none",
+        path="tools/tasks/native_init.py",
+        old="if spdx != NO_LICENSE and not re.search",
+        new="if not re.search",
+        tests="tests/test_native_tools.py -k states_none",
+    ),
+    Mutation(
+        name="a brownfield description is overwritten",
+        path="tools/tasks/native_init.py",
+        old="if description and UV_PLACEHOLDER_DESCRIPTION in text:",
+        new="if description:",
+        tests="tests/test_native_tools.py -k brownfield_description",
+    ),
+    Mutation(
+        name="the py task stops being handed the license and description",
+        path="tools/port_assets.py",
+        old='"@@ SPDX_ID @@:@@ DESCRIPTION @@",',
+        new='"@@ SPDX_ID @@:",',
+        tests="tests/test_native_tools.py -k python_task_is_given",
+    ),
 ]
 
 

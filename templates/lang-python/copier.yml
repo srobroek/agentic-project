@@ -53,6 +53,7 @@ _tasks:
   - '@@ _copier_conf.src_path @@/tasks/native_init.py'
   - py
   - '@@ PROJECT_NAME @@:@@ ''src'' if PY_SRC_LAYOUT else ''flat'' @@:@@ PYTHON_VERSION @@'
+  - '@@ SPDX_ID @@:@@ DESCRIPTION @@'
 
 FORGE_PLATFORM:
   type: str

@@ -645,6 +645,12 @@ TASKS: dict[str, list[dict]] = {
                 "@@ _copier_conf.src_path @@/tasks/native_init.py",
                 "py",
                 "@@ PROJECT_NAME @@:@@ 'src' if PY_SRC_LAYOUT else 'flat' @@:@@ PYTHON_VERSION @@",
+                # The license and the description, because `uv init` writes no license
+                # field and its own placeholder description. Without these a py wheel
+                # stated neither the answered DESCRIPTION nor the license the
+                # governance layer had just written to disk as LICENSE. SPDX first and
+                # split once: a description may carry a colon, an SPDX id may not.
+                "@@ SPDX_ID @@:@@ DESCRIPTION @@",
             ],
         }
     ],

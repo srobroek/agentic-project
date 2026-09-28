@@ -3,7 +3,7 @@
 
     native_init.py rust <crate-name>:lib|bin <spdx-id>
     native_init.py ts   <project-name>
-    native_init.py py   <project-name>:<src|flat>:<python-version>
+    native_init.py py   <project-name>:<src|flat>:<python-version> <spdx-id>:<description>
     native_init.py go   <module-path> [<go-version>]
 
 Templating a lockfile is a mistake; the native tool should generate it. Each branch
@@ -127,12 +127,16 @@ def main() -> int:
         return finish(kind, code)
 
     if kind == "py":
+        # SPDX first and split once, because a description is free text and may carry
+        # a colon while an SPDX id never does.
+        spdx, _, description = extra.partition(":")
         pre_existing = begin(kind, "pyproject.toml", UV_LEFTOVERS)
         if pre_existing is None:
             # uv did not run, but a brownfield pyproject.toml still needs the tools
             # the just recipes call: `uv run ruff`/`uv run ty` with no dependency
             # group resolves nothing and dies "Failed to spawn".
             _declare_dev_tools()
+            _declare_package_metadata(spdx, description)
             return 0
         name, layout, python = arg.split(":", 2)
         # --lib gives src/<name>/ with py.typed; --app gives the same tree without
@@ -154,6 +158,7 @@ def main() -> int:
         if code == 0 and Path("pyproject.toml").is_file():
             _tidy_after_uv(pre_existing)
             _declare_dev_tools()
+            _declare_package_metadata(spdx, description)
             _seed_python_test()
         return finish(kind, code)
 
@@ -417,6 +422,59 @@ def _declare_dev_tools() -> None:
     listed = "\n".join(f'    "{name}",' for name in DEV_TOOLS)
     manifest.write_text(f"{text.rstrip(chr(10))}\n\n[dependency-groups]\ndev = [\n{listed}\n]\n")
     print(f"native_init: declared {len(DEV_TOOLS)} dev tool(s) the just recipes call")
+
+
+# uv's own placeholder, replaced only when uv wrote it in this run. A brownfield
+# pyproject's description belongs to whoever wrote it.
+UV_PLACEHOLDER_DESCRIPTION = "Add your description here"
+
+
+def _declare_package_metadata(spdx: str, description: str) -> None:
+    """Put the answered description and license into the manifest uv owns.
+
+    `uv init` writes `description = "Add your description here"` and no `license`
+    field, so a fresh py scaffold produced a wheel stating neither the DESCRIPTION the
+    interview requires nor the license the governance layer had just written to disk.
+    Found by scaffolding this repository with its own tool: LICENSE said Apache-2.0
+    and the package metadata claimed nothing.
+
+    Both edits are conditional on uv's own output, never on a value being present, so
+    a brownfield pyproject keeps its description and any license field it already has.
+    """
+    manifest = Path("pyproject.toml")
+    if not manifest.is_file():
+        return
+    text = manifest.read_text()
+    original = text
+    # What this run actually changed, recorded at the point of changing it. Deriving it
+    # afterwards from "was a value supplied" reported setting a brownfield description
+    # that had been left alone, which is the report saying what did not happen.
+    wrote = []
+
+    if description and UV_PLACEHOLDER_DESCRIPTION in text:
+        # A TOML basic string, so a description carrying a quote or a backslash has to
+        # be escaped rather than pasted.
+        escaped = description.replace("\\", "\\\\").replace('"', '\\"')
+        text = text.replace(f'"{UV_PLACEHOLDER_DESCRIPTION}"', f'"{escaped}"', 1)
+        wrote.append("description")
+
+    # `license-files` is a different key, so match the assignment rather than the word.
+    if spdx != NO_LICENSE and not re.search(r"^license\s*=", text, re.MULTILINE):
+        # PEP 639: an SPDX expression as a string. Without it `uv build` emits a wheel
+        # carrying no License-Expression at all.
+        #
+        # Inserted by slicing rather than re.sub, whose replacement string reinterprets
+        # a backslash: the first version of this wrote `license = \"Apache-2.0\"` into
+        # the manifest, which is not valid TOML.
+        where = re.search(r"^description\s*=.*$", text, re.MULTILINE)
+        if where:
+            text = f'{text[: where.end()]}\nlicense = "{spdx}"{text[where.end() :]}'
+            wrote.append(f"license = {spdx}")
+
+    if text == original:
+        return
+    manifest.write_text(text)
+    print(f"native_init: set {', '.join(wrote)} in pyproject.toml")
 
 
 def _seed_python_test() -> None:

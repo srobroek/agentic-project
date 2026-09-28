@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -653,3 +654,137 @@ def test_a_deliberate_range_is_not_overwritten(tmp_path: Path):
         os.chdir(cwd)
 
     assert json.loads(manifest.read_text())["devDependencies"]["@types/bun"] == "^2.0.0"
+
+
+UV_FRESH = (
+    "[project]\n"
+    'name = "mine"\n'
+    'version = "0.1.0"\n'
+    'description = "Add your description here"\n'
+    'readme = "README.md"\n'
+    'requires-python = ">=3.12"\n'
+)
+
+
+def test_the_answered_description_and_license_reach_the_manifest(
+    native_init, tmp_path, monkeypatch
+):
+    """`uv init` owns pyproject.toml and writes neither.
+
+    Found by scaffolding this repository with its own tool. uv writes its own
+    placeholder description and no license field at all, so a py scaffold shipped a
+    wheel stating neither the DESCRIPTION the interview hard-requires nor the license
+    the governance layer had just written to disk as LICENSE.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text(UV_FRESH)
+
+    native_init._declare_package_metadata("Apache-2.0", "What this project is")
+
+    parsed = tomllib.loads((tmp_path / "pyproject.toml").read_text())
+    assert parsed["project"]["description"] == "What this project is"
+    assert parsed["project"]["license"] == "Apache-2.0"
+
+
+def test_a_description_with_toml_metacharacters_survives_the_round_trip(
+    native_init, tmp_path, monkeypatch
+):
+    """The description is free text pasted into a TOML basic string.
+
+    A colon because it travels packed behind the SPDX id, and a quote and a backslash
+    because both terminate or escape a TOML string if written literally.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text(UV_FRESH)
+    hostile = 'A probe: with a "quote", a backslash \\ and trailing text'
+
+    native_init._declare_package_metadata("MIT", hostile)
+
+    parsed = tomllib.loads((tmp_path / "pyproject.toml").read_text())
+    assert parsed["project"]["description"] == hostile
+
+
+def test_the_license_line_is_valid_toml_not_an_escaped_replacement(
+    native_init, tmp_path, monkeypatch
+):
+    """The first version of this used re.sub and wrote `license = \\"MIT\\"`.
+
+    re.sub reinterprets backslashes in its replacement string, so the manifest came out
+    with literal backslashes around the value: not valid TOML, and every consumer of the
+    scaffold would have failed to parse it. tomllib is the assertion because eyeballing
+    the line is exactly what missed it.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text(UV_FRESH)
+
+    native_init._declare_package_metadata("MIT", "x")
+
+    body = (tmp_path / "pyproject.toml").read_text()
+    assert 'license = "MIT"' in body
+    assert "\\" not in body.split("license =")[1].split("\n")[0]
+    tomllib.loads(body)  # raises TOMLDecodeError if the escaping regressed
+
+
+def test_no_license_field_is_written_when_the_project_states_none(
+    native_init, tmp_path, monkeypatch
+):
+    """SPDX_ID=NONE writes no LICENSE file, so claiming one in metadata would lie."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text(UV_FRESH)
+
+    native_init._declare_package_metadata(native_init.NO_LICENSE, "still described")
+
+    parsed = tomllib.loads((tmp_path / "pyproject.toml").read_text())
+    assert "license" not in parsed["project"]
+    assert parsed["project"]["description"] == "still described"
+
+
+def test_a_brownfield_description_is_kept_and_only_the_license_is_added(
+    native_init, tmp_path, monkeypatch, capsys
+):
+    """A description somebody wrote is theirs; the edit is conditional on uv's placeholder.
+
+    The report is asserted too, because the first version derived it from "was a value
+    supplied" and announced setting a description it had correctly left alone. Saying
+    what did not happen is the same defect class as a silent skip.
+    """
+    monkeypatch.chdir(tmp_path)
+    mine = UV_FRESH.replace("Add your description here", "The description I wrote")
+    (tmp_path / "pyproject.toml").write_text(mine)
+
+    native_init._declare_package_metadata("Apache-2.0", "what the tool was given")
+
+    parsed = tomllib.loads((tmp_path / "pyproject.toml").read_text())
+    assert parsed["project"]["description"] == "The description I wrote"
+    assert parsed["project"]["license"] == "Apache-2.0"
+    said = capsys.readouterr().out
+    assert "license = Apache-2.0" in said
+    assert "description" not in said, f"reported setting what it kept: {said!r}"
+
+
+def test_a_license_the_manifest_already_declares_is_not_duplicated(
+    native_init, tmp_path, monkeypatch
+):
+    """`license-files` is a different key, so the guard matches the assignment."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text(
+        UV_FRESH.replace('readme = "README.md"\n', 'license = "MIT"\nlicense-files = ["LICENSE"]\n')
+    )
+
+    native_init._declare_package_metadata("Apache-2.0", "x")
+
+    body = (tmp_path / "pyproject.toml").read_text()
+    assert body.count("license =") == 1, "a second license assignment was added"
+    assert tomllib.loads(body)["project"]["license"] == "MIT"
+
+
+def test_the_python_task_is_given_the_license_and_the_description():
+    """A helper nothing calls with the right arguments is a helper that does nothing.
+
+    The two tests above exercise the function directly, which passes whether or not the
+    generated copier.yml actually hands it SPDX_ID and DESCRIPTION.
+    """
+    command = (TEMPLATES / "lang-python/copier.yml").read_text()
+    assert "@@ SPDX_ID @@:@@ DESCRIPTION @@" in command, (
+        "the py task no longer receives the license and description"
+    )
