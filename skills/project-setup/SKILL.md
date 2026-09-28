@@ -242,7 +242,7 @@ project-setup apply --data-file answers.yml --dest . --json
 ```
 
 8. **Then the work that matters**: the first real code, the libraries, the layout. The
-   scaffold is the floor, not the deliverable.
+   scaffold only exists to make that work possible.
 
 ## Composed answers -- the part only you can do
 
