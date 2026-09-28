@@ -33,7 +33,7 @@ MUST keep `ALWAYS_ON` in `src/project_setup/catalog.py` as the only definition.
 opt-in.
 
 MUST prune empty directories after placing, and only the ones the run created. Copier creates
-a directory before deciding every file inside it is excluded, so a GitHub-only project would
+a directory before applying the patterns that empty it, so a GitHub-only project would
 otherwise ship an empty `.gitlab/`. Pruning every empty directory also deleted a brownfield
 repository's own empty `logs/` and the empty directories inside `node_modules`, so
 `prune_empty_dirs` keeps every directory the snapshot taken before the run lists.
@@ -44,7 +44,7 @@ so an exact-file rule can override a directory rule.
 
 MUST gate forge-specific files through `FORGE_EXCLUDE`, not by splitting layers. Any layer that
 writes under `.github/` or `.gitlab/` automatically gains the `FORGE_PLATFORM` question and the
-exclusion block. Selecting the forge then swaps the whole CI surface in one answer — for
+exclusion block. Selecting the forge then swaps the whole CI surface in one answer -- for
 everything about to be written. An exclusion is not a deletion, so re-applying a repository
 with the other answer left the first forge's whole surface in place and still triggering,
 while `gen_caller` reported there was no caller to write. `_stale_forge_surface` names those
@@ -82,7 +82,7 @@ with single quotes, landing in the file as invalid JSON.
 MUST capture fds 1 and 2 **and** `sys.stdout`/`sys.stderr` around `copier.run_copy`. Tasks
 are subprocesses that inherit the real descriptors, so without the fd dup a failing task
 reports only "returned non-zero exit status 1" and its actual message is lost. Copier's own
-per-file announcements go through `print()`, which resolves `sys.stdout` at call time —
+per-file announcements go through `print()`, which resolves `sys.stdout` at call time --
 under pytest that is a capture object that never touches fd 1, so the fd dup alone loses
 every line and the parsed file list comes back empty exactly where it is tested.
 
@@ -154,15 +154,15 @@ MUST report what an answer no longer selects but the checkout still holds. Copie
 what a layer stopped contributing; nothing deletes what an earlier apply wrote, so
 re-applying with `WANT_RELEASE: false` left the whole release layer in place. The
 destination's own answers file records what was selected last time, so `deselected_layers`
-needs no manifest to notice, and `orphaned_files` gets the file list from a pretend place
-rather than a static walk -- a layer's paths are templated and conditionally excluded, so
+needs no manifest to notice. `orphaned_files` gets the file list from a pretend place
+rather than a static walk. A layer's paths are templated and conditionally excluded, so
 Copier's own list is the only one right by construction. It costs one dry run per dropped
 layer, which is why nothing scans until a layer has actually been dropped. A warning, like
 `STALE_FORGE_SURFACE`: deleting a user's files is not this tool's call.
 
 MUST add a script to `TASK_SCRIPTS[layer]` when you add a `_task` that runs it. The two
-tables are declared apart, so wiring one alone produces a layer that places every file and
-then dies with "can't open file" from a path inside `templates/`, which reads like a corrupt
+tables are declared apart. Wiring one alone produces a layer that places every file, then
+dies with "can't open file" from a path inside `templates/`. That reads like a corrupt
 checkout. `check_task_scripts_installed()` fails the port instead.
 
 MUST leave a fresh scaffold able to run its own `just setup` and `just check`. Every tool a
@@ -170,14 +170,18 @@ recipe names has to be provided by something the same scaffold installs: a `.mis
 pin, a dependency group, or a package manifest. `tests/test_toolchain.py` enforces it per
 layer, because `bunx biome` with biome in no manifest silently resolved a PATH shim.
 
-MUST resolve a generator argument against the catalog defaults, not the raw answers.
-Copier applies a layer's default itself; `run_generators` assembles its arguments outside
-Copier, so an unanswered `DEFAULT_BRANCH` aborted a half-written scaffold with a KeyError.
+MUST resolve a generator argument against the catalog defaults rather than the raw answers.
+Copier applies a layer's default itself. `run_generators` assembles its arguments outside
+Copier. An unanswered `DEFAULT_BRANCH` therefore aborted a half-written scaffold with a
+KeyError.
 
-MUST let a fragment own what it declares when folding into a shared file. The fragment is
-generated from a layer and an answer, so the layer owns that entry: a changed answer has
-to land, and a brownfield repository that happens to share one hook id must not fail the
-apply. Two *fragments* disagreeing is still a hard error — no answer can resolve it.
+MUST let a fragment own its own entries when folding into a shared file.
+
+A fragment comes from a layer and an answer, so the layer owns that entry. A changed answer
+has to land.
+
+A brownfield repository sharing one hook id keeps its apply. Two *fragments* disagreeing
+stays a hard error, because no answer can resolve it.
 
 MUST derive what `plan` and `apply` report from the difference a run made, never from a
 table of what each step is expected to do. `rehearse` in `runner.py` copies the
@@ -196,7 +200,7 @@ through the link writes into the copy.
 
 MUST NOT place a file a generator claims to merge. `plan` listed `justfile` twice: once as
 a file it would overwrite, and once as a path a generator "merged, your entries kept". The
-second was false — the `just` layer replaced the file and the generator then folded its
+second was false -- the `just` layer replaced the file and the generator then folded its
 import block into the fresh copy, so a brownfield repository's recipes were gone, and so
 were any a user had added to their own scaffold before re-applying. `SKIP_IF_EXISTS` in the
 port emits `_skip_if_exists` for those paths. It is only safe where the placed file carries
@@ -209,7 +213,7 @@ passes a generator nothing but the destination and its declared arguments, so
 `install_agents_index.py` telling a user to "rerun with --claude MERGE" named a flag no
 `project-setup apply` could ever pass: the apply exited non-zero over a repository that was
 otherwise complete, with its placeholder report suppressed. A destination holding *content*
-takes the same non-destructive default AGENTS.md already took — merge, and say what was
+takes the same non-destructive default AGENTS.md already took -- merge, and say what was
 folded in. Only a symlink, which is another tool's wiring rather than content, still
 refuses, and it names `python3 scripts/install_agents_index.py . --claude SKIP`, which is
 installed in the scaffolded repository and therefore runnable.
@@ -255,9 +259,9 @@ caller, so `just aws-cdk-synth` and `just check` failed on a directory nothing c
 
 ## Adding a task
 
-Tasks live in `tools/tasks/` and are copied into the layers listed in `TASK_SCRIPTS`, then
-excluded from the rendered output. A task must be idempotent and must degrade to a warning
-when its tool is absent — a scaffold must never hard-fail because `cargo` is missing.
+Tasks live in `tools/tasks/` and are copied into the layers listed in `TASK_SCRIPTS`, where
+the layer's `_exclude` list covers them so they run without landing in a scaffold. A task must be idempotent and must degrade to a warning
+when its tool is absent -- a scaffold must never hard-fail because `cargo` is missing.
 
 ## OMP packaging
 
@@ -292,7 +296,7 @@ tool does not have, and `load_data` drops every `_` key on the way back in, so i
 read either. `drop_copier_bookkeeping` removes them.
 
 MUST let a repository state no licence. `SPDX_ID` offered four licences and nothing else, so
-an internal service or a work repo got an Apache-2.0 LICENSE it never chose — a statement
+an internal service or a work repo got an Apache-2.0 LICENSE it never chose -- a statement
 about the code, not an inconvenience. `NONE` writes no LICENSE, drops the OpenAPI licence
 block, and switches `deny.toml` to `[licenses.private] ignore = true`. That block only
 applies to a crate the manifest marks unpublishable, so `native_init.py` writes
@@ -310,7 +314,7 @@ read as "a monorepo with no members" and used to replace every language job with
 all. An empty member list is the single-root case, and `validate` reports
 `ANSWER_HAS_NO_EFFECT`. A warning, not an error: the combination is legal and the user may
 be one answer from meaning it. `IS_MONOREPO` is no longer *asked*, because no interview
-answer could make it do anything — its whole effect needs `MONOREPO_MEMBERS`, which
+answer could make it do anything -- its whole effect needs `MONOREPO_MEMBERS`, which
 `compose` deliberately keeps out of the interview. It is derived from that list, so
 listing members is what makes a project a monorepo, and the warning still fires for a
 caller that sets the flag alone.

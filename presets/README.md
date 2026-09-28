@@ -22,7 +22,6 @@ Human:
       --set PROJECT_NAME=my-app --set DESCRIPTION="Thing that does X" \
       --set CODEOWNER=@me --set SECURITY_CONTACT=security@example.com
 
-Agent: interview first — ask what is being built, offer the presets that could fit plus a
-manual path, and customise from there. A preset is where the conversation starts, not a
-substitute for it. Then copy the chosen preset, add the four identity keys and whatever the
+Agent: interview first -- ask what is being built, offer the presets that could fit plus a
+manual path, and customise from there. A preset is where the conversation starts. Then copy the chosen preset, add the four identity keys and whatever the
 user changed, `validate --json`, show the `plan`, and `apply --json` on approval.

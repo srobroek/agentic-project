@@ -36,7 +36,7 @@ If `catalog` fails with `no templates directory found`, the plugin is not instal
 disabled. Say so and stop. Its error names every place the CLI looked.
 
 MUST NOT guess the plugin path from the working directory. The working directory is the user's
-target repository, not this plugin — installing from it would install their project as the CLI.
+target repository, not this plugin -- installing from it would install their project as the CLI.
 
 ### Installing the CLI
 
@@ -65,15 +65,15 @@ failure mode this plugin exists to remove. Say the CLI is unavailable and stop.
 
 ## Interview first, always
 
-Setting up a repository is a conversation. Conduct it — the templates make it short, they do
-not replace it. A preset is where the conversation *starts*, not a reason to skip it: you
-cannot know whether a preset fits until you have asked what the user is building.
+Setting up a repository is a conversation. Conduct it; the templates only make it short. A
+preset is where that conversation *starts*: you cannot know whether one fits until you have
+asked what the user is building.
 
 GATES
 ASK the shape before reading any answer back
 ASK the plan, before the first file is written
 ASK the licence, a published repository, a credential, a machine-global registration
-  `SPDX_ID` takes `NONE` for a repository published under no licence at all — an
+  `SPDX_ID` takes `NONE` for a repository published under no licence at all -- an
   internal service, a work repo. Do not default an unpublished project to Apache-2.0.
 
 Two entry paths. Offer both in round two and let the user pick:
@@ -83,15 +83,15 @@ Two entry paths. Offer both in round two and let the user pick:
 | **Preset, then customise** | a listed shape is close. Most projects |
 | **Manual** | nothing is close, or the user wants to see every layer |
 
-### Round 1 — what are you building?
+### Round 1 -- what are you building?
 
-One open question, and the only genuinely open-ended one. Everything after it is bounded by
+One open question, and the only unbounded one. Everything after it is bounded by
 the catalog.
 
 For a brownfield repository, read the committed configuration *before* asking anything; see
 the Brownfield section.
 
-### Round 2 — the shape
+### Round 2 -- the shape
 
 Present the stacks that could plausibly fit, each with the layers it selects, plus the manual
 path. Do not present all twelve if two are relevant.
@@ -103,7 +103,7 @@ project-setup catalog --json      # every layer and every question it declares
 ```
 
 **Presets compose.** A stack is only a composition of parts, so a shape with no stack of its
-own is still reachable — pass `--preset` more than once, later winning:
+own is still reachable -- pass `--preset` more than once, later winning:
 
 ```
 project-setup apply --preset parts/policy --preset parts/forge-github \
@@ -113,21 +113,21 @@ project-setup apply --preset parts/policy --preset parts/forge-github \
 MUST NOT tell the user a shape is unsupported because no stack is named for it. Compose the
 parts, and say which you combined.
 
-### Round 3 — customise
+### Round 3 -- customise
 
 **Preset path.** Read the preset's answers back grouped by topic, and ask what to change.
 These are defaults to confirm, not questions to ask one at a time. In the same round, ask for
-the four identity answers no preset can carry — `PROJECT_NAME`, `DESCRIPTION`, `CODEOWNER`,
-`SECURITY_CONTACT` — and for whatever the preset documents as a gap.
+the four identity answers no preset can carry -- `PROJECT_NAME`, `DESCRIPTION`, `CODEOWNER`,
+`SECURITY_CONTACT` -- and for whatever the preset documents as a gap.
 
 **Manual path.** Show the layer catalog, always-on and opt-in separately, and take the
 selection. Then ask only the questions those layers declare, grouped by layer, each with its
 default and its permitted values.
 
 **Both paths.** Two gates, two questions, asked once each. Whether the user wants to set
-specific tool versions or take the pinned set — name the versions the selected layers would
+specific tool versions or take the pinned set -- name the versions the selected layers would
 use, so the answer is informed. And whether they want to change the shipped hook, CI and
-README defaults. Expect no to both, and move on. That is two questions, not twenty-three.
+README defaults. Expect no to both, and move on. That is two questions in place of twenty-three.
 
 MUST ask in rounds. One question at a time turns a two-minute conversation into twenty.
 
@@ -140,11 +140,11 @@ project-setup apply --preset <name> --dest . \
   --set CODEOWNER=@<owner> --set SECURITY_CONTACT=<contact>
 ```
 
-### Round 4 — composed answers
+### Round 4 -- composed answers
 
 Only if the selected layers need them. See "Composed answers" below.
 
-### Round 5 — plan, then apply
+### Round 5 -- plan, then apply
 
 `validate`, then `plan`, then show the plan and wait. Apply only on approval.
 
@@ -153,7 +153,7 @@ Only if the selected layers need them. See "Composed answers" below.
 The template layers are the question set. Read it, never invent it.
 
 MUST NOT ask for a value that `catalog --json` does not list for a selected layer. If you
-believe a question is missing, the answer is a **missing layer**, not a missing question — say
+believe a question is missing, the answer is a **missing layer**, not a missing question -- say
 so rather than improvising a question.
 
 MUST NOT re-ask anything the user has already told you, in this conversation or in a
@@ -170,15 +170,15 @@ marks four, and they call for four different things:
 | `"tuned": true` | one question for the whole set, `CUSTOMISE_DEFAULTS`. Default to the shipped values |
 
 MUST ask about tool versions exactly once, with one question: does the user want to set
-specific versions, or take the pinned set? Every question marked `"pinned": true` — nineteen
-toolchain and tool versions — is behind that one gate, `PIN_TOOL_VERSIONS`. Take the pins
+specific versions, or take the pinned set? Every question marked `"pinned": true` -- nineteen
+toolchain and tool versions -- is behind that one gate, `PIN_TOOL_VERSIONS`. Take the pins
 unless the user asks otherwise: they are a tested combination and Renovate bumps them. If the
 user does want to choose, ask only the pins the selected layers own, and only those. A user
 who names one version in passing needs no gate: pass it with `--set` and say you did.
 
-MUST ask about the shipped defaults the same way, once. Everything marked `"tuned": true` — a
+MUST ask about the shipped defaults the same way, once. Everything marked `"tuned": true` -- a
 hook size limit, a per-job CI timeout, the README's install and usage lines, the allowed
-commit scopes — is behind `CUSTOMISE_DEFAULTS`. Reading seven thresholds out to somebody who
+commit scopes -- is behind `CUSTOMISE_DEFAULTS`. Reading seven thresholds out to somebody who
 wanted a repository is the mistake this replaced. Take the defaults unless the user raises
 one, and pass a value they do name with `--set`.
 
@@ -192,7 +192,7 @@ the placeholder each one writes.
 ### Two answers are required; everything else has a value
 
 Only `PROJECT_NAME` and `DESCRIPTION` have no default. Everything a user cannot reasonably
-know at setup time — a production URL, an owner, a security contact — carries an obvious
+know at setup time -- a production URL, an owner, a security contact -- carries an obvious
 placeholder instead of blocking the scaffold. `apply` lists them at the end.
 
 MUST offer to replace a placeholder, and MUST NOT refuse to scaffold because one is unset. A
@@ -207,7 +207,7 @@ MUST run `validate --json` to discover what is missing rather than reasoning abo
 catalog's `required` flags. It reports `MISSING_REQUIRED`, `INVALID_CHOICE`, `INVALID_VALUE`,
 `UNKNOWN_KEY`, `PLACEHOLDER_IN_USE`, `ANSWER_HAS_NO_EFFECT`, `ANSWER_CONTRADICTS_REPO`,
 `STALE_FORGE_SURFACE` and `MEMBER_PATH_EMPTY` for the layers actually selected, which is the only thing that matters.
-`INVALID_VALUE` is a declared validator rejecting the value — `PROJECT_NAME` reaches a crate,
+`INVALID_VALUE` is a declared validator rejecting the value -- `PROJECT_NAME` reaches a crate,
 module and package name, so it is the one most worth getting right before anything is written.
 
 ## Building the data file
@@ -244,7 +244,7 @@ project-setup apply --data-file answers.yml --dest . --json
 8. **Then the work that matters**: the first real code, the libraries, the layout. The
    scaffold is the floor, not the deliverable.
 
-## Composed answers — the part only you can do
+## Composed answers -- the part only you can do
 
 Most answers are choices. A few are artifacts that must be assembled from the conversation,
 and these are the reason to involve a model at all:
@@ -253,7 +253,7 @@ and these are the reason to involve a model at all:
 | --- | --- |
 | `INSTALL_COMMANDS`, `USAGE_EXAMPLE` | derived from the accepted stack. Behind `CUSTOMISE_DEFAULTS`, so pass a composed value with `--set` rather than opening the gate |
 | `COMMIT_SCOPES` | the project's real module names. Behind the same gate |
-| `HOOK_EXCLUDE_PATTERNS` | paths that genuinely must be excluded. Behind the same gate |
+| `HOOK_EXCLUDE_PATTERNS` | paths the hooks must skip. Behind the same gate |
 | `MONOREPO_MEMBERS` | a JSON array of `{name, path, capabilities}`, one per member. This drives per-member CI jobs, so a wrong path produces a job that tests nothing. `IS_MONOREPO` is derived from it: supply the members and do not set the flag. `validate` reports `MEMBER_PATH_EMPTY` for a member path with no manifest yet. Apply writes the language starters at the root, so tell the user their code has to move into the member paths |
 | `DEV_COMMAND` | only if the project actually serves something; empty drops the worktree dev-server block |
 | `ADRS` | a JSON array of decisions, each needing `title`, `decision`, `rationale`, `consequences`. One file is written per entry. An ADR without a decision and its rationale is refused |
@@ -321,16 +321,16 @@ interview's `LAYERS` multiselect is another spelling of the same thing and both 
 
 Dropping a layer is not symmetrical. Deselecting it stops it being written; nothing deletes
 what an earlier apply wrote. `validate` reports `STALE_LAYER_FILES`, naming the files that
-layer left behind, and removing them is the user's decision to confirm — not yours to take.
+layer left behind, and removing them is the user's decision to confirm -- not yours to take.
 
 Changing an answer that already fed a generated file re-derives it. `COMMIT_SCOPES` is folded
 into `.pre-commit-config.yaml`; a new value replaces that hook and `merge_hooks.py` reports
 which entry it replaced. Anything no fragment declares is left alone, so a repository's own
-hooks survive. Report the replacement line — it is the confirmation the change landed.
+hooks survive. Report the replacement line -- it is the confirmation the change landed.
 
 ## Monorepo members
 
-The root-only surface — `.git`, LICENSE, CODEOWNERS, CI, steering — is `ALWAYS_ON` and cannot
+The root-only surface -- `.git`, LICENSE, CODEOWNERS, CI, steering -- is `ALWAYS_ON` and cannot
 be deselected, so a plain `apply` into a subdirectory of an already-scaffolded root nests a
 second repository into it. `apply` refuses with `NESTED_SCAFFOLD` and names the fix: pass
 `--member`.
@@ -340,20 +340,20 @@ project-setup apply --preset <stack> --dest R                    # the root, onc
 project-setup apply --preset parts/lang-go --dest R/services/api --member
 ```
 
-`--member` applies only the layers you selected — no root-only surface — and registers the
+`--member` applies only the layers you selected -- no root-only surface -- and registers the
 result by path into the root's `.ci/members.json` and its own `MONOREPO_MEMBERS` answer.
 Refuses `MEMBER_NO_ROOT` if nothing scaffolded is found above `--dest`.
 
 MUST select the same language layer at the root before scaffolding a member in it.
 `gen_caller.py` builds each member's CI job from a reusable workflow (`wc-lint-<lang>.yml`,
-`wc-test-<lang>.yml`) that a `lang-*` layer places only at the root, never at a member —
+`wc-test-<lang>.yml`) that a `lang-*` layer places only at the root, never at a member --
 so a rust member under a go+ts-only root has no workflow to build a job from. `--member`
 checks this before writing anything and refuses `MEMBER_LANGUAGE_UNSUPPORTED`, naming the
 layer to add at the root.
 
 MUST re-apply the root after registering a member that was not already in its
 `MONOREPO_MEMBERS`. `--member` updates `.ci/members.json` immediately, but `ci.yml` itself is
-only regenerated the next time `apply` runs generators at the root — so a member added this
+only regenerated the next time `apply` runs generators at the root -- so a member added this
 way has no CI job until that happens. Tell the user this is the last step, not an optional one.
 
 ## Rules

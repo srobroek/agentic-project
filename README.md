@@ -6,8 +6,8 @@ the question set.
 | | |
 | --- | --- |
 | Engine | Copier 9.18, driven in-process |
-| Layers | 17 under `templates/` — one directory per capability |
-| Question set | `templates/_interview/` — generated from the layers |
+| Layers | 17 under `templates/` -- one directory per capability |
+| Question set | `templates/_interview/` -- generated from the layers |
 | Shapes | `presets/*.yml` |
 | Agent entry point | `skills/project-setup/SKILL.md` |
 | OMP plugin | `@srobroek/project-setup` |
@@ -30,7 +30,7 @@ new directory, and nothing shared changes.
       --set PROJECT_NAME=my-app --set DESCRIPTION="Thing that does X" \
       --set CODEOWNER=@me --set SECURITY_CONTACT=security@example.com
 
-Or answer the prompts yourself — Copier owns the question set, so there is no second
+Or answer the prompts yourself -- Copier owns the question set, so there is no second
 implementation to drift:
 
     project-setup interview --dest ../my-app
@@ -121,15 +121,15 @@ guess scaffolds from the wrong layer set.
 
 ## How a scaffold runs
 
-1. **place** — each selected layer is rendered by Copier. `.jinja` files are rendered; every
+1. **place** -- each selected layer is rendered by Copier. `.jinja` files are rendered; every
    other file is copied byte-for-byte.
-2. **tasks** — Copier's own `_tasks`: `git init`, materialise `LICENSE` from the bundled SPDX
-   texts, or none of them when `SPDX_ID` is `NONE`; write one file per ADR; let
-   `bun`/`cargo`/`uv` own their manifests. Each is idempotent and degrades to a warning when
-   its tool is absent, and `apply` prints those warnings: a Rust scaffold with no `Cargo.toml`
-   used to report `place ok lang-rust` and exit 0.
-3. **prune** — directories left empty because their contents were excluded are removed.
-4. **generate** — the `.d/` fragments each layer dropped are folded into shared destinations:
+2. **tasks** -- Copier's own `_tasks`: `git init`, materialise `LICENSE` from the bundled SPDX
+   texts, write one file per ADR, and let `bun`/`cargo`/`uv` own their manifests. `SPDX_ID` of
+   `NONE` writes no licence at all. Each task is idempotent and degrades to a warning when its
+   tool is absent, and `apply` prints those warnings. A Rust scaffold with no `Cargo.toml` used
+   to report `place ok lang-rust` and exit 0.
+3. **prune** -- directories the exclude patterns emptied are removed.
+4. **generate** -- the `.d/` fragments each layer dropped are folded into shared destinations:
 
 | Fragments | Generator | Destination |
 | --- | --- | --- |
@@ -159,8 +159,8 @@ resolved depth-first, so the stack always overrides the parts it builds on. Cycl
 ## Two required answers, and placeholders for the rest
 
 Only `PROJECT_NAME` and `DESCRIPTION` have no default. A production URL, an owner, a security
-contact — things nobody knows while setting up — carry an obvious placeholder rather than
-blocking the scaffold, and `apply` lists them when it finishes:
+contact are things nobody knows while setting up. Each carries an obvious placeholder rather
+than blocking the scaffold, and `apply` lists them when it finishes:
 
     2 answer(s) still carry a placeholder:
       CODEOWNER         @TODO-owner
@@ -173,7 +173,7 @@ blocking the scaffold, and `apply` lists them when it finishes:
 | `base` `governance` `hooks` `just` `ci` `forge` `steering` | `release` `worktrunk` `api` `i18n` `a11y` `infra-aws-cdk` `lang-go` `lang-python` `lang-ts` `lang-rust` |
 
 61 distinct questions across all layers, only the selected layers' are asked, and only two are
-ever required — `PROJECT_NAME` and `DESCRIPTION`. A minimal project answers ten prompts,
+ever required -- `PROJECT_NAME` and `DESCRIPTION`. A minimal project answers ten prompts,
 because four classes of question are not asked by default. `catalog --json` reports which class
 each one is in, and `--set` reaches every one of them without the gate:
 
@@ -184,21 +184,23 @@ each one is in, and `--set` reaches every one of them without the gate:
 | composed | never | `"composed": true` | a JSON artifact nobody types at a prompt: the ADR list, the monorepo members |
 | derived | never | `"derived": true` | a pure function of another answer |
 
-The layer selection is one multiselect, not one yes/no per layer, and each choice says what
-the layer does rather than only naming its directory. `WANT_<LAYER>` stays the answer a
+The layer selection is one multiselect, and each choice says what the layer does alongside
+its directory name. `WANT_<LAYER>` stays the answer a
 preset, a data file and `--set` write, and it is derived from the list when the interview
 asks. `project-setup catalog` lists the same one-line purpose for all seventeen.
 
-Each language layer hands its manifest to the language's own tool — `cargo init`, `bun init`,
-`uv init`, `go mod init` — and then reconciles what that tool leaves behind against what the
+Each language layer hands its manifest to the language's own tool -- `cargo init`, `bun init`,
+`uv init`, `go mod init` -- and then reconciles what that tool leaves behind against what the
 layers own. A fresh scaffold of any stack passes its own `just setup` and `just check`.
 
-`FORGE_PLATFORM` is a single answer that swaps the entire CI surface: choose `gitlab` and every
-`.github/` file from every layer is excluded, the `.gitlab/ci` fragments are used instead, and
-`gen_caller.py` reports there is no caller to write. Excluded, not deleted — so changing the
-answer in a repository that already has one forge's workflows leaves them in place and still
-triggering. `validate`, `plan` and `apply` all report that as `STALE_FORGE_SURFACE`, naming
-the files; removing somebody's CI is not this tool's call.
+`FORGE_PLATFORM` is a single answer that swaps the entire CI surface. Choose `gitlab` and
+every layer renders its `.gitlab/ci` fragment while its `.github/` files stay unwritten.
+`gen_caller.py` then reports there is no caller to write.
+
+Those files are skipped rather than deleted. So changing the answer in a repository that
+already has one forge's workflows leaves them in place and still triggering. `validate`,
+`plan` and `apply` all report that as `STALE_FORGE_SURFACE` and name the files. Removing
+somebody's CI stays the user's call.
 
 ## Measured
 

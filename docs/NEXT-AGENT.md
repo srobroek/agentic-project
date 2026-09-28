@@ -2,7 +2,7 @@
 
 You are picking up a deterministic repository scaffolder. Two shake-out rounds have closed the
 obvious defects, so this round is about **improvement**: propose changes and make them. Not
-only crashes — friction, needless questions, inflexibility with no reason behind it, and
+only crashes -- friction, needless questions, inflexibility with no reason behind it, and
 places where the tool is merely adequate.
 
 Read `README.md` for what it is, `AGENTS.md` for the invariants, and
@@ -40,7 +40,7 @@ Then range wider. Places nobody has looked:
   inside a git submodule.
 - **The generators against a hostile file.** A `.gitignore` whose managed markers were
   edited, duplicated, or reversed. A `.pre-commit-config.yaml` that is valid YAML but not a
-  hook config. A `members.json` naming a path outside the repository.
+  hook config. A `members.json` naming a path above the repository root.
 - **Windows path semantics**, if anybody will ever run this there. Every path assumption in
   the port and the generators is POSIX today.
 
@@ -74,7 +74,7 @@ for reading, never for concluding.
 
 ## Leave the owner's style call alone
 
-`slopvac` fails on seven authored documents, dominated by unicode-dash findings — em dashes,
+`slopvac` fails on seven authored documents, dominated by unicode-dash findings -- em dashes,
 this repo's markdown style. The eight files that cannot be fixed (verbatim SPDX licence texts)
 are already excluded in `slopvac.toml`. Whether to restyle the remaining seven or switch
 `rules."prose-format.no-unicode-dash"` off is the owner's decision. You may propose; do not
@@ -103,7 +103,7 @@ reader does not repeat it.
    stop its questions. Nine prompts were truncated mid-word by the terminal width; fixed and
    now enforced by `_check_help_fits_a_prompt`. Its closing line named an `apply` command with
    no `--dest`; the CLI prints the whole pipeline instead. There is still no TTY driver in the
-   suite — the properties are pinned on the generated question set, which is where they live.
+   suite -- the properties are pinned on the generated question set, which is where they live.
 2. **The agent interview.** Run headless against a greenfield directory. It classified the
    repository, offered two composed shapes and a manual path in one round, and recommended
    one. No handover-and-stop, and nothing asked that a task or a derived value decides.
@@ -142,7 +142,7 @@ regression even if it looks tidier.
    unexecutable, because you cannot know whether a preset fits until you have asked.
 2. **Never block on a value nobody knows yet.** Only `PROJECT_NAME` and `DESCRIPTION` are
    required. Everything else defaults or carries a visible placeholder, reported by
-   `validate` and listed at the end of `apply`. The goal is visibility, not a wall.
+   `validate` and listed at the end of `apply`. The goal is visibility: the user sees what is unresolved and still gets a scaffold.
 3. **Never ask what a task decides.** `native_init.py` skips when its manifest exists and
    warns when its tool is absent, so there was no decision for a user to make.
 4. **Never ask for a `derived` value, and know which of the four classes a question is in.**
@@ -187,7 +187,7 @@ is now implemented, and the reasoning lives next to the code that carries it.
    `HOOK_EXCLUDE_PATTERNS`, `COMMIT_SCOPES`, `CODE_OF_CONDUCT_CONTACT`, `INSTALL_COMMANDS`
    and `USAGE_EXAMPLE`. `catalog --json` marks them `"tuned": true`.
 3. **`ADRS` and `MONOREPO_MEMBERS` are not prompts.** `compose: True` in `TOKEN_POLICY`,
-   `when: false` in the interview, `"composed": true` in `catalog --json` — a fourth class,
+   `when: false` in the interview, `"composed": true` in `catalog --json` -- a fourth class,
    distinct from `derived` because a caller must supply one and must never supply the other.
 4. **A deselected layer's leftovers are named.** `deselected_layers` reads the destination's
    own recorded answers, and `orphaned_files` gets the file list from a pretend place rather
@@ -205,9 +205,9 @@ survives. This repository has no ledger, so this list is the carrier.
    reader of `catalog --json` has one more hop. The alternative is a `detail` field the port
    keeps out of the interview: more machinery, and a second string per token to drift.
    Check: the schema is reachable from `catalog --json` without lengthening any prompt.
-2. **`README.md`, `AGENTS.md`, `SKILL.md`, this file — `uvx slopvac` fails on all four, and
+2. **`README.md`, `AGENTS.md`, `SKILL.md`, this file -- `uvx slopvac` fails on all four, and
    did so before any of this work.** Measured twice: 71.4, then 71.0 before the second
-   shake-out and 69.9 after it, the same failure classes both times — Unicode dashes and the
+   shake-out and 69.9 after it, the same failure classes both times -- Unicode dashes and the
    `prose-format` budget. The em dash is this repository's own markdown style, so the fix is a
    deliberate style change across every document, not a patch to whichever paragraph was
    edited last. Check: `uvx slopvac` passes on all four, and the Python comments still read
@@ -356,7 +356,7 @@ All found by running apply, just setup, just check by hand. Every one of them pa
 - **The a11y layer had never worked.** Its Playwright config used `import.meta.url`, which
   the CJS transform that loads it cannot take, so it died before any test ran.
 - **The a11y answers could not be formatted.** A JSON answer has quoted keys, which no JS
-  formatter emits, and its length decides the layout — so no fixed layout in a `.ts` file
+  formatter emits, and its length decides the layout -- so no fixed layout in a `.ts` file
   could satisfy every answer. The data moved to JSON files read at run time.
 - **The web-ui part shipped an example web server that did not exist**, so a fresh scaffold
   failed trying to start it. It ships empty now, which the help already called a recorded gap.
@@ -441,11 +441,11 @@ exited 0 and reported a clean run every time -- and all four now print a
    so the fix is a warning, not a merge: `merge_hooks.py` now reports any hook id that appears
    under both a fragment-owned repo and a repository-owned one.
    `tests/test_scaffold.py::test_a_hook_id_the_repository_already_ran_gets_a_duplicate_warning`.
-4. **The `just` layer's own justfile -- `setup`, `check`, `each`, and the rest -- is skipped
-   whole when a justfile already exists, so a repository whose own `setup` or `check` predates
-   the scaffold now shadows the built-in recipe of the same name.** `just check` runs only the
-   repository's own recipe; the built-in one that runs `hooks-all` and every language's own
-   check is simply never placed, and CI calling the same name gets the same silence. Fixed by
+4. **The `just` layer's own justfile is skipped whole when a justfile already exists.** It
+   carries `setup`, `check`, `each` and the rest, so a repository whose own `setup` or `check`
+   predates the scaffold shadows the built-in recipe of the same name. `just check` runs only the
+   repository's own recipe. The built-in one that runs `hooks-all` and every language's own
+   check never lands at all, and CI calling the same name gets the same silence. Fixed by
    having `gen_justfile.py` warn when the justfile (wherever it came from) defines a name the
    layer's own justfile also defines. `tests/test_scaffold.py::test_a_recipe_name_the_scaffold_also_wants_is_a_warning`.
 
@@ -468,8 +468,8 @@ Checked and found correct, no fix needed: `.gitignore` and `justfile` merges kee
 hand-written line (`fold_gitignore.py`, `gen_justfile.py`'s append path); a dirty
 uncommitted change in `src/index.ts` survived byte-for-byte, because nothing in the TS
 layer writes there; `tsconfig.json`, `biome.json`, and `README.md` are correctly classified
-`overwrite` with an accurate `lines_lost` count -- they carry `@@` tokens (`AWS_CDK_DEST`,
-`BIOME_VERSION`, `PROJECT_NAME`), so `SKIP_IF_EXISTS` cannot apply, and `plan` says so before
+`overwrite` with an accurate `lines_lost` count. Each carries `@@` tokens (`AWS_CDK_DEST`,
+`BIOME_VERSION`, `PROJECT_NAME`), which puts them beyond `SKIP_IF_EXISTS`. `plan` says so before
 `apply` does it; a hand-owned `.github/workflows/ci.yml` is left alone with the existing
 `gen_caller` warning naming the orphaned `wc-*.yml` files; re-applying the fully-collided
 fixture a second time changed zero bytes (`create/overwrite/merge/remove` all `0`) with the
@@ -618,7 +618,7 @@ mention of it describes the state before the sixth round's fix, not a live gap.
 
 - **Do not `git push`.** Commit locally, on a branch if the change is large.
 - Do not hand-edit `templates/`; change `assets/` or `tools/port_assets.py` and re-port.
-- Do not edit a generated file in a scaffolded output either — `rule://project-setup-generated-file-guard`
+- Do not edit a generated file in a scaffolded output either -- `rule://project-setup-generated-file-guard`
   will stop you, and it is right.
 - Add a test for every fix. If it was worth fixing it was worth pinning.
 - The `omp-plugins` repo has an unpushed `chore/retire-project-setup` branch and unrelated
