@@ -84,7 +84,7 @@ silence it.
 
 | | |
 | --- | --- |
-| Repo | `/Users/sjors/personal/dev/project-setup` (17 commits, clean, **never pushed**) |
+| Repo | `github.com/srobroek/project-setup-layers`, branch `round-five-journey` |
 | CLI | `project-setup`, already on PATH, editable install pointing at this repo |
 | OMP plugin | `@srobroek/project-setup@0.1.0`, symlinked, so edits are live |
 | Slash command | `/project-setup` |
