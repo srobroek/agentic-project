@@ -773,10 +773,14 @@ def question_block(name: str, spec: dict) -> dict:
         # the first refusal anybody meets: `PROJECT_NAME must match ^[a-z][a-z0-9-]+$`
         # left them to read a regex and guess what to type instead. A `rule` says it in
         # words with an example; the pattern stays the enforcer.
+        # The message must NOT repeat the variable name: Copier prints its own
+        # "Validation error for question 'X': " in front of whatever this renders, so
+        # naming X again read "...question 'PROJECT_NAME': PROJECT_NAME must be..." and
+        # spent 13 to 17 characters of the first line saying it twice.
         rule = spec.get("rule") or f"match {spec['validator']}"
         q["validator"] = (
             f"{{% if not ({name} | string | regex_search('{spec['validator']}')) %}}"
-            f"{name} must {rule}{{% endif %}}"
+            f"must {rule}{{% endif %}}"
         )
     return q
 

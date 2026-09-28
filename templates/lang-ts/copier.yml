@@ -61,8 +61,8 @@ AWS_CDK_DEST:
   type: str
   help: Repo-relative CDK destination
   default: infrastructure
-  validator: '{% if not (AWS_CDK_DEST | string | regex_search(''^[A-Za-z0-9._][A-Za-z0-9._/-]*$'')) %}AWS_CDK_DEST
-    must be a repo-relative path, no spaces: deploy/cdk{% endif %}'
+  validator: '{% if not (AWS_CDK_DEST | string | regex_search(''^[A-Za-z0-9._][A-Za-z0-9._/-]*$'')) %}must
+    be a repo-relative path, no spaces: deploy/cdk{% endif %}'
 BIOME_VERSION:
   type: str
   help: Biome
@@ -101,8 +101,8 @@ OXLINT_VERSION:
 PROJECT_NAME:
   type: str
   help: Repository name. Becomes the crate, package and module name
-  validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z](?:[a-z0-9-]*[a-z0-9])?$'')) %}PROJECT_NAME
-    must be lowercase letters, digits and dashes: my-app, api2{% endif %}'
+  validator: '{% if not (PROJECT_NAME | string | regex_search(''^[a-z](?:[a-z0-9-]*[a-z0-9])?$'')) %}must
+    be lowercase letters, digits and dashes: my-app, api2{% endif %}'
 TSGOLINT_VERSION:
   type: str
   help: oxlint-tsgolint, which oxlint's type-aware rules require

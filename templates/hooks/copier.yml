@@ -53,8 +53,8 @@ DEFAULT_BRANCH:
   type: str
   help: Branch CI listens on and the force-push guard protects
   default: main
-  validator: '{% if not (DEFAULT_BRANCH | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}DEFAULT_BRANCH
-    must have no spaces or shell characters: main, release/2.x{% endif %}'
+  validator: '{% if not (DEFAULT_BRANCH | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}must have no
+    spaces or shell characters: main, release/2.x{% endif %}'
 HOOK_EXCLUDE_PATTERNS:
   type: str
   help: Paths excluded from hooks, joined with \|. Empty drops the block

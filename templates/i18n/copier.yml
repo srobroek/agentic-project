@@ -71,8 +71,8 @@ I18N_PROJECT_DIR:
   type: str
   help: Inlang project dir, repo-relative, e.g. apps/web/project.inlang
   default: project.inlang
-  validator: '{% if not (I18N_PROJECT_DIR | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}I18N_PROJECT_DIR
-    must be a repo-relative path: apps/web/project.inlang{% endif %}'
+  validator: '{% if not (I18N_PROJECT_DIR | string | regex_search(''^[A-Za-z0-9._/-]+$'')) %}must be a
+    repo-relative path: apps/web/project.inlang{% endif %}'
 INLANG_MESSAGE_FORMAT_MODULE_URL:
   type: str
   help: Inlang message-format plugin module URL; pin the version you want

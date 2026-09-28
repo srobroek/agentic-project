@@ -636,18 +636,40 @@ def test_a_bool_with_choices_still_answers_true_or_false():
         assert spec.get("default") in (True, False), f"{name} default must be a bool"
 
 
-def test_a_rejection_message_fits_an_eighty_column_terminal():
-    """A validator message is read at the moment of failure, and at 80 columns
-    anything past roughly 76 characters is cut off mid-sentence -- which is how
-    "PROJECT_NAME must be lowercase le…" reached a user. Context belongs in `help`,
-    shown when the question is asked; the rule has to fit.
+def test_a_rejection_message_reads_as_two_lines_at_most():
+    """What a user reads is Copier's prefix plus our rule, and this used to measure only
+    our half.
+
+    Copier prints "Validation error for question 'X': " -- 46 to 50 characters depending
+    on the name -- in front of whatever the validator renders, so a 71-character rule was
+    a 117-character line. It wraps rather than truncating in a real terminal, which is why
+    nothing needed shortening, but a budget of 76 on our half alone measured a narrower
+    property than its name claimed. Two wrapped lines is the budget: past that a refusal
+    stops being readable at a glance.
     """
     interview = yaml.safe_load((TEMPLATES / "_interview" / "copier.yml").read_text())
-    too_long = {}
+    over: dict[str, int] = {}
     for name, spec in interview.items():
         if not isinstance(spec, dict) or not spec.get("validator"):
             continue
-        message = re.sub(r"\{%.*?%\}", "", spec["validator"]).strip()
-        if len(message) > 76:
-            too_long[name] = len(message)
-    assert too_long == {}, f"truncated on an 80-column terminal: {too_long}"
+        rule = re.sub(r"\{%.*?%\}", "", spec["validator"]).strip()
+        whole = f"Validation error for question '{name}': {rule}"
+        if len(whole) > 158:
+            over[name] = len(whole)
+    assert over == {}, f"a refusal spilling past two 80-column lines: {over}"
+
+
+def test_a_rejection_does_not_repeat_the_name_copier_already_printed():
+    """Copier's own prefix names the question, so a message starting with that same name
+    read "...question 'PROJECT_NAME': PROJECT_NAME must be lowercase..." and spent 13 to
+    17 characters of the first line saying it twice.
+    """
+    interview = yaml.safe_load((TEMPLATES / "_interview" / "copier.yml").read_text())
+    repeated = [
+        name
+        for name, spec in interview.items()
+        if isinstance(spec, dict)
+        and spec.get("validator")
+        and re.sub(r"\{%.*?%\}", "", spec["validator"]).strip().startswith(name)
+    ]
+    assert repeated == [], f"Copier's prefix already names these: {repeated}"

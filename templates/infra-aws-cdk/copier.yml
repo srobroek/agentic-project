@@ -52,8 +52,8 @@ AWS_CDK_DEST:
   type: str
   help: Repo-relative CDK destination
   default: infrastructure
-  validator: '{% if not (AWS_CDK_DEST | string | regex_search(''^[A-Za-z0-9._][A-Za-z0-9._/-]*$'')) %}AWS_CDK_DEST
-    must be a repo-relative path, no spaces: deploy/cdk{% endif %}'
+  validator: '{% if not (AWS_CDK_DEST | string | regex_search(''^[A-Za-z0-9._][A-Za-z0-9._/-]*$'')) %}must
+    be a repo-relative path, no spaces: deploy/cdk{% endif %}'
 AWS_CDK_VERSION:
   type: str
   help: aws-cdk CLI, exact stable release

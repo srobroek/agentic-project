@@ -382,29 +382,53 @@ def test_rust_preset_keeps_layers_multiselect_and_deselects_rust_questions(tmp_p
     assert "lang-rust" not in answers["LAYERS"]
 
 
-def test_an_invalid_name_stops_the_interview_and_records_nothing(tmp_path):
-    """Measured behaviour, and it is worth knowing: Copier validates after the prompt
-    returns rather than inline, so a rejected answer raises and ENDS the interview. It
-    does not re-ask. What matters most is the second half -- the invalid value reaches no
-    file -- and that a user who typos a name is told why rather than left with a
-    traceback.
+def test_a_rejected_answer_re_asks_and_the_correction_is_taken(tmp_path):
+    """The rejected value never reaches the file, and the conversation survives a typo.
 
-    Copier prefixes the message with "Validation error for question 'X': ", 45 characters
-    before ours begins, so at 80 columns the text wraps rather than truncating. It wraps
-    mid-word, which is why this asserts on a fragment.
+    An earlier version of this test asserted the opposite -- that a rejection ENDS the
+    interview -- and passed, because `finish()` SIGKILLs a process still alive after eight
+    seconds and a prompt correctly waiting for a new answer looks exactly like that. The
+    assertion was measuring the harness. Copier does attach its validator to the
+    questionary prompt for an `input` question, so the prompt comes back.
+
+    questionary keeps the rejected text in the buffer so it can be edited, which is why
+    this sends Ctrl-U first: without it the new answer appends to the old one and
+    "Not A Valid Name" plus "pty-recovered" arrives as one invalid answer.
     """
-    dest = tmp_path / "invalid-name"
+    dest = tmp_path / "rejected-then-corrected"
     with InterviewDriver(dest) as driver:
         driver.wait_for("PROJECT_NAME")
         driver.send(b"Not A Valid Name\r")
         driver.wait_for_text("must be lowercase")
+        driver.send(b"\x15pty-recovered\r")
+        for key in MINIMAL_SEQUENCE[1:]:
+            driver.wait_for(key)
+            driver.send(b"A recovered project\r" if key == "DESCRIPTION" else b"\r")
         code = driver.finish()
 
-    assert code != 0, "a rejected answer must not look like a successful interview"
-    assert "Validation error" in driver.output
-    assert not (dest / ".project-setup-answers.yml").exists(), (
-        "the rejected value reached the answers file"
-    )
+    assert code == 0, f"the interview did not survive a rejected answer:\n{driver.output[-1500:]}"
+    assert "Validation error" in driver.output, "the rejection was never shown"
+    recorded = yaml.safe_load((dest / ".project-setup-answers.yml").read_text())
+    assert recorded["PROJECT_NAME"] == "pty-recovered", "the correction was not taken"
+    assert "Not A Valid Name" not in str(recorded), "the rejected value reached the file"
+
+
+def test_the_prompt_returns_after_a_rejection(tmp_path):
+    """The prompt itself has to come back, not just the error. Counting the prompt is the
+    evidence: once is a validator that killed the run, twice is one that re-asked."""
+    dest = tmp_path / "prompt-returns"
+    with InterviewDriver(dest) as driver:
+        driver.wait_for("PROJECT_NAME")
+        driver.send(b"Not A Valid Name\r")
+        driver.wait_for_text("must be lowercase")
+        driver.send(b"\x15pty-returns\r")
+        for key in MINIMAL_SEQUENCE[1:]:
+            driver.wait_for(key)
+            driver.send(b"A returning project\r" if key == "DESCRIPTION" else b"\r")
+        assert driver.finish() == 0
+
+    asked = driver.output.count(PROMPT_BY_KEY["PROJECT_NAME"])
+    assert asked >= 2, f"the name prompt appeared {asked} time(s), so it did not re-ask"
 
 
 def test_accepting_every_default_produces_an_answer_set_that_applies(tmp_path):
