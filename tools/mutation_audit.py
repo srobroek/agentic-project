@@ -334,6 +334,20 @@ MUTATIONS = [
         ),
         tests="tests/test_native_tools.py -k each_language_task",
     ),
+    Mutation(
+        name="a killed interview reports -9 instead of naming the harness timeout",
+        path="tests/test_interview_pty.py",
+        old="        if overran:\n            raise AssertionError(",
+        new="        if False:\n            raise AssertionError(",
+        tests="tests/test_interview_pty.py -k harness_timeout",
+    ),
+    Mutation(
+        name="finish() raises even when the interview exited on its own",
+        path="tests/test_interview_pty.py",
+        old="        overran = self._process.poll() is None",
+        new="        overran = True",
+        tests="tests/test_interview_pty.py -k exits_badly",
+    ),
 ]
 
 

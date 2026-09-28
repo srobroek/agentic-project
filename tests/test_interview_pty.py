@@ -76,6 +76,18 @@ OPTIONAL_LAYERS = [
     "infra-aws-cdk",
 ]
 ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
+
+# How long a prompt may take to reach the PTY. Sized for a busy machine rather than the
+# work, because the work is one redraw. Measured on 14 cores: the slowest single prompt
+# is 1.1s idle and 2.6s while load climbs, and the first prompt is always the slowest
+# because it waits on interpreter start. The previous 5s looked like 4x headroom and was
+# not: six of these tests failed together at load 115, all of them inside a wait rather
+# than on anything the interview did. Twenty seconds is ~8x the loaded worst case.
+#
+# The cost of a larger number is that a genuinely hung interview takes longer to report.
+# Nothing here asserts a prompt is absent by letting a wait expire, so that cost is only
+# paid on a real failure.
+PROMPT_TIMEOUT_SECONDS = 20.0
 PTY_AVAILABLE = pty is not None and fcntl is not None and hasattr(pty, "openpty")
 
 if not PTY_AVAILABLE:  # pytest gives users a useful reason on Windows and other hosts.
@@ -145,7 +157,7 @@ class InterviewDriver:
     def _consume(self, offset: int, length: int) -> None:
         self._position += offset + length
 
-    def wait_for(self, key: str, timeout: float = 5.0) -> None:
+    def wait_for(self, key: str, timeout: float = PROMPT_TIMEOUT_SECONDS) -> None:
         """Read until the prompt carrying ``key`` has reached the PTY."""
         token = PROMPT_BY_KEY[key]
         deadline = time.monotonic() + timeout
@@ -158,7 +170,7 @@ class InterviewDriver:
             self._read(min(0.05, max(0.0, deadline - time.monotonic())))
         raise AssertionError(f"did not see {key} ({token!r}) in:\n{self.output[-2000:]}")
 
-    def wait_for_text(self, needle: str, timeout: float = 5.0) -> None:
+    def wait_for_text(self, needle: str, timeout: float = PROMPT_TIMEOUT_SECONDS) -> None:
         """Read until ``needle`` reaches the PTY, for output that is not a prompt.
 
         A validation message is not a question, so `wait_for` cannot see it, and sending
@@ -172,7 +184,7 @@ class InterviewDriver:
             self._read(min(0.05, max(0.0, deadline - time.monotonic())))
         raise AssertionError(f"did not see {needle!r} in:\n{self.output[-2000:]}")
 
-    def wait_for_any(self, keys: set[str], timeout: float = 5.0) -> str:
+    def wait_for_any(self, keys: set[str], timeout: float = PROMPT_TIMEOUT_SECONDS) -> str:
         """Identify the next prompt from a set of possible runtime questions."""
         tokens = {key: PROMPT_BY_KEY[key] for key in keys}
         deadline = time.monotonic() + timeout
@@ -203,18 +215,39 @@ class InterviewDriver:
                 continue
         return self.output[len(before) :]
 
-    def finish(self, timeout: float = 8.0) -> int:
-        """Reap the child and drain the terminal, returning its process status."""
+    def finish(self, timeout: float = 30.0) -> int:
+        """Reap the child and drain the terminal, returning its process status.
+
+        Raises on a timeout rather than returning the kill status. A SIGKILLed child
+        reports -9, which is indistinguishable from an interview that exited badly, and
+        that ambiguity has already cost this project one test: it asserted that a
+        rejected answer ENDS the interview and passed, because a prompt correctly
+        waiting for a correction looks exactly like a process that had to be killed.
+        A harness timeout now says so instead of arriving as a number.
+
+        Thirty seconds because the deadline has to clear the machine being busy, not
+        just the work. Measured on 14 cores: teardown takes 1.3 to 1.6s idle and 3.2 to
+        6.3s under 2x CPU oversubscription. The previous 8s left 1.7s of headroom
+        against that worst case, and the full suite runs enough concurrent subprocesses
+        to spend it -- this flaked once in a full run while passing 9 for 9 in isolation.
+        """
         deadline = time.monotonic() + timeout
         while self._process.poll() is None and time.monotonic() < deadline:
             self._read(0.02)
-        if self._process.poll() is None:
+        overran = self._process.poll() is None
+        if overran:
             self._kill()
         status = self._process.wait()
         # The child can have flushed its final redraw between waitpid and EIO.
         while self._read(0.01):
             pass
         self._status = status
+        if overran:
+            raise AssertionError(
+                f"the interview was still running after {timeout}s, so it was killed. "
+                f"This is a harness timeout, not an exit status; the prompt may simply "
+                f"have been waiting. Last output:\n{self.output[-1500:]}"
+            )
         return status
 
     def _kill(self) -> None:
@@ -462,3 +495,32 @@ def test_accepting_every_default_produces_an_answer_set_that_applies(tmp_path):
     )
     assert applied.returncode == 0, applied.stdout + applied.stderr
     assert json.loads(applied.stdout)["ok"] is True
+
+
+def test_a_harness_timeout_is_reported_as_one_not_as_an_exit_status(tmp_path):
+    """A killed child reports -9, which reads like an exit code and is not one.
+
+    This is the ambiguity that made an earlier test assert the opposite of the truth and
+    pass. The driver has to distinguish "the interview failed" from "the interview was
+    still going and I gave up on it", because the second is a statement about the harness.
+
+    Driven by never answering the first prompt, so the process is genuinely still running
+    at the deadline, with a deadline short enough to keep the test quick.
+    """
+    with InterviewDriver(tmp_path / "never-answered") as driver:
+        driver.wait_for("PROJECT_NAME")
+        with pytest.raises(AssertionError, match=r"harness timeout, not an exit status"):
+            driver.finish(timeout=0.5)
+
+
+def test_an_interview_that_exits_badly_still_reports_its_status(tmp_path):
+    """The timeout guard must not swallow a real non-zero exit.
+
+    Ctrl-C makes Copier exit 130 of its own accord, so the process is gone before the
+    deadline and the status is the interview's own. If finish() raised here too, the
+    two SIGINT tests would be asserting nothing.
+    """
+    with InterviewDriver(tmp_path / "interrupted") as driver:
+        driver.wait_for("PROJECT_NAME")
+        driver.send(b"\x03")
+        assert driver.finish() == 130
