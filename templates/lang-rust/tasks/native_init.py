@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Copier task: let the language's own tool own its manifest and lockfile.
 
-    native_init.py rust <crate-name>:lib|bin <spdx-id>
-    native_init.py ts   <project-name>
+    native_init.py rust <crate-name>:lib|bin <spdx-id>:<description>
+    native_init.py ts   <project-name> <pinned-versions> <scope> <spdx-id>:<description>
     native_init.py py   <project-name>:<src|flat>:<python-version> <spdx-id>:<description>
     native_init.py go   <module-path> [<go-version>]
 
@@ -84,20 +84,27 @@ def finish(kind: str, code: int) -> int:
 
 
 def main() -> int:
-    if not 3 <= len(sys.argv) <= 5:
+    if not 3 <= len(sys.argv) <= 6:
         print(__doc__, file=sys.stderr)
         return 2
     kind, arg = sys.argv[1], sys.argv[2]
     extra = sys.argv[3] if len(sys.argv) >= 4 else ""
     # "member" or "root". Optional so an older invocation still works, and a value
     # that is neither is treated as root rather than guessed at.
-    scope = sys.argv[4] if len(sys.argv) == 5 else "root"
+    scope = sys.argv[4] if len(sys.argv) >= 5 else "root"
+    # `<spdx-id>:<description>` for the kinds whose third slot is already taken. ts
+    # spends argv[3] on pinned dev-tool versions and argv[4] on scope, so its package
+    # metadata has nowhere earlier to go.
+    metadata = sys.argv[5] if len(sys.argv) == 6 else ""
 
     # Every reconciliation below is guarded on the manifest actually being there. When
     # the tool is absent `run` degrades to a warning and returns 0, and a tidy pass
     # over a tree the tool never wrote reconciles nothing against nothing.
     if kind == "rust":
         name, _, target = arg.rpartition(":")
+        # SPDX first and split once, because a description is free text that may carry
+        # a colon and an SPDX id never does.
+        spdx, _, description = extra.partition(":")
         if begin(kind, "Cargo.toml") is None:
             return 0
         command = ["cargo", "init", f"--{target}", "--quiet"]
@@ -105,7 +112,8 @@ def main() -> int:
             command[2:2] = ["--name", name]
         code = run(command, owns="Cargo.toml")
         if code == 0 and Path("Cargo.toml").is_file():
-            _mark_unpublished_if_unlicensed(extra)
+            _declare_cargo_metadata(spdx, description)
+            _mark_unpublished_if_unlicensed(spdx)
         return finish(kind, code)
 
     if kind == "ts":
@@ -118,11 +126,13 @@ def main() -> int:
             # the just recipes call: `bunx biome`/`bunx oxlint` with none declared
             # falls through to whatever mise or PATH happens to answer, unversioned.
             _declare_ts_dev_tools(extra, member=scope == "member")
+            _declare_npm_metadata(*_split_metadata(metadata))
             return 0
         code = run(["bun", "init", "-y"], owns="package.json")
         if code == 0 and Path("package.json").is_file():
             _tidy_after_bun(arg, pre_existing)
             _declare_ts_dev_tools(extra, member=scope == "member")
+            _declare_npm_metadata(*_split_metadata(metadata))
             _seed_ts_entry_point()
         return finish(kind, code)
 
@@ -475,6 +485,84 @@ def _declare_package_metadata(spdx: str, description: str) -> None:
         return
     manifest.write_text(text)
     print(f"native_init: set {', '.join(wrote)} in pyproject.toml")
+
+
+def _split_metadata(packed: str) -> tuple[str, str]:
+    """`<spdx-id>:<description>`, split once.
+
+    SPDX first because an id never contains a colon and a description often does, so
+    splitting on the first one keeps the whole description whatever it holds.
+    """
+    spdx, _, description = packed.partition(":")
+    return spdx, description
+
+
+def _declare_npm_metadata(spdx: str, description: str) -> None:
+    """Put the description and license into package.json, which `bun init -y` omits.
+
+    Same gap the py branch had: the governance layer writes LICENSE from SPDX_ID and
+    the manifest claimed nothing, so `bun pm pack` produced a tarball whose metadata
+    stated neither. Edited through the json module rather than as text, because
+    package.json is JSON and a hand-spliced field is how trailing-comma bugs happen.
+    """
+    manifest = Path("package.json")
+    if not manifest.is_file():
+        return
+    try:
+        data = json.loads(manifest.read_text())
+    except json.JSONDecodeError:
+        # A manifest the repository owns and that is already broken is not this task's
+        # to rewrite; the dev-tool declaration reports the same way.
+        print("native_init: WARNING package.json is not valid JSON, leaving it alone")
+        return
+
+    wrote = []
+    # Only when absent. A description or license somebody wrote is theirs.
+    if description and not data.get("description"):
+        data["description"] = description
+        wrote.append("description")
+    if spdx != NO_LICENSE and not data.get("license"):
+        data["license"] = spdx
+        wrote.append(f"license = {spdx}")
+    if not wrote:
+        return
+    manifest.write_text(json.dumps(data, indent=2) + "\n")
+    print(f"native_init: set {', '.join(wrote)} in package.json")
+
+
+def _declare_cargo_metadata(spdx: str, description: str) -> None:
+    """Put the description and license into Cargo.toml, which `cargo init` omits.
+
+    This one is not cosmetic: `cargo publish` refuses a crate that declares no
+    `description` and no `license`, so every scaffolded crate was unpublishable. It is
+    also why _mark_unpublished_if_unlicensed exists -- cargo-deny falls back to reading
+    the LICENSE file when the manifest states nothing. With the field set, deny reads
+    the manifest and the fallback only matters for SPDX_ID=NONE.
+    """
+    manifest = Path("Cargo.toml")
+    if not manifest.is_file():
+        return
+    body = manifest.read_text()
+    # `cargo init` writes `version = "0.1.0"` directly under `[package]`, which is where
+    # _mark_unpublished_if_unlicensed inserts too. Anchoring on the same line keeps both
+    # inside the package table rather than appending past the first [dependencies].
+    anchor = 'version = "0.1.0"\n'
+    if anchor not in body:
+        return
+
+    additions = []
+    if description and not re.search(r"^description\s*=", body, re.MULTILINE):
+        # A TOML basic string, so a quote or a backslash has to be escaped.
+        escaped = description.replace("\\", "\\\\").replace('"', '\\"')
+        additions.append(f'description = "{escaped}"')
+    if spdx != NO_LICENSE and not re.search(r"^license\s*=", body, re.MULTILINE):
+        additions.append(f'license = "{spdx}"')
+    if not additions:
+        return
+
+    manifest.write_text(body.replace(anchor, anchor + "\n".join(additions) + "\n", 1))
+    named = ", ".join(a.split(" =")[0] for a in additions)
+    print(f"native_init: set {named} in Cargo.toml")
 
 
 def _seed_python_test() -> None:

@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import tomllib
 from pathlib import Path
 
@@ -787,4 +788,166 @@ def test_the_python_task_is_given_the_license_and_the_description():
     command = (TEMPLATES / "lang-python/copier.yml").read_text()
     assert "@@ SPDX_ID @@:@@ DESCRIPTION @@" in command, (
         "the py task no longer receives the license and description"
+    )
+
+
+BUN_FRESH = '{\n  "name": "mine",\n  "module": "index.ts",\n  "private": true\n}\n'
+CARGO_FRESH = '[package]\nname = "mine"\nversion = "0.1.0"\nedition = "2024"\n\n[dependencies]\n'
+
+
+def test_the_npm_manifest_states_the_description_and_license(native_init, tmp_path, monkeypatch):
+    """`bun init -y` writes neither, so a packed tarball claimed nothing.
+
+    Same gap the py branch had: the governance layer writes LICENSE from SPDX_ID and
+    the manifest stayed silent about it.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "package.json").write_text(BUN_FRESH)
+
+    native_init._declare_npm_metadata("MIT", "what this package is")
+
+    data = json.loads((tmp_path / "package.json").read_text())
+    assert data["description"] == "what this package is"
+    assert data["license"] == "MIT"
+    assert data["name"] == "mine", "the manifest's own fields were not preserved"
+
+
+def test_the_cargo_manifest_states_what_publish_requires(native_init, tmp_path, monkeypatch):
+    """`cargo publish` refuses a crate declaring no description and no license.
+
+    So every scaffolded crate was unpublishable, which is why this is not cosmetic.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "Cargo.toml").write_text(CARGO_FRESH)
+
+    native_init._declare_cargo_metadata("Apache-2.0", "what this crate is")
+
+    package = tomllib.loads((tmp_path / "Cargo.toml").read_text())["package"]
+    assert package["description"] == "what this crate is"
+    assert package["license"] == "Apache-2.0"
+
+
+def test_the_cargo_fields_land_inside_the_package_table(native_init, tmp_path, monkeypatch):
+    """Appending to the file would put them under [dependencies] and mean something else.
+
+    tomllib reads a misplaced key without complaint, so the assertion has to be that the
+    keys are in `package` rather than merely present somewhere in the document.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "Cargo.toml").write_text(CARGO_FRESH)
+
+    native_init._declare_cargo_metadata("MIT", "inside the table")
+
+    parsed = tomllib.loads((tmp_path / "Cargo.toml").read_text())
+    assert "description" in parsed["package"]
+    assert "license" in parsed["package"]
+    assert "description" not in parsed.get("dependencies", {})
+
+
+def test_a_hostile_description_survives_both_manifest_formats(native_init, tmp_path, monkeypatch):
+    """A quote and a backslash terminate or escape a value in both JSON and TOML."""
+    monkeypatch.chdir(tmp_path)
+    hostile = 'A probe: with a "quote" and a backslash \\ in it'
+    (tmp_path / "package.json").write_text(BUN_FRESH)
+    (tmp_path / "Cargo.toml").write_text(CARGO_FRESH)
+
+    native_init._declare_npm_metadata("MIT", hostile)
+    native_init._declare_cargo_metadata("MIT", hostile)
+
+    assert json.loads((tmp_path / "package.json").read_text())["description"] == hostile
+    cargo = tomllib.loads((tmp_path / "Cargo.toml").read_text())
+    assert cargo["package"]["description"] == hostile
+
+
+@pytest.mark.parametrize(
+    ("helper", "manifest", "body"),
+    [
+        ("_declare_npm_metadata", "package.json", BUN_FRESH),
+        ("_declare_cargo_metadata", "Cargo.toml", CARGO_FRESH),
+    ],
+)
+def test_no_license_is_claimed_when_the_project_states_none(
+    native_init, tmp_path, monkeypatch, helper, manifest, body
+):
+    """SPDX_ID=NONE writes no LICENSE file, so declaring one would be a false claim."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / manifest).write_text(body)
+
+    getattr(native_init, helper)(native_init.NO_LICENSE, "still described")
+
+    text = (tmp_path / manifest).read_text()
+    assert "still described" in text
+    assert not re.search(r'^\s*"?license"?\s*[:=]', text, re.MULTILINE)
+
+
+@pytest.mark.parametrize(
+    ("helper", "manifest", "body", "mine"),
+    [
+        (
+            "_declare_npm_metadata",
+            "package.json",
+            '{\n  "name": "mine",\n  "description": "I wrote this",\n  "license": "MIT"\n}\n',
+            "I wrote this",
+        ),
+        (
+            "_declare_cargo_metadata",
+            "Cargo.toml",
+            '[package]\nname = "mine"\nversion = "0.1.0"\n'
+            'description = "I wrote this"\nlicense = "MIT"\n',
+            "I wrote this",
+        ),
+    ],
+)
+def test_metadata_the_manifest_already_carries_is_left_alone(
+    native_init, tmp_path, monkeypatch, capsys, helper, manifest, body, mine
+):
+    """A description or license somebody wrote is theirs, and the report says nothing."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / manifest).write_text(body)
+
+    getattr(native_init, helper)("Apache-2.0", "what the tool was given")
+
+    text = (tmp_path / manifest).read_text()
+    assert mine in text
+    assert "Apache-2.0" not in text, "overwrote a license the manifest already declared"
+    assert capsys.readouterr().out == "", "reported an edit it did not make"
+
+
+def test_a_package_json_that_is_not_json_is_reported_not_rewritten(
+    native_init, tmp_path, monkeypatch, capsys
+):
+    """Rewriting a manifest that is already broken would destroy whatever is in it."""
+    monkeypatch.chdir(tmp_path)
+    broken = '{\n  "name": "mine",\n'
+    (tmp_path / "package.json").write_text(broken)
+
+    native_init._declare_npm_metadata("MIT", "x")
+
+    assert (tmp_path / "package.json").read_text() == broken
+    assert "not valid JSON" in capsys.readouterr().out
+
+
+def test_the_metadata_slot_is_split_on_the_first_colon_only():
+    """A description may carry a colon; an SPDX id may not."""
+    module = load_module(NATIVE_INIT, "native_init_split")
+    assert module._split_metadata("MIT:a: b: c") == ("MIT", "a: b: c")
+    assert module._split_metadata("MIT:") == ("MIT", "")
+    assert module._split_metadata("") == ("", "")
+
+
+@pytest.mark.parametrize(
+    ("layer", "slot"),
+    [
+        ("lang-ts", "@@ SPDX_ID @@:@@ DESCRIPTION @@"),
+        ("lang-rust", "@@ SPDX_ID @@:@@ DESCRIPTION @@"),
+    ],
+)
+def test_each_language_task_is_handed_the_license_and_description(layer, slot):
+    """A helper nothing calls with the right arguments does nothing.
+
+    Every test above exercises the helpers directly, which passes whether or not the
+    generated copier.yml actually hands them SPDX_ID and DESCRIPTION.
+    """
+    assert slot in (TEMPLATES / layer / "copier.yml").read_text(), (
+        f"{layer} no longer receives the license and description"
     )

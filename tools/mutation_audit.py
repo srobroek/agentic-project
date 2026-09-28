@@ -230,8 +230,8 @@ MUTATIONS = [
     Mutation(
         name="a license is claimed even when the project states none",
         path="tools/tasks/native_init.py",
-        old="if spdx != NO_LICENSE and not re.search",
-        new="if not re.search",
+        old='if spdx != NO_LICENSE and not re.search(r"^license\\s*=", text, re.MULTILINE)',
+        new='if not re.search(r"^license\\s*=", text, re.MULTILINE)',
         tests="tests/test_native_tools.py -k states_none",
     ),
     Mutation(
@@ -244,9 +244,95 @@ MUTATIONS = [
     Mutation(
         name="the py task stops being handed the license and description",
         path="tools/port_assets.py",
-        old='"@@ SPDX_ID @@:@@ DESCRIPTION @@",',
-        new='"@@ SPDX_ID @@:",',
+        old=(
+            "# split once: a description may carry a colon, an SPDX id may not.\n"
+            '                "@@ SPDX_ID @@:@@ DESCRIPTION @@",'
+        ),
+        new=(
+            "# split once: a description may carry a colon, an SPDX id may not.\n"
+            '                "@@ SPDX_ID @@:",'
+        ),
         tests="tests/test_native_tools.py -k python_task_is_given",
+    ),
+    Mutation(
+        name="package.json goes back to stating no description or license",
+        path="tools/tasks/native_init.py",
+        old=(
+            '    manifest.write_text(json.dumps(data, indent=2) + "\\n")\n'
+            "    print(f\"native_init: set {', '.join(wrote)} in package.json\")"
+        ),
+        new="    pass",
+        tests="tests/test_native_tools.py -k npm_manifest_states",
+    ),
+    Mutation(
+        name="Cargo.toml goes back to being unpublishable",
+        path="tools/tasks/native_init.py",
+        old=(
+            "    manifest.write_text("
+            'body.replace(anchor, anchor + "\\n".join(additions) + "\\n", 1))'
+        ),
+        new="    pass",
+        tests="tests/test_native_tools.py -k cargo_manifest_states",
+    ),
+    Mutation(
+        name="the cargo fields are appended past the package table",
+        path="tools/tasks/native_init.py",
+        old=(
+            "    manifest.write_text("
+            'body.replace(anchor, anchor + "\\n".join(additions) + "\\n", 1))'
+        ),
+        new='    manifest.write_text(body + "\\n".join(additions) + "\\n")',
+        tests="tests/test_native_tools.py -k inside_the_package_table",
+    ),
+    Mutation(
+        name="a brownfield npm description is overwritten",
+        path="tools/tasks/native_init.py",
+        old='    if description and not data.get("description"):',
+        new="    if description:",
+        tests="tests/test_native_tools.py -k already_carries",
+    ),
+    Mutation(
+        name="a broken package.json is rewritten instead of reported",
+        path="tools/tasks/native_init.py",
+        old=(
+            '        print("native_init: WARNING package.json is not valid JSON, '
+            "leaving it alone\")"
+        ),
+        new='        data = {}  # noqa',
+        tests="tests/test_native_tools.py -k not_json",
+    ),
+    Mutation(
+        name="the metadata slot splits on every colon, truncating the description",
+        path="tools/tasks/native_init.py",
+        old='    spdx, _, description = packed.partition(":")',
+        new='    spdx, description = (packed.split(":") + [""])[:2]',
+        tests="tests/test_native_tools.py -k first_colon_only",
+    ),
+    Mutation(
+        name="the ts task stops being handed the license and description",
+        path="tools/port_assets.py",
+        old=(
+            "# and no license while the governance layer had written LICENSE.\n"
+            '                "@@ SPDX_ID @@:@@ DESCRIPTION @@",'
+        ),
+        new=(
+            "# and no license while the governance layer had written LICENSE.\n"
+            '                "@@ SPDX_ID @@:",'
+        ),
+        tests="tests/test_native_tools.py -k each_language_task",
+    ),
+    Mutation(
+        name="the rust task stops being handed the license and description",
+        path="tools/port_assets.py",
+        old=(
+            "# crate was unpublishable.\n"
+            '                "@@ SPDX_ID @@:@@ DESCRIPTION @@",'
+        ),
+        new=(
+            "# crate was unpublishable.\n"
+            '                "@@ SPDX_ID @@:",'
+        ),
+        tests="tests/test_native_tools.py -k each_language_task",
     ),
 ]
 
@@ -265,8 +351,19 @@ def check(mutation: Mutation) -> tuple[str, str]:
     if not path.is_file():
         return "ERROR", f"no such file: {mutation.path}"
     original = path.read_text()
-    if mutation.old not in original:
+    found = original.count(mutation.old)
+    if found == 0:
         return "ERROR", f"anchor absent: {mutation.old[:52]!r}"
+    if found > 1:
+        # An ambiguous anchor mutates whichever copy comes first, which is not the one
+        # the mutation names. That silently turned a caught mutation into a missed one
+        # when a third language started passing the same argument, so it fails loudly
+        # rather than reporting a result about the wrong code.
+        return (
+            "ERROR",
+            f"anchor matches {found} places, so it is not specific: "
+            f"{mutation.old[:40]!r}",
+        )
 
     path.write_text(original.replace(mutation.old, mutation.new, 1))
     try:

@@ -56,6 +56,7 @@ _tasks:
   - '@biomejs/biome=@@ BIOME_VERSION @@,oxlint=@@ OXLINT_VERSION @@,oxlint-tsgolint=@@ TSGOLINT_VERSION
     @@,knip=@@ KNIP_VERSION @@,@types/bun=@@ TYPES_BUN_VERSION @@'
   - '@@ ''member'' if IS_MEMBER else ''root'' @@'
+  - '@@ SPDX_ID @@:@@ DESCRIPTION @@'
 
 AWS_CDK_DEST:
   type: str

@@ -613,7 +613,10 @@ TASKS: dict[str, list[dict]] = {
                 # cargo-deny falls back to reading the LICENSE file. With SPDX_ID=NONE
                 # there is no such file, and `cargo deny check licenses` then fails the
                 # crate itself as unlicensed unless the manifest says `publish = false`.
-                "@@ SPDX_ID @@",
+                # The description travels behind it: `cargo publish` refuses a crate
+                # that declares no description and no license, so every scaffolded
+                # crate was unpublishable.
+                "@@ SPDX_ID @@:@@ DESCRIPTION @@",
             ],
         }
     ],
@@ -635,6 +638,9 @@ TASKS: dict[str, list[dict]] = {
                     "@types/bun=@@ TYPES_BUN_VERSION @@"
                 ),
                 "@@ 'member' if IS_MEMBER else 'root' @@",
+                # `bun init -y` writes neither, so the manifest claimed no description
+                # and no license while the governance layer had written LICENSE.
+                "@@ SPDX_ID @@:@@ DESCRIPTION @@",
             ],
         }
     ],
