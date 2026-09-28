@@ -144,7 +144,7 @@ def test_every_member_capability_maps_to_a_part_the_gate_can_scaffold():
 
 
 def test_the_member_gate_applies_with_the_member_flag():
-    """Without --member a member receives a nested .git and a second licence, so the gate
+    """Without --member a member receives a nested .git and a second license, so the gate
     must exercise the supported path rather than a plain apply into a subdirectory."""
     source = Path(e2e.__file__).read_text()
     block = source.split("def scaffold_members")[1].split("\ndef ")[0]

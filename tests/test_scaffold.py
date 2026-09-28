@@ -116,7 +116,7 @@ MEMBER_HAZARDS = (
 )
 
 
-def test_a_member_scoped_apply_never_nests_a_repository_or_a_licence(tmp_path: Path):
+def test_a_member_scoped_apply_never_nests_a_repository_or_a_license(tmp_path: Path):
     """The hazard this round exists to close. Measured before the fix:
     `apply --preset parts/lang-go --dest <root>/services/api` wrote a nested `.git`,
     a second LICENSE, CODEOWNERS, CONTRIBUTING.md, docs/agents/, AGENTS.md, CLAUDE.md
@@ -533,10 +533,10 @@ def test_task_output_is_kept_out_of_the_file_operation_list():
         "\nCopying from template version None\n"
         "\x1b[33m\x1b[1m overwrite\x1b[39m\x1b[0m  README.md\n"
         "\x1b[32m\x1b[1m    create\x1b[39m\x1b[0m  LICENSE\n"
-        "materialise_license: wrote LICENSE from MIT\n"
+        "materialize_license: wrote LICENSE from MIT\n"
     )
     assert files == {"overwrite": ["README.md"], "create": ["LICENSE"]}
-    assert rest == "materialise_license: wrote LICENSE from MIT"
+    assert rest == "materialize_license: wrote LICENSE from MIT"
 
 
 def test_monorepo_members_reach_the_manifest(tmp_path: Path):
@@ -568,7 +568,7 @@ def test_a_chosen_tool_version_reaches_the_files_that_pin_it(tmp_path: Path):
     assert '"3.12"' in (tmp_path / ".mise/conf.d/python.toml").read_text()
 
 
-def test_api_contract_is_rendered_with_its_licence_url(tmp_path: Path):
+def test_api_contract_is_rendered_with_its_license_url(tmp_path: Path):
     result = scaffold(
         tmp_path, "api-service", extra={"ORG": "example-org", "API_SERVER_URL": "https://api.x"}
     )
@@ -885,7 +885,7 @@ def test_a_fresh_scaffolds_own_justfile_does_not_warn_about_itself(tmp_path: Pat
 # --------------------------------------------------------------------------- tasks
 #
 # These run with tasks enabled, which is how a real apply works. They stay offline:
-# git_init, materialise_license and write_adrs touch nothing but the filesystem.
+# git_init, materialize_license and write_adrs touch nothing but the filesystem.
 
 ADRS = """[
   {"title": "Use Copier", "decision": "Render layered templates.",
@@ -931,14 +931,14 @@ def test_a_degraded_task_is_reported_not_swallowed(tmp_path: Path, monkeypatch):
     assert any("git" in m for m in messages), messages
 
 
-def test_licence_is_materialised_and_the_pool_removed(tmp_path: Path):
+def test_license_is_materialized_and_the_pool_removed(tmp_path: Path):
     result = scaffold_with_tasks(tmp_path, "minimal", extra={"SPDX_ID": "MPL-2.0"})
     assert result.ok, [s.detail for s in result.placed if not s.ok]
     assert "Mozilla Public License" in (tmp_path / "LICENSE").read_text()
-    assert not (tmp_path / "licenses").exists(), "unused licence texts were left behind"
+    assert not (tmp_path / "licenses").exists(), "unused license texts were left behind"
 
 
-def test_a_project_can_state_no_licence_at_all(tmp_path: Path):
+def test_a_project_can_state_no_license_at_all(tmp_path: Path):
     """Four choices were four ways to publish.
 
     An internal service, a work repository or a private tool is published under none of
@@ -950,15 +950,15 @@ def test_a_project_can_state_no_licence_at_all(tmp_path: Path):
 
     assert result.ok, [s.detail for s in result.placed if not s.ok]
     assert not (tmp_path / "LICENSE").exists()
-    assert not (tmp_path / "licenses").exists(), "unused licence texts were left behind"
+    assert not (tmp_path / "licenses").exists(), "unused license texts were left behind"
     # A deliberate answer, so it is not a degradation.
     assert result.warnings == []
 
 
-def test_a_brownfield_licence_mismatch_is_a_warning_not_silence(tmp_path: Path):
+def test_a_brownfield_license_mismatch_is_a_warning_not_silence(tmp_path: Path):
     """SPDX_ID=Apache-2.0 against a repository already stating MIT used to leave the
     repository silently stating MIT: the task printed that it left LICENSE alone, but
-    with no `WARNING` prefix nothing surfaced it, so an answered licence and the file
+    with no `WARNING` prefix nothing surfaced it, so an answered license and the file
     on disk could disagree with no warning anywhere in `plan` or `apply`.
     """
     (tmp_path / "LICENSE").write_text("MIT License\n\nCopyright (c) 2022 Somebody\n")
@@ -971,7 +971,7 @@ def test_a_brownfield_licence_mismatch_is_a_warning_not_silence(tmp_path: Path):
     assert any("LICENSE already present" in m and "Apache-2.0" in m for m in messages), messages
 
 
-def test_an_unlicensed_rust_crate_passes_its_own_licence_gate(tmp_path: Path):
+def test_an_unlicensed_rust_crate_passes_its_own_license_gate(tmp_path: Path):
     """`cargo deny check licenses` fails a crate it reads as unlicensed.
 
     `cargo init` writes no `license` field, so cargo-deny falls back to the LICENSE
@@ -984,7 +984,7 @@ def test_an_unlicensed_rust_crate_passes_its_own_licence_gate(tmp_path: Path):
     assert result.ok, [s.detail for s in result.placed if not s.ok]
     deny = (tmp_path / "deny.toml").read_text()
     assert "[licenses.private]" in deny
-    assert "NONE" not in deny, "NONE is not a licence a dependency can carry"
+    assert "NONE" not in deny, "NONE is not a license a dependency can carry"
     manifest = tmp_path / "Cargo.toml"
     if manifest.is_file():  # skipped when cargo is not installed
         assert "publish = false" in manifest.read_text()
@@ -1144,7 +1144,7 @@ def test_a_repositorys_own_empty_directories_survive(tmp_path: Path):
 
 
 def test_a_reuse_licenses_directory_survives(tmp_path: Path):
-    """The licence pool was placed as `licenses/` and then deleted, and on a
+    """The license pool was placed as `licenses/` and then deleted, and on a
     case-insensitive filesystem that took a REUSE `LICENSES/` directory with it."""
     (tmp_path / "LICENSES").mkdir()
     (tmp_path / "LICENSES/CC0-1.0.txt").write_text("CC0\n")
@@ -1364,7 +1364,7 @@ def test_just_list_descriptions_are_not_sentence_fragments(tmp_path: Path):
     descriptions = {
         "check": "Check formatting, lint, type-check, and test every language present",
         "go-fmt": "Format",
-        "ts-fmt": "Format and organise imports. biome owns this half of the split.",
+        "ts-fmt": "Format and organize imports. biome owns this half of the split.",
         "i18n": "Reject missing, orphaned, or invalid messages",
     }
     for recipe, description in descriptions.items():

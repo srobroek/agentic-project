@@ -16,7 +16,7 @@ _exclude:
 _tasks:
 - command:
   - '@@ _copier_python @@'
-  - '@@ _copier_conf.src_path @@/tasks/materialise_license.py'
+  - '@@ _copier_conf.src_path @@/tasks/materialize_license.py'
   - '@@ _copier_conf.src_path @@/tasks/licenses'
   - '@@ SPDX_ID @@'
 - command:
@@ -46,7 +46,7 @@ SECURITY_CONTACT:
   default: security@example.com
 SPDX_ID:
   type: str
-  help: Licence, or NONE for an unpublished repository. Writes LICENSE
+  help: License, or NONE for an unpublished repository. Writes LICENSE
   choices:
   - Apache-2.0
   - MIT

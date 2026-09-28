@@ -170,13 +170,13 @@ def main() -> int:
     return 2
 
 
-# The one SPDX_ID that is not a licence. Kept here rather than imported: task scripts
+# The one SPDX_ID that is not a license. Kept here rather than imported: task scripts
 # are copied into a layer one file at a time and run standalone.
-NO_LICENCE = "NONE"
+NO_LICENSE = "NONE"
 
 
 def _mark_unpublished_if_unlicensed(spdx: str) -> None:
-    """Say `publish = false` when the project states no licence.
+    """Say `publish = false` when the project states no license.
 
     `cargo init` writes no `license` field, so cargo-deny falls back to reading the
     LICENSE file -- which a licensed project has. With `SPDX_ID=NONE` there is none,
@@ -185,7 +185,7 @@ def _mark_unpublished_if_unlicensed(spdx: str) -> None:
     block deny.toml carries for this case only applies to a crate the manifest marks
     unpublishable, which an unlicensed crate is anyway.
     """
-    if spdx != NO_LICENCE:
+    if spdx != NO_LICENSE:
         return
     manifest = Path("Cargo.toml")
     body = manifest.read_text()
@@ -194,7 +194,7 @@ def _mark_unpublished_if_unlicensed(spdx: str) -> None:
     manifest.write_text(
         body.replace('version = "0.1.0"\n', 'version = "0.1.0"\npublish = false\n', 1)
     )
-    print("native_init: marked the crate publish = false; it states no licence")
+    print("native_init: marked the crate publish = false; it states no license")
 
 
 # What `bun init -y` writes that a layer owns or that a fresh repository should not

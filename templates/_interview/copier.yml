@@ -86,7 +86,7 @@ PIN_TOOL_VERSIONS:
     Keep the pinned versions Renovate bumps: false
     Choose the tool versions myself: true
   help: Tool versions
-CUSTOMISE_DEFAULTS:
+CUSTOMIZE_DEFAULTS:
   type: bool
   default: false
   choices:
@@ -97,12 +97,12 @@ INSTALL_COMMANDS:
   type: str
   help: What a fresh clone runs to install dependencies; shown in the README
   default: mise install && just setup
-  when: '@@ CUSTOMISE_DEFAULTS @@'
+  when: '@@ CUSTOMIZE_DEFAULTS @@'
 USAGE_EXAMPLE:
   type: str
   help: One command the README shows for running the project
   default: just dev
-  when: '@@ CUSTOMISE_DEFAULTS @@'
+  when: '@@ CUSTOMIZE_DEFAULTS @@'
 IS_MEMBER:
   type: bool
   help: Scaffolding a monorepo member rather than a repository root
@@ -110,7 +110,7 @@ IS_MEMBER:
   when: 'false'
 SPDX_ID:
   type: str
-  help: Licence, or NONE for an unpublished repository. Writes LICENSE
+  help: License, or NONE for an unpublished repository. Writes LICENSE
   choices:
   - Apache-2.0
   - MIT
@@ -132,7 +132,7 @@ CODE_OF_CONDUCT_CONTACT:
   type: str
   help: Reporting contact. Empty omits CODE_OF_CONDUCT.md
   default: ''
-  when: '@@ CUSTOMISE_DEFAULTS @@'
+  when: '@@ CUSTOMIZE_DEFAULTS @@'
 ADRS:
   type: str
   help: JSON array of ADRs, one file written each; [] writes none
@@ -148,17 +148,17 @@ MAX_FILE_KB:
   type: str
   help: Largest file the added-large-files hook accepts
   default: '512'
-  when: '@@ CUSTOMISE_DEFAULTS @@'
+  when: '@@ CUSTOMIZE_DEFAULTS @@'
 HOOK_EXCLUDE_PATTERNS:
   type: str
   help: Paths excluded from hooks, joined with \|. Empty drops the block
   default: ''
-  when: '@@ CUSTOMISE_DEFAULTS @@'
+  when: '@@ CUSTOMIZE_DEFAULTS @@'
 COMMIT_SCOPES:
   type: str
   help: Allowed commit scopes, comma separated. Empty leaves scopes unrestricted
   default: ''
-  when: '@@ CUSTOMISE_DEFAULTS @@'
+  when: '@@ CUSTOMIZE_DEFAULTS @@'
 PREK_VERSION:
   type: str
   help: prek hook runner
@@ -223,7 +223,7 @@ JOB_TIMEOUT_MINUTES:
   type: str
   help: Per-job CI timeout; a hung job holds a runner until it fires
   default: '15'
-  when: '@@ CUSTOMISE_DEFAULTS @@'
+  when: '@@ CUSTOMIZE_DEFAULTS @@'
 PINACT_VERSION:
   type: str
   help: pinact
@@ -286,7 +286,7 @@ OASDIFF_VERSION:
   when: '@@ (WANT_API) and PIN_TOOL_VERSIONS @@'
 ORG:
   type: str
-  help: Organisation or owner, used for the API contact
+  help: Organization or owner, used for the API contact
   placeholder: TODO-org
   default: TODO-org
   when: '@@ (WANT_API) @@'
@@ -365,12 +365,12 @@ I18N_PREPARE_COMMANDS:
   type: str
   help: Extra catalog preparation commands, indented four spaces
   default: ''
-  when: '@@ (WANT_I18N) and CUSTOMISE_DEFAULTS @@'
+  when: '@@ (WANT_I18N) and CUSTOMIZE_DEFAULTS @@'
 I18N_CHECK_COMMANDS:
   type: str
   help: Extra completeness commands, e.g. one per deployable, indented four spaces
   default: ''
-  when: '@@ (WANT_I18N) and CUSTOMISE_DEFAULTS @@'
+  when: '@@ (WANT_I18N) and CUSTOMIZE_DEFAULTS @@'
 AWS_CDK_DEST:
   type: str
   help: Repo-relative CDK destination

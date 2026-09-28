@@ -13,7 +13,7 @@
 #     cp <agentic-packages>/packages/hooks-close-keywords/scripts/commit-msg-rewrite.py \
 #        templates/quality/hooks/template/scripts/commit-msg-rewrite.py
 #
-# Fix behaviour upstream and re-copy; editing here is reverted by the next sync.
+# Fix behavior upstream and re-copy; editing here is reverted by the next sync.
 """Rewrite a commit message so every issue in a close list actually closes.
 
 The pre-commit `commit-msg` stage passes the message file as the first argument.

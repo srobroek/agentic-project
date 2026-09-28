@@ -60,7 +60,7 @@ ANSWERS_FILE = ".project-setup-answers.yml"
 # already right. SELECTION is the one multiselect that replaced ten yes/no prompts,
 # and `selected_layers` reads it alongside the WANT_ booleans a preset sets.
 PIN_GATE = "PIN_TOOL_VERSIONS"
-TUNE_GATE = "CUSTOMISE_DEFAULTS"
+TUNE_GATE = "CUSTOMIZE_DEFAULTS"
 SELECTION = "LAYERS"
 INTERVIEW_KEYS: frozenset[str] = frozenset({PIN_GATE, TUNE_GATE, SELECTION})
 
@@ -575,7 +575,7 @@ def repo_conflicts(dest: Path, data: dict, *, member: bool = False) -> list[Prob
     reports it. Everything below `_nested_scaffold` and `_member_without_root` is a
     warning: the user may be one rename or one `git rm` away from meaning exactly
     what they answered. Those two are errors, because nesting a repository or a
-    second licence is not something to warn about after the fact.
+    second license is not something to warn about after the fact.
     """
     return (
         _nested_scaffold(dest, member=member)

@@ -123,9 +123,9 @@ guess scaffolds from the wrong layer set.
 
 1. **place** -- each selected layer is rendered by Copier. `.jinja` files are rendered; every
    other file is copied byte-for-byte.
-2. **tasks** -- Copier's own `_tasks`: `git init`, materialise `LICENSE` from the bundled SPDX
+2. **tasks** -- Copier's own `_tasks`: `git init`, materialize `LICENSE` from the bundled SPDX
    texts, write one file per ADR, and let `bun`/`cargo`/`uv` own their manifests. `SPDX_ID` of
-   `NONE` writes no licence at all. Each task is idempotent and degrades to a warning when its
+   `NONE` writes no license at all. Each task is idempotent and degrades to a warning when its
    tool is absent, and `apply` prints those warnings. A Rust scaffold with no `Cargo.toml` used
    to report `place ok lang-rust` and exit 0.
 3. **prune** -- directories the exclude patterns emptied are removed.
@@ -180,7 +180,7 @@ each one is in, and `--set` reaches every one of them without the gate:
 | Class | Asked | Marked | Why |
 | --- | --- | --- | --- |
 | tool version | behind `PIN_TOOL_VERSIONS` | `"pinned": true` | a tested set Renovate bumps |
-| shipped default | behind `CUSTOMISE_DEFAULTS` | `"tuned": true` | a hook limit, a job timeout, the README's install line |
+| shipped default | behind `CUSTOMIZE_DEFAULTS` | `"tuned": true` | a hook limit, a job timeout, the README's install line |
 | composed | never | `"composed": true` | a JSON artifact nobody types at a prompt: the ADR list, the monorepo members |
 | derived | never | `"derived": true` | a pure function of another answer |
 

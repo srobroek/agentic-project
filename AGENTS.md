@@ -65,7 +65,7 @@ expands `/` inside a rendered segment.
 
 MUST use `TASK_ASSETS` for a template a task needs to read. `governance/ADR.md.template` is
 instantiated once per manifest entry, which Copier cannot loop, so `write_adrs.py` owns the loop
-and reads the template from the layer's excluded `tasks/` directory. The licence texts are a
+and reads the template from the layer's excluded `tasks/` directory. The license texts are a
 task asset for the same reason: placed as `licenses/` and deleted afterwards, the pool took a
 brownfield repository's own `licenses/` with it, and on a case-insensitive filesystem a
 REUSE `LICENSES/` directory too.
@@ -111,7 +111,7 @@ caller checks rather than remembers, and every one of them stays settable with `
 | Flag | `_interview` | `catalog --json` | Why |
 | --- | --- | --- | --- |
 | `pin: True` | behind `PIN_TOOL_VERSIONS` | `"pinned": true` | a tested version Renovate bumps |
-| `tune: True` | behind `CUSTOMISE_DEFAULTS` | `"tuned": true` | a default that is already right |
+| `tune: True` | behind `CUSTOMIZE_DEFAULTS` | `"tuned": true` | a default that is already right |
 | `compose: True` | `when: false` | `"composed": true` | a JSON artifact nobody types in one line |
 | `derive:` | `when: false` | `"derived": true` | a pure function of another answer |
 
@@ -265,7 +265,7 @@ when its tool is absent -- a scaffold must never hard-fail because `cargo` is mi
 
 ## OMP packaging
 
-OMP recognises an extension package by the `omp` key in `package.json`; the key may be empty.
+OMP recognizes an extension package by the `omp` key in `package.json`; the key may be empty.
 Capabilities are located by path and cannot be redirected, except `skills` and `commands`
 which `.omp-plugin/plugin.json` may remap. A rule with no frontmatter `description` lands in
 no bucket, and a frontmatter `name` that disagrees with its filename is not the identity OMP
@@ -295,9 +295,9 @@ home directory of whichever machine ran it. Copier writes it for `copier update`
 tool does not have, and `load_data` drops every `_` key on the way back in, so it was never
 read either. `drop_copier_bookkeeping` removes them.
 
-MUST let a repository state no licence. `SPDX_ID` offered four licences and nothing else, so
+MUST let a repository state no license. `SPDX_ID` offered four licenses and nothing else, so
 an internal service or a work repo got an Apache-2.0 LICENSE it never chose -- a statement
-about the code, not an inconvenience. `NONE` writes no LICENSE, drops the OpenAPI licence
+about the code, not an inconvenience. `NONE` writes no LICENSE, drops the OpenAPI license
 block, and switches `deny.toml` to `[licenses.private] ignore = true`. That block only
 applies to a crate the manifest marks unpublishable, so `native_init.py` writes
 `publish = false` for an unlicensed crate: measured with cargo-deny 0.19, without it
@@ -419,7 +419,7 @@ to empty. `just i18n` ran nothing because both command answers were `''`. The la
 shipped a drift script no recipe called, settings naming a catalog nothing wrote, and a
 trailing blank line that failed end-of-file-fixer on the first commit. The recipe now calls
 the script, the layer writes the base catalog beside the Inlang project, and
-`I18N_*_COMMANDS` only add to it, behind `CUSTOMISE_DEFAULTS`.
+`I18N_*_COMMANDS` only add to it, behind `CUSTOMIZE_DEFAULTS`.
 `tests/test_scaffold.py::test_a_fresh_scaffold_passes_its_own_end_of_file_hook` checks
 every preset.
 

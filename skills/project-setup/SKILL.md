@@ -72,15 +72,15 @@ asked what the user is building.
 GATES
 ASK the shape before reading any answer back
 ASK the plan, before the first file is written
-ASK the licence, a published repository, a credential, a machine-global registration
-  `SPDX_ID` takes `NONE` for a repository published under no licence at all -- an
+ASK the license, a published repository, a credential, a machine-global registration
+  `SPDX_ID` takes `NONE` for a repository published under no license at all -- an
   internal service, a work repo. Do not default an unpublished project to Apache-2.0.
 
 Two entry paths. Offer both in round two and let the user pick:
 
 | Path | When |
 | --- | --- |
-| **Preset, then customise** | a listed shape is close. Most projects |
+| **Preset, then customize** | a listed shape is close. Most projects |
 | **Manual** | nothing is close, or the user wants to see every layer |
 
 ### Round 1 -- what are you building?
@@ -113,7 +113,7 @@ project-setup apply --preset parts/policy --preset parts/forge-github \
 MUST NOT tell the user a shape is unsupported because no stack is named for it. Compose the
 parts, and say which you combined.
 
-### Round 3 -- customise
+### Round 3 -- customize
 
 **Preset path.** Read the preset's answers back grouped by topic, and ask what to change.
 These are defaults to confirm, not questions to ask one at a time. In the same round, ask for
@@ -167,7 +167,7 @@ marks four, and they call for four different things:
 | `"derived": true` | never ask, never pass through. `derived_from` is an expression, not a value |
 | `"composed": true` | never ask. Assemble it from the conversation and pass it with `--set` |
 | `"pinned": true` | one question for the whole set, `PIN_TOOL_VERSIONS`. Default to the pins |
-| `"tuned": true` | one question for the whole set, `CUSTOMISE_DEFAULTS`. Default to the shipped values |
+| `"tuned": true` | one question for the whole set, `CUSTOMIZE_DEFAULTS`. Default to the shipped values |
 
 MUST ask about tool versions exactly once, with one question: does the user want to set
 specific versions, or take the pinned set? Every question marked `"pinned": true` -- nineteen
@@ -178,7 +178,7 @@ who names one version in passing needs no gate: pass it with `--set` and say you
 
 MUST ask about the shipped defaults the same way, once. Everything marked `"tuned": true` -- a
 hook size limit, a per-job CI timeout, the README's install and usage lines, the allowed
-commit scopes -- is behind `CUSTOMISE_DEFAULTS`. Reading seven thresholds out to somebody who
+commit scopes -- is behind `CUSTOMIZE_DEFAULTS`. Reading seven thresholds out to somebody who
 wanted a repository is the mistake this replaced. Take the defaults unless the user raises
 one, and pass a value they do name with `--set`.
 
@@ -199,7 +199,7 @@ MUST offer to replace a placeholder, and MUST NOT refuse to scaffold because one
 placeholder is a normal state for a new repository.
 
 MUST leave the declared placeholder in place when the user does not know the value. Do not
-substitute a stand-in of your own: `validate` recognises the declared string and nothing else,
+substitute a stand-in of your own: `validate` recognizes the declared string and nothing else,
 so writing `@owner` over `@TODO-owner` reports a clean answer set and ships a CODEOWNERS file
 naming nobody. `catalog --json` gives the exact placeholder per question.
 
@@ -217,7 +217,7 @@ module and package name, so it is the one most worth getting right before anythi
 2. **Add the two identity answers** `PROJECT_NAME` and `DESCRIPTION`, and `CODEOWNER` and
    `SECURITY_CONTACT` when the user knows them.
 3. **Set the layer selection**: `WANT_<LAYER>: true`. `catalog --json` lists the exact names.
-4. **Apply the customisations** the user asked for in round three.
+4. **Apply the customizations** the user asked for in round three.
 5. **Validate before writing anything.**
 
 ```
@@ -251,7 +251,7 @@ and these are the reason to involve a model at all:
 
 | Answer | What it needs |
 | --- | --- |
-| `INSTALL_COMMANDS`, `USAGE_EXAMPLE` | derived from the accepted stack. Behind `CUSTOMISE_DEFAULTS`, so pass a composed value with `--set` rather than opening the gate |
+| `INSTALL_COMMANDS`, `USAGE_EXAMPLE` | derived from the accepted stack. Behind `CUSTOMIZE_DEFAULTS`, so pass a composed value with `--set` rather than opening the gate |
 | `COMMIT_SCOPES` | the project's real module names. Behind the same gate |
 | `HOOK_EXCLUDE_PATTERNS` | paths the hooks must skip. Behind the same gate |
 | `MONOREPO_MEMBERS` | a JSON array of `{name, path, capabilities}`, one per member. This drives per-member CI jobs, so a wrong path produces a job that tests nothing. `IS_MONOREPO` is derived from it: supply the members and do not set the flag. `validate` reports `MEMBER_PATH_EMPTY` for a member path with no manifest yet. Apply writes the language starters at the root, so tell the user their code has to move into the member paths |
@@ -367,5 +367,5 @@ NOT editing a generated file. `.gitignore`, `.pre-commit-config.yaml` and the ju
   block are rewritten from `.d/` fragments; edit the fragment and re-run the generator.
 NOT looking up the latest release of a pinned tool. The pins are a tested set and Renovate
   bumps them; ask whether the user wants to choose, and take their answer if they do.
-NOT `--no-tasks` unless the user asks. Tasks are what initialise git, materialise the
-  licence, and let the language's own tool own its manifest.
+NOT `--no-tasks` unless the user asks. Tasks are what initialize git, materialize the
+  license, and let the language's own tool own its manifest.

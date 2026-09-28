@@ -605,7 +605,7 @@ def test_ending_the_input_stops_cleanly_and_leaves_nothing(tmp_path):
 def test_every_asked_bool_is_a_select_not_a_confirm():
     """A confirm submits on one keypress, so the Enter a user types after `y` falls
     through to the next question and silently accepts its default. Measured: answering
-    PIN_TOOL_VERSIONS with "y<Enter>" also declined CUSTOMISE_DEFAULTS, a question the
+    PIN_TOOL_VERSIONS with "y<Enter>" also declined CUSTOMIZE_DEFAULTS, a question the
     user never saw. `choices` makes Copier render a select, which consumes its own
     Enter, and the value stays a real bool so no consumer changes.
     """

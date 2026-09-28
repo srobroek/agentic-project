@@ -92,7 +92,7 @@ OASDIFF_VERSION:
   default: 1.32.1
 ORG:
   type: str
-  help: Organisation or owner, used for the API contact
+  help: Organization or owner, used for the API contact
   placeholder: TODO-org
   default: TODO-org
 REPO_URL:
@@ -101,7 +101,7 @@ REPO_URL:
   default: ''
 SPDX_ID:
   type: str
-  help: Licence, or NONE for an unpublished repository. Writes LICENSE
+  help: License, or NONE for an unpublished repository. Writes LICENSE
   choices:
   - Apache-2.0
   - MIT

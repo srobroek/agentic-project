@@ -12,7 +12,7 @@
 #     cp <agentic-packages>/packages/hooks-close-keywords/scripts/close_keywords.py \
 #        templates/quality/hooks/template/scripts/close_keywords.py
 #
-# Fix behaviour upstream and re-copy; editing here is reverted by the next sync.
+# Fix behavior upstream and re-copy; editing here is reverted by the next sync.
 """Distribute a GitHub closing keyword across a contiguous list of issue refs.
 
 GitHub binds a closing keyword to only the FIRST reference in a list, so

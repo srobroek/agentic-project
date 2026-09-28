@@ -49,7 +49,7 @@ omp-verify:
     omp -p 'read skill://project-setup and reply with its name only'
     omp -p 'read rule://project-setup-no-handcopy and reply with its first MUST line'
 
-# Mutation audit: break each behaviour, confirm the suite notices. Slow, deliberately.
+# Mutation audit: break each behavior, confirm the suite notices. Slow, deliberately.
 audit:
     .venv/bin/python tools/mutation_audit.py
 

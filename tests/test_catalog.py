@@ -215,7 +215,7 @@ def test_defaults_for_skips_a_derived_expression(catalog):
 
 
 def test_the_declared_placeholder_is_discoverable(catalog):
-    """`validate` recognises this exact string and no other.
+    """`validate` recognizes this exact string and no other.
 
     A caller that substitutes its own stand-in -- `@owner` for `@TODO-owner` --
     reports a clean answer set and ships a CODEOWNERS file naming nobody, so the
@@ -261,7 +261,7 @@ def test_a_greenfield_destination_has_no_branch_to_contradict(tmp_path):
 
 
 def test_a_destination_that_cannot_hold_a_repository_is_named(tmp_path):
-    """`mkdir` raised FileExistsError from inside pathlib, after writing the licence."""
+    """`mkdir` raised FileExistsError from inside pathlib, after writing the license."""
     from project_setup.cli import unusable_dest
 
     a_file = tmp_path / "notadir"

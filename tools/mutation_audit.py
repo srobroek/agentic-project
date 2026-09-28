@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mutation audit: break a behaviour, confirm the suite notices.
+"""Mutation audit: break a behavior, confirm the suite notices.
 
 A test that asserts an empty result passes when the scan looked in the wrong place, and
 a test that asserts a failure passes when the failure is not the one it names. Reading
@@ -26,7 +26,7 @@ PY = REPO / ".venv/bin/python"
 
 @dataclass
 class Mutation:
-    """One behaviour, broken one way, and the tests that should object."""
+    """One behavior, broken one way, and the tests that should object."""
 
     name: str
     path: str
@@ -242,7 +242,7 @@ def check(mutation: Mutation) -> tuple[str, str]:
                 "failed",
             )
             return "caught", first[:96]
-        return "MISSED", "the suite passed with the behaviour broken"
+        return "MISSED", "the suite passed with the behavior broken"
     finally:
         path.write_text(original)
         port()

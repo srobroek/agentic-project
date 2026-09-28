@@ -32,7 +32,7 @@ rust-lint:
 rust-test:
     cargo nextest run --all-features --no-tests=pass
 
-# Supply chain: advisories, licences, bans, sources
+# Supply chain: advisories, licenses, bans, sources
 [group('rust')]
 rust-deny:
     cargo deny check

@@ -278,7 +278,7 @@ def cmd_catalog(args: argparse.Namespace, catalog: Catalog) -> int:
                             "default": q.default,
                             "choices": q.choices,
                             "help": q.help,
-                            # The exact string validate recognises as "still a gap".
+                            # The exact string validate recognizes as "still a gap".
                             # Substituting another stand-in reports a clean answer set.
                             "placeholder": q.placeholder or None,
                             # Computed from other answers at render time. Do not ask

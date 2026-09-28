@@ -5,7 +5,7 @@ description: Set up a repository from layered Copier templates, or add a layer t
 Load `skill://project-setup` and follow it.
 
 Interview the user. Ask first what they are building. Then offer the presets that could fit,
-alongside a fully manual path. Customise the answers from there.
+alongside a fully manual path. Customize the answers from there.
 
 A preset is where the conversation starts. You have to ask what the user is building before
 you can tell whether one fits.

@@ -8,17 +8,17 @@ places where the tool is merely adequate.
 Read `README.md` for what it is, `AGENTS.md` for the invariants, and
 `skills/project-setup/SKILL.md` for how an agent is meant to drive it.
 
-## This round: audit the tests, then your own judgement
+## This round: audit the tests, then your own judgment
 
 Nothing is recorded as open. Every area anyone had listed as unexercised has been driven:
 the journey gate is deterministic and scaffolds monorepo members, brownfield was exercised
-against a repository with its own licence, hooks, justfile and manifest, all 28 recipes the
+against a repository with its own license, hooks, justfile and manifest, all 28 recipes the
 gate never runs were run, and the interview is driven through a pty including its rejection
 path.
 
 So the highest-value work is no longer finding untested surface. It is **checking that the
 331 tests assert what their names claim**, because this project has now produced three that
-did not, and one of those would have kept passing if the behaviour it covered had broken:
+did not, and one of those would have kept passing if the behavior it covered had broken:
 
 - a width budget that measured our half of a line and called it the whole line
 - a recipe-parser test that reported `curl` as an unpinned tool
@@ -29,7 +29,7 @@ Look for the same shape elsewhere. A test asserting a failure is the place to st
 that the failure it observes is the one it names. `assert x != 0`, `assert not ok`, `pytest.raises`
 with no message match, and any assertion satisfied by a timeout, a kill, or an empty result
 are all worth reading twice. Where you find one, fix what it asserts and say whether the
-behaviour underneath was right all along.
+behavior underneath was right all along.
 
 Then range wider. Places nobody has looked:
 
@@ -75,7 +75,7 @@ for reading, never for concluding.
 ## Leave the owner's style call alone
 
 `slopvac` fails on seven authored documents, dominated by unicode-dash findings -- em dashes,
-this repo's markdown style. The eight files that cannot be fixed (verbatim SPDX licence texts)
+this repo's markdown style. The eight files that cannot be fixed (verbatim SPDX license texts)
 are already excluded in `slopvac.toml`. Whether to restyle the remaining seven or switch
 `rules."prose-format.no-unicode-dash"` off is the owner's decision. You may propose; do not
 silence it.
@@ -173,7 +173,7 @@ alone, so a brownfield repository's own hooks survive. `merge` in `assets/hooks/
 carries the reasoning, and
 `tests/test_scaffold.py::test_changing_a_merged_answer_re_derives_the_generated_file` pins it.
 
-## Resolved: five judgement calls the owner took
+## Resolved: five judgment calls the owner took
 
 These were recorded here as deliberately-left-alone, and then decided the other way. Each
 is now implemented, and the reasoning lives next to the code that carries it.
@@ -182,7 +182,7 @@ is now implemented, and the reasoning lives next to the code that carries it.
    became `LAYERS`, and each `WANT_<LAYER>` is derived from it. The booleans stay the
    canonical answer, so no preset changed; `selected_layers` reads both spellings as a union,
    and `seed_selection` is the only translation point.
-2. **The shipped defaults sit behind one gate.** `CUSTOMISE_DEFAULTS`, the same trade
+2. **The shipped defaults sit behind one gate.** `CUSTOMIZE_DEFAULTS`, the same trade
    `PIN_TOOL_VERSIONS` already made, for `MAX_FILE_KB`, `JOB_TIMEOUT_MINUTES`,
    `HOOK_EXCLUDE_PATTERNS`, `COMMIT_SCOPES`, `CODE_OF_CONDUCT_CONTACT`, `INSTALL_COMMANDS`
    and `USAGE_EXAMPLE`. `catalog --json` marks them `"tuned": true`.
@@ -292,7 +292,7 @@ directory of whichever machine ran it, into a file meant to be committed; and
 `gen_steering.py` said "wrote 8 of 9 steering file(s)", which reads as one file having failed
 when the ninth was already correct.
 
-Two judgement calls taken the other way:
+Two judgment calls taken the other way:
 
 - **`SPDX_ID` takes `NONE`.** Four choices were four ways to publish, so an internal service
   got an Apache-2.0 LICENSE it never chose. Measured while implementing it: `[licenses.private]
@@ -303,7 +303,7 @@ Two judgement calls taken the other way:
 
 Left alone deliberately: the always-on set is still not deselectable, and an agent asked to
 "decide everything and apply without waiting" still stops for plan approval. The second is
-the gate working; removing it would let a model overwrite files on its own judgement.
+the gate working; removing it would let a model overwrite files on its own judgment.
 
 ## What the third round found, and fixed
 
@@ -427,12 +427,12 @@ exited 0 and reported a clean run every time -- and all four now print a
    and `::test_a_brownfield_pyproject_still_gets_the_dev_tools`, each asserting `run` is
    never called.
 2. **An SPDX_ID answer that disagreed with an existing LICENSE was accepted with no warning
-   at all.** `materialise_license.py` prints "LICENSE already present, leaving it alone" with
+   at all.** `materialize_license.py` prints "LICENSE already present, leaving it alone" with
    no `WARNING` marker, so `SPDX_ID=Apache-2.0` against a committed MIT `LICENSE` scaffolds
    clean and the repository keeps stating MIT, with nothing in `plan`, `apply`, or `validate`
    naming the disagreement -- `ANSWER_CONTRADICTS_REPO` in `catalog.py` is the forge/CI check
    only, not this. Fixed by adding the marker and naming the fix (delete `LICENSE` and
-   re-run). `tests/test_scaffold.py::test_a_brownfield_licence_mismatch_is_a_warning_not_silence`.
+   re-run). `tests/test_scaffold.py::test_a_brownfield_license_mismatch_is_a_warning_not_silence`.
 3. **A hook a fragment declares under `repo: builtin` and a hook the repository already ran
    under the classic `pre-commit/pre-commit-hooks` repo are a different `(url, id)` key, so
    `merge_hooks.py` correctly leaves the brownfield entry alone -- and `trailing-whitespace`
@@ -477,7 +477,7 @@ same six warnings repeated verbatim, not merely "still ok".
 
 `lines_lost` counts raw text lines, not semantic content: `.pre-commit-config.yaml` shows
 `lines_lost: 9` for a 9-line brownfield file even though every hook in it survives, because
-`merge_hooks.py` re-serialises the whole file through `yaml.dump`, changing every line's
+`merge_hooks.py` re-serializes the whole file through `yaml.dump`, changing every line's
 formatting. Nothing is actually lost; `plan --json` has no way to say that short of a
 schema-aware diff for one file type, which would cut against "measure the real difference,
 never special-case a file type." Left alone -- recorded here because `lines_lost` is exactly
@@ -497,7 +497,7 @@ previous round's own making.
    `InterviewDriver.finish()` SIGKILLs a process still alive after eight seconds, which is
    precisely what a prompt waiting for a new answer looks like, so `assert code != 0`
    passed while measuring the harness. **That test would have gone on passing if the
-   behaviour had broken**, which is the failure this project exists to catch, committed by
+   behavior had broken**, which is the failure this project exists to catch, committed by
    the project itself. Replaced by two tests that assert the correction is taken, that the
    rejected value reaches no file, and that the prompt is counted to prove it returned.
 
@@ -609,7 +609,7 @@ message, a deterministic failure that a retry-allowing call never retries, and t
 `NETWORK_TRANSIENT` regex matching real transport-symptom strings while rejecting a
 tool's own verdict text.
 
-Judgement call: this round investigated `go-vuln`'s dead-proxy handling from the sixth
+Judgment call: this round investigated `go-vuln`'s dead-proxy handling from the sixth
 round as a candidate cause, then ruled it out. It sits in neither `just check`'s
 aggregate (`go: go-fmt-check go-lint go-test`) nor any pre-commit hook. The brief's
 mention of it describes the state before the sixth round's fix, not a live gap.
@@ -627,5 +627,5 @@ mention of it describes the state before the sixth round's fix, not a live gap.
 ## Report back
 
 For each finding: what you did, what happened, what a user would have expected, what you
-changed, and the test that now covers it. Separate real defects from judgement calls, and
+changed, and the test that now covers it. Separate real defects from judgment calls, and
 say plainly where you disagreed with an existing decision and why.

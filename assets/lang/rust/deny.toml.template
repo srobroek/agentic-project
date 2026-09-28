@@ -1,5 +1,5 @@
-# cargo-deny checks advisories, licences, bans, and sources. osv-scanner overlaps
-# only on advisories; the licence, ban, and registry policy below has no
+# cargo-deny checks advisories, licenses, bans, and sources. osv-scanner overlaps
+# only on advisories; the license, ban, and registry policy below has no
 # osv-scanner equivalent.
 #
 #   cargo deny check              all of it
@@ -18,7 +18,7 @@ unmaintained = "workspace"
 # A dependency carrying anything outside this list fails the build. Add to the
 # list deliberately rather than widening it to silence a failure.
 allow = [
-  # OPTIONAL BEGIN licensed -- the crate's own licence, when it has one
+  # OPTIONAL BEGIN licensed -- the crate's own license, when it has one
   "@@SPDX_ID@@",
   # OPTIONAL END
   "Apache-2.0",
@@ -31,7 +31,7 @@ allow = [
   "Zlib",
 ]
 confidence-threshold = 0.9
-# OPTIONAL BEGIN unlicensed -- this crate is not published under a licence
+# OPTIONAL BEGIN unlicensed -- this crate is not published under a license
 
 # Without this, `cargo deny check licenses` fails on the workspace crate itself:
 # it carries no `license` field, which cargo-deny reads as unlicensed rather than

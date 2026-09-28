@@ -50,7 +50,7 @@ MINIMAL_SEQUENCE = [
     "LAYERS",
     "FORGE_PLATFORM",
     "PIN_TOOL_VERSIONS",
-    "CUSTOMISE_DEFAULTS",
+    "CUSTOMIZE_DEFAULTS",
     "SPDX_ID",
     "CODEOWNER",
     "SECURITY_CONTACT",
@@ -58,7 +58,7 @@ MINIMAL_SEQUENCE = [
 ]
 ASKED_BOOLS = {
     "PIN_TOOL_VERSIONS",
-    "CUSTOMISE_DEFAULTS",
+    "CUSTOMIZE_DEFAULTS",
     "GO_VENDOR",
     "PY_SRC_LAYOUT",
     "RUST_LIBRARY",
@@ -252,7 +252,7 @@ def _all_layer_args() -> list[str]:
         "LAYERS",
         "FORGE_PLATFORM",
         "PIN_TOOL_VERSIONS",
-        "CUSTOMISE_DEFAULTS",
+        "CUSTOMIZE_DEFAULTS",
         "SPDX_ID",
         *ASKED_BOOLS,
     }

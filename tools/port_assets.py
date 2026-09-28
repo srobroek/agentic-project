@@ -133,17 +133,17 @@ TOKEN_POLICY: dict[str, dict] = {
         "help": "One command the README shows for running the project",
         "tune": True,
     },
-    # NONE is for a repository that is not published under a licence: an internal
-    # service, a work repo, a private tool. Every other value here is a real licence,
+    # NONE is for a repository that is not published under a license: an internal
+    # service, a work repo, a private tool. Every other value here is a real license,
     # so without it the only answers on offer were four ways to publish, and a private
     # repository got an Apache-2.0 LICENSE it never chose -- a statement about the
-    # code, not an inconvenience. NONE writes no LICENSE, omits the OpenAPI licence
+    # code, not an inconvenience. NONE writes no LICENSE, omits the OpenAPI license
     # block, and switches cargo-deny to its unpublished-crate policy.
     "SPDX_ID": {
         "type": "str",
         "choices": ["Apache-2.0", "MIT", "MPL-2.0", "AGPL-3.0-only", "NONE"],
         "default": "Apache-2.0",
-        "help": "Licence, or NONE for an unpublished repository. Writes LICENSE",
+        "help": "License, or NONE for an unpublished repository. Writes LICENSE",
     },
     "CODEOWNER": {
         "type": "str",
@@ -331,7 +331,7 @@ TOKEN_POLICY: dict[str, dict] = {
     "ORG": {
         "type": "str",
         "placeholder": "TODO-org",
-        "help": "Organisation or owner, used for the API contact",
+        "help": "Organization or owner, used for the API contact",
     },
     "REPO_URL": {
         "type": "str",
@@ -571,7 +571,7 @@ OPTIONAL_MAP: dict[str, str] = {
 }
 
 # Copier post-copy tasks per layer. These are why no wrapper script is needed for
-# git init, licence materialisation, or a native language init.
+# git init, license materialization, or a native language init.
 TASKS: dict[str, list[dict]] = {
     "base": [
         {
@@ -583,7 +583,7 @@ TASKS: dict[str, list[dict]] = {
         {
             "command": [
                 "@@ _copier_python @@",
-                "@@ _copier_conf.src_path @@/tasks/materialise_license.py",
+                "@@ _copier_conf.src_path @@/tasks/materialize_license.py",
                 "@@ _copier_conf.src_path @@/tasks/licenses",
                 "@@ SPDX_ID @@",
             ]
@@ -609,7 +609,7 @@ TASKS: dict[str, list[dict]] = {
                 # whole apply ("`ref` cannot be used as a package name"), and any other
                 # directory produced a crate that disagreed with PROJECT_NAME.
                 "@@ PROJECT_NAME @@:@@ 'lib' if RUST_LIBRARY else 'bin' @@",
-                # The licence, because `cargo init` writes no `license` field and
+                # The license, because `cargo init` writes no `license` field and
                 # cargo-deny falls back to reading the LICENSE file. With SPDX_ID=NONE
                 # there is no such file, and `cargo deny check licenses` then fails the
                 # crate itself as unlicensed unless the manifest says `publish = false`.
@@ -698,7 +698,7 @@ TASK_ASSETS: dict[str, list[str]] = {
 
 TASK_SCRIPTS: dict[str, list[str]] = {
     "base": ["git_init.py"],
-    "governance": ["materialise_license.py", "write_adrs.py"],
+    "governance": ["materialize_license.py", "write_adrs.py"],
     "lang-rust": ["native_init.py"],
     "lang-ts": ["native_init.py"],
     "lang-python": ["native_init.py"],
@@ -1030,7 +1030,7 @@ SHAPE_NEXT: tuple[str, ...] = ("FORGE_PLATFORM",)
 # WANT_<LAYER> is then derived from it and never asked, which keeps every preset,
 # every layer's `when:`, `--set` and `selected_layers` reading exactly the key they
 # already read. SELECTION itself is imported: it is interview-only, like PIN_GATE,
-# and the package has to recognise it as a known key rather than a stray answer.
+# and the package has to recognize it as a known key rather than a stray answer.
 SELECTION_HELP = "Layers to include, beyond the seven every project gets"
 
 # Conditions beyond layer selection. A question whose own answer decides whether it
@@ -1049,7 +1049,7 @@ ASK_WHEN: dict[str, str] = {}
 # instead of a confirm. A confirm submits on one keypress, so the Enter a user types
 # after `y` falls through to the next question and silently accepts its default --
 # measured: answering PIN_TOOL_VERSIONS with "y<Enter>" also declined
-# CUSTOMISE_DEFAULTS, a question the user never saw. A select consumes its own Enter.
+# CUSTOMIZE_DEFAULTS, a question the user never saw. A select consumes its own Enter.
 # The value stays a real bool, so every `when:` and every template body is unchanged.
 PIN_GATE_SPEC: dict = {
     "type": "bool",

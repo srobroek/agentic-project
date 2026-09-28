@@ -30,7 +30,7 @@ exclude = [
   "**/build/**",
   # release-please generates this from commit subjects; its prose is not authored.
   "**/CHANGELOG.md",
-  # Verbatim upstream licence texts. Editing one to satisfy a prose gate would
+  # Verbatim upstream license texts. Editing one to satisfy a prose gate would
   # change a legal document, so they cannot be "fixed" and must not be scored.
   "**/licenses/**",
 ]

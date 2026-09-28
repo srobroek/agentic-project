@@ -10,7 +10,7 @@ ts: ts-fmt-check ts-lint ts-types ts-test
 # ("No version is set for shim: biome") in a repository that pinned the version two
 # files away.
 #
-# Format and organise imports. biome owns this half of the split.
+# Format and organize imports. biome owns this half of the split.
 [group('ts')]
 ts-fmt:
     bunx biome check --write .
