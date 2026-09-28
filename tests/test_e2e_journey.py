@@ -149,3 +149,32 @@ def test_the_member_gate_applies_with_the_member_flag():
     source = Path(e2e.__file__).read_text()
     block = source.split("def scaffold_members")[1].split("\ndef ")[0]
     assert '"--member"' in block
+
+
+def test_the_journey_runs_the_commands_its_summary_names():
+    """The gate's own steps are unguarded, so stubbing one goes unnoticed.
+
+    Found by mutation: replacing the `setup` step's command with `true` left every test
+    passing while the gate no longer installed anything. The summary line still read
+    "setup, check, first commit, clean tree", so the run would have reported walking a
+    journey it had stopped taking. Every other mutation in tools/mutation_audit.py was
+    caught; this was the one that was not.
+    """
+    source = Path(e2e.__file__).read_text()
+    block = source.split("def journey(dest")[1].split("\nreturn {")[0]
+
+    required = {
+        "setup": "just setup",
+        "stage": "git add -A",
+        "check": "just check",
+        "commit": "git commit",
+        "clean": "CLEAN_TREE",
+    }
+    for step, command in required.items():
+        assert f'("{step}",' in block, f"the journey no longer has a {step} step"
+        assert command in block, f"the {step} step no longer runs {command!r}"
+
+    # A stub satisfies "has a step" but not "runs the command", so name the shapes a
+    # stub takes rather than trusting the pair above to catch every one.
+    for stub in ('"true"', '":"', '"echo', "'true'"):
+        assert stub not in block, f"a journey step was stubbed with {stub}"
