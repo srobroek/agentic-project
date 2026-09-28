@@ -506,11 +506,14 @@ def test_cdk_init_removes_the_npmignore_it_does_not_need():
 def test_cdk_destination_stays_inside_the_repository(tmp_path):
     script = load_module(TEMPLATES / "infra-aws-cdk/scripts/init_aws_cdk.py", "init_aws_cdk_dest")
     root = tmp_path.resolve()
-    with pytest.raises(SystemExit):
-        script.destination(root, "../escape")
-    with pytest.raises(SystemExit):
-        script.destination(root, os.sep + "absolute")
+    # The message is asserted, not just the exception: a bare `raises(SystemExit)` is
+    # satisfied by any exit, including one from an unrelated fault in destination(),
+    # and this is the guard that keeps a generated app inside the repository.
+    for escape in ("../escape", os.sep + "absolute", "a/../../b", ""):
+        with pytest.raises(SystemExit, match="repository-relative path without dot segments"):
+            script.destination(root, escape)
     assert script.destination(root, "infrastructure") == root / "infrastructure"
+    assert script.destination(root, "deploy/cdk") == root / "deploy/cdk"
 
 
 # --------------------------------------------------- the agents index generator

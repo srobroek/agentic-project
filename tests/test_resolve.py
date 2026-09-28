@@ -107,8 +107,12 @@ def test_a_plugin_that_only_shares_the_suffix_is_not_used(monkeypatch, tmp_path:
     """`project-setup` is also an older, unrelated plugin; its layers are the wrong set."""
     other = plugin_dir(tmp_path, "older")
     fake_omp(monkeypatch, tmp_path, [{"name": "@someone/project-setup", "path": str(other)}])
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as refused:
         resolve_data_dir("templates", None)
+    # The exception alone proves only that something exited. What matters is that the
+    # wrong plugin's layers were not adopted, so its path must not appear in the refusal.
+    assert str(other) not in str(refused.value), "the unrelated plugin was used anyway"
+    assert "--templates" in str(refused.value), "the refusal must name how to fix it"
 
 
 def test_a_disabled_plugin_is_not_used(monkeypatch, tmp_path: Path):
@@ -118,8 +122,11 @@ def test_a_disabled_plugin_is_not_used(monkeypatch, tmp_path: Path):
         tmp_path,
         [{"name": "@srobroek/project-setup", "path": str(root), "enabled": False}],
     )
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as refused:
         resolve_data_dir("templates", None)
+    # Any SystemExit satisfies a bare raises, so assert the disabled plugin's layers were
+    # not adopted rather than only that something exited.
+    assert str(root) not in str(refused.value), "a disabled plugin was used anyway"
 
 
 def test_a_plugin_newer_than_the_cli_is_named(monkeypatch, tmp_path: Path, capsys):
