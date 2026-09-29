@@ -84,7 +84,7 @@ silence it.
 
 | | |
 | --- | --- |
-| Repo | `github.com/srobroek/project-setup-layers`, branch `round-five-journey` |
+| Repo | `github.com/srobroek/agentic-project`, branch `round-five-journey` |
 | CLI | `project-setup`, already on PATH, editable install pointing at this repo |
 | OMP plugin | `@srobroek/project-setup@0.1.0`, symlinked, so edits are live |
 | Slash command | `/project-setup` |
