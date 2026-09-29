@@ -348,6 +348,41 @@ MUTATIONS = [
         new="        overran = True",
         tests="tests/test_interview_pty.py -k exits_badly",
     ),
+    Mutation(
+        name="a shadowing config file is placed with no warning",
+        path="src/project_setup/catalog.py",
+        old='                "SHADOWED_TOOL_CONFIG",',
+        new='                "SHADOWED_QUIET",',
+        tests="tests/test_catalog.py -k would_shadow_pyproject",
+    ),
+    Mutation(
+        name="the shadow check reports tables the manifest does not have",
+        path="src/project_setup/catalog.py",
+        old="            if _table(manifest, dotted) and not (dest / name).exists()",
+        new="            if not (dest / name).exists()",
+        tests="tests/test_catalog.py -k tables_the_manifest_actually_has",
+    ),
+    Mutation(
+        name="a config file already present is reported as newly shadowing",
+        path="src/project_setup/catalog.py",
+        old="            if _table(manifest, dotted) and not (dest / name).exists()",
+        new="            if _table(manifest, dotted)",
+        tests="tests/test_catalog.py -k already_present_is_not_reported",
+    ),
+    Mutation(
+        name="the manifest is grepped rather than parsed, so a comment counts",
+        path="src/project_setup/catalog.py",
+        old="            manifest = tomllib.loads(manifest_path.read_text())",
+        new='            manifest = {"tool": {"ruff": {}, "pytest": {"ini_options": {}}}}',
+        tests="tests/test_catalog.py -k commented_out_table",
+    ),
+    Mutation(
+        name="checkout_problems stops running the shadow check",
+        path="src/project_setup/cli.py",
+        old="    problems += _shadowed_tool_config(dest, chosen)",
+        new="    pass",
+        tests="tests/test_catalog.py -k runs_as_part_of_apply",
+    ),
 ]
 
 

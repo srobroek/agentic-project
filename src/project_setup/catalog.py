@@ -7,6 +7,7 @@ The layer configs are the only source of truth. Nothing here hardcodes a questio
 from __future__ import annotations
 
 import json
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -718,6 +719,106 @@ def _branch_conflict(dest: Path, data: dict) -> list[Problem]:
 # The files each forge answer excludes. Selecting a forge swaps the CI surface for
 # everything about to be written -- but Copier excludes files, it does not delete
 # ones an earlier run already wrote.
+# A standalone config file a layer places, per layer, against the manifest a repository
+# may already configure the same tool in, and the table inside it that the file wins over.
+#
+# Measured on this machine rather than taken from precedence docs: with both present,
+# ruff.toml's line-length beat [tool.ruff]'s, pytest.ini's addopts beat
+# [tool.pytest.ini_options]'s markers, and ty.toml's rule severity beat [tool.ty]'s. In
+# every case the standalone file won and the table became inert.
+#
+# Only lang-python appears here. biome and oxlint read no package.json key, so their
+# files shadow nothing. knip does read one, but its precedence was not measured, and a
+# warning nobody verified is worse than no warning.
+SHADOWED_TOOL_CONFIG: dict[str, tuple[str, dict[str, str]]] = {
+    "lang-python": (
+        "pyproject.toml",
+        {
+            "pytest.ini": "tool.pytest.ini_options",
+            "ruff.toml": "tool.ruff",
+            "ty.toml": "tool.ty",
+        },
+    ),
+}
+
+
+def _and_list(items: list[str]) -> str:
+    """`a`, `a and b`, `a, b and c`. A bare join produced "pytest, ruff, and x places"."""
+    if len(items) <= 1:
+        return "".join(items)
+    return f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def _table(manifest: dict, dotted: str) -> bool:
+    """Whether `manifest` declares the table named by a dotted path.
+
+    Parsed rather than grepped: a commented-out `[tool.ruff]` is not configuration, and
+    matching the text would report a conflict with a line somebody had already disabled.
+    """
+    node: object = manifest
+    for part in dotted.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return False
+        node = node[part]
+    return True
+
+
+def _shadowed_tool_config(dest: Path, layers: list[str]) -> list[Problem]:
+    """A config file this run will place over a tool the repository already configures.
+
+    These are ordinary files to Copier, and each takes precedence over the equivalent
+    pyproject.toml table. So applying into a repository that configures those tools in
+    pyproject silently changes what they do, leaving the table anyone would read in place
+    and inert.
+
+    Found by scaffolding this repository with its own tool: the placed pytest.ini set
+    `pythonpath = src` over this repository's own `["src", "tools"]`, and all 355 tests
+    stopped collecting, because the suite imports e2e and port_assets from tools/.
+    Nothing reported it. The apply said `place ok lang-python` and exited 0.
+
+    A warning rather than a refusal, and only when the file is not already there: the
+    layer's config may be exactly what the user wants, and a file that already exists is
+    already winning, so this run is not what changed it.
+    """
+    problems: list[Problem] = []
+    for layer in layers:
+        entry = SHADOWED_TOOL_CONFIG.get(layer)
+        if entry is None:
+            continue
+        manifest_name, files = entry
+        manifest_path = dest / manifest_name
+        if not manifest_path.is_file():
+            continue
+        try:
+            manifest = tomllib.loads(manifest_path.read_text())
+        except (tomllib.TOMLDecodeError, OSError, UnicodeDecodeError):
+            # A manifest that does not parse is the user's to fix, and guessing at its
+            # tables would report a conflict that may not exist.
+            continue
+        shadowed = {
+            name: dotted
+            for name, dotted in sorted(files.items())
+            if _table(manifest, dotted) and not (dest / name).exists()
+        }
+        if not shadowed:
+            continue
+        pairs = [f"{name} over [{dotted}]" for name, dotted in shadowed.items()]
+        tools = _and_list([dotted.split(".")[1] for dotted in shadowed.values()])
+        problems.append(
+            Problem(
+                "warning",
+                "SHADOWED_TOOL_CONFIG",
+                f"{manifest_name} already configures {tools}. {layer} places "
+                f"{_and_list(pairs)}, and a standalone file wins over the table, so those "
+                f"{manifest_name} settings stop taking effect while still looking active. "
+                f"Keep one of the two: delete the placed file, or move its settings into "
+                f"{manifest_name}.",
+                layer,
+            )
+        )
+    return problems
+
+
 FORGE_SURFACE: dict[str, tuple[str, ...]] = {
     "github": (".github/workflows",),
     "gitlab": (".gitlab/ci", ".gitlab-ci.yml"),

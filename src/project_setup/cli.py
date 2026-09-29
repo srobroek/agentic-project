@@ -30,6 +30,7 @@ from .catalog import (
     Catalog,
     Problem,
     Question,
+    _shadowed_tool_config,
     find_scaffold_root,
     load_catalog,
     member_capabilities,
@@ -482,6 +483,10 @@ def checkout_problems(
     """
     problems = repo_conflicts(dest, data, member=member)
     problems += _member_language_unsupported(catalog, dest, data, member=member)
+    # Needs the catalog to know which layers are selected, so it lives here rather than
+    # in repo_conflicts: a config file only shadows anything if its layer is applied.
+    chosen = member_layers(catalog, data) if member else selected_layers(catalog, data)
+    problems += _shadowed_tool_config(dest, chosen)
     if (dest / INCOMPLETE_FILE).is_file():
         # Nothing else tells a killed or failed apply from a finished one: every file
         # it got to is real, and a re-apply leaves the previous answers file in place.

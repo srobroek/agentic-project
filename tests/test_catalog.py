@@ -10,8 +10,10 @@ from pathlib import Path
 
 import pytest
 
+from project_setup import cli
 from project_setup.catalog import (
     ALWAYS_ON,
+    _shadowed_tool_config,
     layer_of,
     load_catalog,
     selected_layers,
@@ -587,3 +589,99 @@ def test_a_members_own_answers_file_is_not_mistaken_for_the_root(tmp_path):
 
     assert find_scaffold_root(grandchild) == root
     assert find_scaffold_root(member) == root
+
+
+PYPROJECT_WITH_BOTH = (
+    "[project]\n"
+    'name = "mine"\n'
+    'version = "0.1.0"\n'
+    "\n"
+    "[tool.ruff]\n"
+    "line-length = 100\n"
+    "\n"
+    "[tool.pytest.ini_options]\n"
+    'pythonpath = ["src", "tools"]\n'
+)
+
+
+def test_a_config_file_that_would_shadow_pyproject_is_reported(tmp_path):
+    """The scaffold's pytest.ini and ruff.toml win over the equivalent pyproject tables.
+
+    Found by scaffolding this repository with its own tool. The placed pytest.ini set
+    `pythonpath = src` over this repository's own `["src", "tools"]`, and all 355 tests
+    stopped collecting because the suite imports e2e and port_assets from tools/. The
+    apply said `place ok lang-python` and exited 0.
+    """
+    (tmp_path / "pyproject.toml").write_text(PYPROJECT_WITH_BOTH)
+
+    found = _shadowed_tool_config(tmp_path, ["lang-python"])
+
+    assert len(found) == 1
+    problem = found[0]
+    assert problem.code == "SHADOWED_TOOL_CONFIG"
+    assert problem.level == "warning", "a config choice is the user's, so this warns"
+    # Both halves have to be named, or the reader cannot act on it.
+    assert "pytest.ini" in problem.message
+    assert "tool.pytest.ini_options" in problem.message
+    assert "ruff.toml" in problem.message
+    assert "tool.ruff" in problem.message
+
+
+def test_only_the_tables_the_manifest_actually_has_are_named(tmp_path):
+    """ty.toml shadows [tool.ty], and a repository without that table loses nothing."""
+    (tmp_path / "pyproject.toml").write_text(PYPROJECT_WITH_BOTH)
+
+    message = _shadowed_tool_config(tmp_path, ["lang-python"])[0].message
+
+    assert "ty.toml" not in message, "reported shadowing a table the manifest lacks"
+
+
+def test_a_config_file_already_present_is_not_reported_again(tmp_path):
+    """A file that is already there is already winning, so this run is not what changed it."""
+    (tmp_path / "pyproject.toml").write_text(PYPROJECT_WITH_BOTH)
+    (tmp_path / "pytest.ini").write_text("[pytest]\n")
+
+    message = _shadowed_tool_config(tmp_path, ["lang-python"])[0].message
+
+    assert "pytest.ini" not in message
+    assert "ruff.toml" in message, "the file that is not there yet still shadows"
+
+
+def test_a_commented_out_table_is_not_configuration(tmp_path):
+    """Parsed rather than grepped: a disabled table is not a setting anyone loses."""
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "mine"\nversion = "0.1.0"\n\n# [tool.ruff]\n# line-length = 100\n'
+    )
+
+    assert _shadowed_tool_config(tmp_path, ["lang-python"]) == []
+
+
+def test_a_layer_that_places_no_shadowing_config_is_silent(tmp_path):
+    """biome and oxlint read no package.json key, so the ts layer shadows nothing."""
+    (tmp_path / "pyproject.toml").write_text(PYPROJECT_WITH_BOTH)
+
+    assert _shadowed_tool_config(tmp_path, ["lang-ts", "base", "governance"]) == []
+
+
+def test_a_greenfield_destination_has_nothing_to_shadow(tmp_path):
+    """No manifest, no tables, nothing to report."""
+    assert _shadowed_tool_config(tmp_path, ["lang-python"]) == []
+
+
+def test_an_unparseable_manifest_is_left_alone_rather_than_guessed_at(tmp_path):
+    """Guessing at the tables of a broken manifest would report a conflict that may not exist."""
+    (tmp_path / "pyproject.toml").write_text('[project\nname = "broken"\n')
+
+    assert _shadowed_tool_config(tmp_path, ["lang-python"]) == []
+
+
+def test_the_check_runs_as_part_of_apply_not_only_in_isolation():
+    """A check nothing calls reports nothing.
+
+    Every test above calls the function directly, which passes whether or not
+    checkout_problems ever reaches it.
+    """
+    source = (Path(cli.__file__)).read_text()
+    assert "_shadowed_tool_config(dest" in source, (
+        "checkout_problems no longer runs the shadowed-config check"
+    )
