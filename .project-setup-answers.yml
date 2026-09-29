@@ -1,0 +1,19 @@
+# Written by project-setup apply. Re-run with --data-file to reproduce.
+CODEOWNER: '@srobroek'
+COMMIT_SCOPES: lib,docs,ci,deps
+DEFAULT_BRANCH: main
+DESCRIPTION: Deterministic, layered project scaffolding over Copier templates
+FORGE_PLATFORM: github
+HOOK_EXCLUDE_PATTERNS: ''
+INSTALL_COMMANDS: mise install && uv sync
+JOB_TIMEOUT_MINUTES: '15'
+MAX_FILE_KB: '512'
+PROJECT_NAME: agentic-project
+PY_SRC_LAYOUT: true
+SECURITY_CONTACT: https://github.com/srobroek/agentic-project/security/advisories/new
+SETUP_COMMAND: just setup
+SPDX_ID: Apache-2.0
+USAGE_EXAMPLE: just test
+WANT_LANG_PYTHON: true
+WANT_RELEASE: true
+WANT_WORKTRUNK: false

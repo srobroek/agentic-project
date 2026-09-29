@@ -572,9 +572,7 @@ def main() -> int:
         # count and loses the cause, which has now cost two sessions: the detail below
         # was on stdout both times and discarded before anyone read it.
         log = Path(FAILURE_LOG)
-        log.write_text(
-            "\n\n".join(f"{preset}: {reason}" for preset, reason in failures) + "\n"
-        )
+        log.write_text("\n\n".join(f"{preset}: {reason}" for preset, reason in failures) + "\n")
         print(f"\n{len(failures)} preset(s) failed (also written to {log}):\n")
         for preset, reason in failures:
             print(f"  {preset}: {reason}\n")

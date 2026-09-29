@@ -1,0 +1,11 @@
+# .mise/conf.d/ci.toml -- tools used only by the CI layer.
+#
+# opengrep rather than semgrep: same rule format and registry namespace. Installed through
+# ubi, since aqua carries no registry entry for it.
+#
+# No hook calls opengrep; the security workflow's scan job does, and it installs through mise
+# for this pin. The upstream `main/install.sh` plus a `cli/latest` path would change the rules
+# and SARIF shape with no diff in the repository.
+[tools]
+"aqua:suzuki-shunsuke/pinact" = "5.0.0"
+"ubi:opengrep/opengrep" = "1.26.0"

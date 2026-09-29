@@ -56,3 +56,15 @@ audit:
 # Name the mutations without running them.
 audit-list:
     .venv/bin/python tools/mutation_audit.py --list
+
+# BEGIN GENERATED: imports
+# One line per .just.d fragment, rebuilt by `just just-sync`. Do not edit by hand.
+#
+# `import?` rather than `import`: the optional form. A missing file under the hard
+# form is a parse error that takes down every recipe in the justfile, so a fragment
+# removed by hand would break `just` entirely rather than just its own recipes.
+import? '.just.d/ci.just'
+import? '.just.d/hooks.just'
+import? '.just.d/python.just'
+import? '.just.d/steering.just'
+# END GENERATED: imports

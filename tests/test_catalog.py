@@ -668,8 +668,8 @@ def test_a_greenfield_destination_has_nothing_to_shadow(tmp_path):
     assert _shadowed_tool_config(tmp_path, ["lang-python"]) == []
 
 
-def test_an_unparseable_manifest_is_left_alone_rather_than_guessed_at(tmp_path):
-    """Guessing at the tables of a broken manifest would report a conflict that may not exist."""
+def test_an_unparsable_manifest_is_left_alone_rather_than_guessed_at(tmp_path):
+    """Guessing at a broken manifest's tables would report a conflict that may not exist."""
     (tmp_path / "pyproject.toml").write_text('[project\nname = "broken"\n')
 
     assert _shadowed_tool_config(tmp_path, ["lang-python"]) == []

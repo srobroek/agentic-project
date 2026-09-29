@@ -1,0 +1,22 @@
+# .mise/conf.d/hooks.toml -- the binaries the hygiene hooks call.
+#
+# The hooks invoke these through `language: system`, so this pin is what makes a
+# version mean the same thing locally and in CI. Upstream pre-commit hook repos
+# are not used for these: most of the tools publish none, and a repo pin would
+# drift from the binary on PATH.
+#
+# betterleaks uses the latest version available to the mise registry after its
+# minimum_release_age window, so this pin remains installable on fresh clones.
+[tools]
+prek = "0.4.11"
+# hooks-merge runs merge_hooks.py through `uv run --with pyyaml`; this exact latest-stable
+# setup input is authoritative even when the repository has no Python layer.
+uv = "0.12.18"
+betterleaks = "1.8.1"
+trufflehog = "3.97.9"
+typos = "1.50.2"
+shellcheck = "0.11.0"
+actionlint = "1.7.12"
+zizmor = "1.28.0"
+taplo = "0.10.0"
+lychee = "0.24.2"

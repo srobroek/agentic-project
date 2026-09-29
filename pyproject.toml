@@ -2,6 +2,7 @@
 name = "project-setup"
 version = "0.1.0"
 description = "Deterministic, layered project scaffolding over Copier templates"
+license = "Apache-2.0"
 requires-python = ">=3.12"
 dependencies = ["copier>=9.18", "pyyaml>=6"]
 
@@ -30,3 +31,13 @@ addopts = "-q"
 # broken checkout rather than a missing install step. `tools` is here because the port
 # enforces the interview's invariants and the tests that pin them have to call it.
 pythonpath = ["src", "tools"]
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "ty",
+    "pytest",
+    "pytest-cov",
+    "deptry",
+    "nox",
+]
