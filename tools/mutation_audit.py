@@ -219,7 +219,7 @@ MUTATIONS = [
     Mutation(
         name="the license line goes back to re.sub and its escaped backslashes",
         path="tools/tasks/native_init.py",
-        old='text = f\'{text[: where.end()]}\\nlicense = "{spdx}"{text[where.end() :]}\'',
+        old="text = f'{text[: where.end()]}\\nlicense = \"{spdx}\"{text[where.end() :]}'",
         new=(
             'text = re.sub(r"^(description\\s*=.*)$", '
             'rf"\\1\\nlicense = \\\\"{spdx}\\\\"", '
@@ -295,10 +295,9 @@ MUTATIONS = [
         name="a broken package.json is rewritten instead of reported",
         path="tools/tasks/native_init.py",
         old=(
-            '        print("native_init: WARNING package.json is not valid JSON, '
-            "leaving it alone\")"
+            '        print("native_init: WARNING package.json is not valid JSON, leaving it alone")'
         ),
-        new='        data = {}  # noqa',
+        new="        data = {}  # noqa",
         tests="tests/test_native_tools.py -k not_json",
     ),
     Mutation(
@@ -324,14 +323,8 @@ MUTATIONS = [
     Mutation(
         name="the rust task stops being handed the license and description",
         path="tools/port_assets.py",
-        old=(
-            "# crate was unpublishable.\n"
-            '                "@@ SPDX_ID @@:@@ DESCRIPTION @@",'
-        ),
-        new=(
-            "# crate was unpublishable.\n"
-            '                "@@ SPDX_ID @@:",'
-        ),
+        old=('# crate was unpublishable.\n                "@@ SPDX_ID @@:@@ DESCRIPTION @@",'),
+        new=('# crate was unpublishable.\n                "@@ SPDX_ID @@:",'),
         tests="tests/test_native_tools.py -k each_language_task",
     ),
     Mutation(
@@ -410,8 +403,7 @@ def check(mutation: Mutation) -> tuple[str, str]:
         # rather than reporting a result about the wrong code.
         return (
             "ERROR",
-            f"anchor matches {found} places, so it is not specific: "
-            f"{mutation.old[:40]!r}",
+            f"anchor matches {found} places, so it is not specific: {mutation.old[:40]!r}",
         )
 
     path.write_text(original.replace(mutation.old, mutation.new, 1))
@@ -456,8 +448,10 @@ def main() -> int:
             errors.append(f"{m.name}: {detail}")
 
     print()
-    print(f"  caught {len(MUTATIONS) - len(missed) - len(errors)}, missed {len(missed)}, "
-          f"could not run {len(errors)}")
+    print(
+        f"  caught {len(MUTATIONS) - len(missed) - len(errors)}, missed {len(missed)}, "
+        f"could not run {len(errors)}"
+    )
     for name in missed:
         print(f"    MISSED: {name}")
     for err in errors:

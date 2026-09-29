@@ -1355,7 +1355,11 @@ def build_interview(out: Path, declared: dict[str, dict[str, dict]]) -> int:
     # Copier templates the filename too, and _envops applies there as well.
     (dst / "@@ _copier_conf.answers_file @@.jinja").write_text(
         "# Written by project-setup. Edit by re-running the interview.\n"
-        "@@ _copier_answers|to_nice_yaml @@"
+        # A trailing newline, because the end-of-file hook the hooks layer ships requires
+        # one and this file is generated, so nobody can add it by hand. Jinja strips a
+        # template's final newline unless keep_trailing_newline is set, so the rendered
+        # answers file is unchanged.
+        "@@ _copier_answers|to_nice_yaml @@\n"
     )
     return len(questions)
 
