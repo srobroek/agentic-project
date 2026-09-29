@@ -824,7 +824,7 @@ def test_two_fragments_disagreeing_is_still_a_hard_error(tmp_path: Path):
     assert "conflict" in merge.detail and "pinned" in merge.detail
 
 
-def test_a_repositorys_own_justfile_survives_and_gains_the_imports(tmp_path: Path):
+def test_an_existing_justfile_survives_and_gains_the_imports(tmp_path: Path):
     """`plan` said "merged, your entries kept" about a file the layer overwrote.
 
     The `just` layer used to place its justfile unconditionally, so a brownfield
@@ -1125,7 +1125,7 @@ def test_classify_separates_what_is_lost_from_what_is_kept():
     assert changes.merge == ["blank", "kept"]
 
 
-def test_a_repositorys_own_empty_directories_survive(tmp_path: Path):
+def test_an_existing_empty_directory_survives(tmp_path: Path):
     """Prune removed every empty directory in the destination, not only the ones the
     run had created: a brownfield `logs/`, and empty directories inside node_modules."""
     (tmp_path / "logs").mkdir()
