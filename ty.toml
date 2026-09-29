@@ -1,0 +1,10 @@
+# ty reads this before pyproject.toml, so the project's own type policy stays out of
+# the manifest uv owns.
+#
+# scripts/ is copied plumbing -- the hook merge, the steering writer, the CI caller --
+# carried with its provenance and re-synced from the asset library rather than authored
+# here. ruff.toml exempts it from the docstring contract and the subprocess rules for
+# the same reason. Verified on a fresh copy: without this, `just check` reports five
+# type errors in gen_caller.py before the project has a line of its own code.
+[src]
+exclude = ["scripts"]
